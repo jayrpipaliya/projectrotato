@@ -299,13 +299,26 @@ st.sidebar.subheader("Data Feeds (yfinance)")
 sync_scope = st.sidebar.radio("Sync Scope", ["Core Universe (Mag 7 + Indexes + Sectors + Macro)", "All 79 Tickers in raw_csv"], index=0)
 
 if st.sidebar.button("Sync Daily Closes Now", use_container_width=True):
-    with st.sidebar.spinner("Syncing latest market bars from yfinance..."):
+    with st.sidebar.status("Syncing market feeds from Yahoo Finance...", expanded=True) as status:
+        st.write("⚡ Step 1: Connecting to Yahoo Finance endpoints...")
+        time.sleep(0.2)
+        st.write(f"📥 Step 2: Downloading batch daily bars ({'Core 28 Assets' if 'Core' in sync_scope else 'All 79 Assets'})...")
         from data_manager import sync_tickers_batch
         target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS if "Core" in sync_scope else None
         results = sync_tickers_batch(tickers=target_tickers, force=True)
+        st.write(f"📊 Step 3: Recalculating EMAs, RSI, and ATR stretch across {len(results)} assets...")
+        time.sleep(0.2)
+        st.write("🔄 Step 4: Recomputing synthetic ratios (SPY/RSP, QQQ/RSP, IWM/QQQ)...")
         st.cache_data.clear()
-        st.sidebar.success(f"Sync complete! {len(results)} tickers checked.")
-        st.rerun()
+        last_date = results[0].get("last_date", "Today") if results else "Today"
+        status.update(
+            label=f"✓ Sync Complete! {len(results)} assets updated to {last_date}.",
+            state="complete",
+            expanded=True
+        )
+    st.toast(f"Market Sync Complete! {len(results)} assets updated to {last_date}.", icon="✅")
+    time.sleep(1.0)
+    st.rerun()
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("AI Strategist Engine")

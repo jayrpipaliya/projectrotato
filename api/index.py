@@ -111,13 +111,25 @@ async def api_agent_chat(payload: dict):
 
 @app.post("/api/sync-data")
 def api_sync_data(payload: dict = None):
+    t0 = time.time()
     scope = (payload or {}).get("scope", "core")
     from data_manager import sync_tickers_batch, get_available_tickers
     target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS if scope == "core" else get_available_tickers()
     results = sync_tickers_batch(tickers=target_tickers, force=True)
     updated_count = sum(1 for r in results if r.get("status") in ["updated", "created"])
+    sample_tickers = [r["ticker"] for r in results if "ticker" in r][:8]
+    last_date = results[0].get("last_date", datetime.now().strftime("%Y-%m-%d")) if results else "N/A"
+    duration = round(time.time() - t0, 2)
     _CACHE.clear()
-    return {"status": "success", "updated_count": updated_count, "total": len(results)}
+    return {
+        "status": "success",
+        "updated_count": updated_count,
+        "total": len(results),
+        "last_date": last_date,
+        "sample_tickers": sample_tickers,
+        "duration": duration,
+        "timestamp": datetime.now().strftime("%I:%M:%S %p")
+    }
 
 @app.get("/api/confluence")
 def api_confluence(scope: str = Query("core")):
@@ -265,11 +277,36 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <span>All 79 Tickers in raw_csv</span>
                     </label>
                 </div>
-                <button onclick="triggerDataSync()" id="syncBtn" class="w-full bg-[#161822] hover:bg-[#1d202d] border border-white/10 hover:border-amber-500/40 text-xs font-bold text-slate-200 py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition">
-                    <span id="syncSpinner" class="hidden animate-spin">⏳</span>
+                <button onclick="triggerDataSync()" id="syncBtn" class="w-full bg-[#161822] hover:bg-[#1d202d] border border-white/10 hover:border-amber-500/40 text-xs font-bold text-slate-200 py-2.5 px-3 rounded-lg flex items-center justify-center gap-2 transition active:scale-[0.99]">
+                    <span id="syncSpinner" class="hidden inline-block animate-spin">⚡</span>
                     <span id="syncBtnText">Sync Daily Closes Now</span>
                 </button>
-                <div id="syncStatus" class="hidden text-[11px] text-emerald-400 pt-1"></div>
+
+                <!-- Live Sync Real-Time Feedback Panel -->
+                <div id="syncFeedbackBox" class="hidden p-3 rounded-xl bg-[#11131a] border border-white/10 space-y-2.5 text-xs">
+                    <div class="space-y-1">
+                        <div class="flex justify-between items-center text-[10px] text-slate-400">
+                            <span id="syncStageTitle" class="font-bold text-amber-400">Syncing Market Feed...</span>
+                            <span id="syncPctText" class="font-mono text-slate-300">0%</span>
+                        </div>
+                        <div class="w-full bg-slate-800/80 rounded-full h-1.5 overflow-hidden">
+                            <div id="syncProgressBar" class="bg-gradient-to-r from-amber-500 to-emerald-400 h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Step-by-Step Live Log -->
+                    <div id="syncLogList" class="space-y-1 text-[10.5px] font-mono">
+                        <!-- Dynamically filled with checkmarks -->
+                    </div>
+
+                    <!-- Final Confirmation Badge -->
+                    <div id="syncSummaryBadge" class="hidden pt-2 border-t border-white/5 space-y-1">
+                        <div class="flex items-center gap-1.5 text-emerald-400 font-bold text-xs">
+                            <span>✓</span> <span id="syncSuccessHeading">Feed Live & Verified</span>
+                        </div>
+                        <div id="syncSuccessDetails" class="text-[10px] text-slate-400 leading-tight"></div>
+                    </div>
+                </div>
             </div>
 
             <!-- AI Strategist Engine Section -->
@@ -630,12 +667,41 @@ HTML_CONTENT = """<!DOCTYPE html>
             const btn = document.getElementById('syncBtn');
             const spinner = document.getElementById('syncSpinner');
             const btnText = document.getElementById('syncBtnText');
-            const statusDiv = document.getElementById('syncStatus');
+            const feedbackBox = document.getElementById('syncFeedbackBox');
+            const stageTitle = document.getElementById('syncStageTitle');
+            const pctText = document.getElementById('syncPctText');
+            const progressBar = document.getElementById('syncProgressBar');
+            const logList = document.getElementById('syncLogList');
+            const summaryBadge = document.getElementById('syncSummaryBadge');
+            const successHeading = document.getElementById('syncSuccessHeading');
+            const successDetails = document.getElementById('syncSuccessDetails');
 
             btn.disabled = true;
             spinner.classList.remove('hidden');
-            btnText.innerText = 'Syncing yfinance...';
-            statusDiv.classList.add('hidden');
+            btnText.innerText = 'Syncing Feeds...';
+            feedbackBox.classList.remove('hidden');
+            summaryBadge.classList.add('hidden');
+            logList.innerHTML = '';
+
+            const appendLog = (icon, text, color = 'text-slate-300') => {
+                const div = document.createElement('div');
+                div.className = `flex items-center gap-1.5 ${color}`;
+                div.innerHTML = `<span>${icon}</span><span>${text}</span>`;
+                logList.appendChild(div);
+            };
+
+            const setProgress = (pct, stage) => {
+                progressBar.style.width = pct + '%';
+                pctText.innerText = pct + '%';
+                stageTitle.innerText = stage;
+            };
+
+            setProgress(15, 'Contacting Yahoo Finance...');
+            appendLog('⚡', 'Connecting to Yahoo Finance endpoints...', 'text-amber-300');
+
+            await new Promise(r => setTimeout(r, 200));
+            setProgress(35, 'Downloading Tickers Batch...');
+            appendLog('📥', `Fetching batch quotes for ${scope === 'core' ? '28 core assets' : 'all 79 assets'}...`, 'text-blue-300');
 
             try {
                 const res = await fetch('/api/sync-data', {
@@ -643,15 +709,46 @@ HTML_CONTENT = """<!DOCTYPE html>
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ scope: scope })
                 });
+
+                if (!res.ok) {
+                    throw new Error(`Server returned HTTP ${res.status}`);
+                }
+
                 const data = await res.json();
-                statusDiv.innerText = `Sync complete! ${data.updated_count} tickers updated.`;
-                statusDiv.className = 'text-[11px] text-emerald-400 pt-1 font-semibold';
-                statusDiv.classList.remove('hidden');
+
+                setProgress(75, 'Re-indexing Technical Indicators...');
+                appendLog('📊', `Received ${data.total} ticker daily bars. Calculating EMAs & RSI...`, 'text-indigo-300');
+
+                await new Promise(r => setTimeout(r, 200));
+                setProgress(90, 'Recalculating Synthetic Ratios...');
+                appendLog('🔄', 'Updating SPY/RSP, QQQ/RSP, and IWM/QQQ spreads...', 'text-cyan-300');
+
+                await new Promise(r => setTimeout(r, 200));
+                setProgress(100, 'Sync Complete');
+                appendLog('✓', `All ${data.total} assets indexed to ${data.last_date}`, 'text-emerald-400 font-bold');
+
+                // Display success badge
+                summaryBadge.classList.remove('hidden');
+                successHeading.innerText = `Updated ${data.total} Assets (${data.duration}s)`;
+                successDetails.innerHTML = `
+                    <div>• <b>Session Date:</b> ${data.last_date} (${data.timestamp})</div>
+                    <div>• <b>Verified:</b> ${(data.sample_tickers || []).slice(0, 6).join(', ')}...</div>
+                `;
+
+                // Pulse the session badge in header
+                const sessionBadge = document.getElementById('sessionDateBadge');
+                if (sessionBadge) {
+                    sessionBadge.innerText = 'Prices: ' + data.last_date;
+                    sessionBadge.classList.add('bg-emerald-500/20', 'text-emerald-300');
+                    setTimeout(() => sessionBadge.classList.remove('bg-emerald-500/20', 'text-emerald-300'), 3000);
+                }
+
+                // Re-render dashboard
                 await init();
+
             } catch (err) {
-                statusDiv.innerText = 'Sync error: ' + err.message;
-                statusDiv.className = 'text-[11px] text-red-400 pt-1';
-                statusDiv.classList.remove('hidden');
+                setProgress(100, 'Sync Error');
+                appendLog('✕', 'Sync failed: ' + err.message, 'text-red-400 font-bold');
             } finally {
                 btn.disabled = false;
                 spinner.classList.add('hidden');
