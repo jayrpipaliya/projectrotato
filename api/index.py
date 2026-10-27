@@ -513,8 +513,24 @@ HTML_CONTENT = """<!DOCTYPE html>
                 { name: "SPY • S&P 500", p: b.SPY?.close, c: b.SPY?.pct_1d, sub: `ATH DD: ${b.SPY?.drawdown_ath}% | 5D: ${b.SPY?.pct_5d > 0 ? '+' : ''}${b.SPY?.pct_5d}% | RSI: ${b.SPY?.rsi}` },
                 { name: "QQQ • Nasdaq 100", p: b.QQQ?.close, c: b.QQQ?.pct_1d, sub: `ATH DD: ${b.QQQ?.drawdown_ath}% | 5D: ${b.QQQ?.pct_5d > 0 ? '+' : ''}${b.QQQ?.pct_5d}% | RSI: ${b.QQQ?.rsi}` },
                 { name: "IWM • Russell 2000", p: b.IWM?.close, c: b.IWM?.pct_1d, sub: `ATH DD: ${b.IWM?.drawdown_ath}% | 5D: ${b.IWM?.pct_5d > 0 ? '+' : ''}${b.IWM?.pct_5d}% | RSI: ${b.IWM?.rsi}` },
-                { name: "SPY / RSP (Breadth)", p: spy_rsp.current, sigma: spy_rsp.z_score_50d, sub: `5Y %ile: ${spy_rsp.percentile_5y}% (Mega Concentration)` },
-                { name: "IWM / QQQ (Rotation)", p: iwm_qqq.current, sigma: iwm_qqq.z_score_50d, sub: `5Y %ile: ${iwm_qqq.percentile_5y}% (Small vs Tech)` }
+                { 
+                    name: "SPY / RSP (Breadth)", 
+                    p: spy_rsp.current, 
+                    sigma: spy_rsp.z_score_50d, 
+                    state: spy_rsp.actionable_state || "Concentration Peaking",
+                    action: spy_rsp.action_text || "Rotate into Equal-Weight (RSP)",
+                    color: spy_rsp.state_color || "#f59e0b",
+                    pctile: spy_rsp.percentile_5y 
+                },
+                { 
+                    name: "IWM / QQQ (Rotation)", 
+                    p: iwm_qqq.current, 
+                    sigma: iwm_qqq.z_score_50d, 
+                    state: iwm_qqq.actionable_state || "Small-Cap Coiling",
+                    action: iwm_qqq.action_text || "Early Mean-Reversion Bid in IWM",
+                    color: iwm_qqq.state_color || "#10b981",
+                    pctile: iwm_qqq.percentile_5y 
+                }
             ];
 
             let html = '';
@@ -523,6 +539,17 @@ HTML_CONTENT = """<!DOCTYPE html>
                 const sign = card.c >= 0 ? '+' : '';
                 const pill = isRatio ? 'pill-amber' : (card.c >= 0 ? 'pill-green' : 'pill-red');
                 const badge = isRatio ? `${card.sigma > 0 ? '+' : ''}${card.sigma?.toFixed(2)}σ` : `${sign}${card.c?.toFixed(2)}%`;
+                
+                let subHtml = `<div class="text-[11px] text-slate-400 mt-1">${card.sub}</div>`;
+                if (isRatio) {
+                    subHtml = `
+                        <div class="text-[11px] text-slate-400 mt-1 flex flex-col gap-0.5">
+                            <div>5Y %ile: <b class="text-white">${card.pctile}%</b> • <span style="color:${card.color};" class="font-bold">${card.state}</span></div>
+                            <div class="text-[10.5px] text-slate-400"><b>Action:</b> ${card.action}</div>
+                        </div>
+                    `;
+                }
+
                 html += `
                     <div class="lux-card p-4">
                         <div class="flex justify-between items-center text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
@@ -530,7 +557,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                             <span class="${pill} px-2 py-0.5 rounded font-bold">${badge}</span>
                         </div>
                         <div class="text-2xl font-extrabold text-white tracking-tight">${isRatio ? Number(card.p).toFixed(4) : '$' + Number(card.p).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                        <div class="text-[11px] text-slate-400 mt-1">${card.sub}</div>
+                        ${subHtml}
                     </div>
                 `;
             });

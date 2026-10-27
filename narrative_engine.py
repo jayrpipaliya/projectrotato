@@ -18,11 +18,71 @@ def compute_ratio_analytics(ratio_name: str) -> dict:
     lookback = min(len(close), 1260)
     history_window = close.iloc[-lookback:]
     curr_close = close.iloc[-1]
-    pctile_5y = (history_window < curr_close).mean() * 100
+    pctile_5y = float((history_window < curr_close).mean() * 100)
 
-    pct_1d = (curr_close / close.iloc[-2] - 1) * 100 if len(close) > 1 else 0.0
-    pct_5d = (curr_close / close.iloc[-6] - 1) * 100 if len(close) > 5 else 0.0
-    pct_20d = (curr_close / close.iloc[-21] - 1) * 100 if len(close) > 20 else 0.0
+    pct_1d = float((curr_close / close.iloc[-2] - 1) * 100) if len(close) > 1 else 0.0
+    pct_5d = float((curr_close / close.iloc[-6] - 1) * 100) if len(close) > 5 else 0.0
+    pct_20d = float((curr_close / close.iloc[-21] - 1) * 100) if len(close) > 20 else 0.0
+    curr_z = float(z_score_50.iloc[-1])
+
+    # Dynamic actionable state based on 5Y percentile, 50D Z-score, and 5D trend
+    if "SPY" in ratio_name and "RSP" in ratio_name:
+        if pctile_5y >= 85:
+            if curr_z < 0 or pct_5d < -0.5:
+                state_label = "Concentration Peaking"
+                action_text = "Rotate into Equal-Weight (RSP)"
+                state_color = "#f59e0b"
+            else:
+                state_label = "Extreme Mega Concentration"
+                action_text = "Fragile Rally; Cap-Weighted Exhaustion"
+                state_color = "#ef4444"
+        elif pctile_5y >= 65:
+            state_label = "Elevated Mega Dominance"
+            action_text = "Favor Quality Tech over Broad Market"
+            state_color = "#f59e0b"
+        elif pctile_5y <= 20:
+            state_label = "Broad Market Dominance"
+            action_text = "Broad Breadth; Overweight RSP"
+            state_color = "#10b981"
+        elif pctile_5y <= 40:
+            state_label = "Healthy Breadth Expansion"
+            action_text = "Broad Cyclical Participation"
+            state_color = "#10b981"
+        else:
+            state_label = "Balanced Breadth"
+            action_text = "Neutral Allocation (SPY vs RSP)"
+            state_color = "#94a3b8"
+
+    elif "IWM" in ratio_name and "QQQ" in ratio_name:
+        if pctile_5y <= 15:
+            if curr_z > -0.5 and pct_5d > 1.0:
+                state_label = "Small-Cap Value Coiling"
+                action_text = "Early Mean-Reversion Bid in IWM"
+                state_color = "#10b981"
+            else:
+                state_label = "Tech Secular Monopoly"
+                action_text = "Underweight Small-Caps; Stay in QQQ"
+                state_color = "#3b82f6"
+        elif pctile_5y <= 35:
+            state_label = "Tech Leadership Regime"
+            action_text = "Avoid IWM Dips; Stick with Tech"
+            state_color = "#3b82f6"
+        elif pctile_5y >= 80:
+            state_label = "Small-Cap Extension"
+            action_text = "Trim High-Beta; Rotate Back to QQQ"
+            state_color = "#ef4444"
+        elif pctile_5y >= 60:
+            state_label = "Aggressive Risk-On Rotation"
+            action_text = "Overweight IWM & Cyclicals"
+            state_color = "#10b981"
+        else:
+            state_label = "Balanced Tech / Small"
+            action_text = "Neutral Allocation (QQQ vs IWM)"
+            state_color = "#94a3b8"
+    else:
+        state_label = "Range-Bound Ratio"
+        action_text = "Monitor Moving Average Crossover"
+        state_color = "#94a3b8"
 
     return {
         "name": ratio_name.replace("_", "/"),
@@ -31,9 +91,12 @@ def compute_ratio_analytics(ratio_name: str) -> dict:
         "pct_5d": round(float(pct_5d), 2),
         "pct_20d": round(float(pct_20d), 2),
         "sma50": round(float(sma50.iloc[-1]), 4),
-        "z_score_50d": round(float(z_score_50.iloc[-1]), 2),
+        "z_score_50d": round(curr_z, 2),
         "percentile_5y": round(float(pctile_5y), 1),
-        "is_stretched": abs(float(z_score_50.iloc[-1])) >= 1.8
+        "is_stretched": abs(curr_z) >= 1.8,
+        "actionable_state": state_label,
+        "action_text": action_text,
+        "state_color": state_color
     }
 
 def analyze_market_narrative() -> dict:

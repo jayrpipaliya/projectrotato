@@ -475,22 +475,36 @@ with c3:
 
 with c4:
     z_val = spy_rsp.get("z_score_50d", 0)
+    act_state = spy_rsp.get("actionable_state", "Concentration Peaking")
+    act_text = spy_rsp.get("action_text", "Rotate into Equal-Weight (RSP)")
+    pct_val = spy_rsp.get("percentile_5y", 0)
+    color_val = spy_rsp.get("state_color", "#f59e0b")
     card_c4 = (
         f'<div class="metric-card-lux">'
         f'<div class="card-label"><span>SPY / RSP (Breadth)</span><span class="pill-amber">{z_val:+.2f}σ</span></div>'
         f'<div class="card-val">{spy_rsp.get("current", 0):.4f}</div>'
-        f'<div class="card-sub">5Y %ile: {spy_rsp.get("percentile_5y")}% (Mega Concentration)</div>'
+        f'<div class="card-sub" style="flex-direction:column; align-items:flex-start; gap:2px;">'
+        f'<div>5Y %ile: <b style="color:#ffffff;">{pct_val}%</b> • <span style="color:{color_val}; font-weight:700;">{act_state}</span></div>'
+        f'<div style="font-size:11px; color:#94a3b8;"><b>Action:</b> {act_text}</div>'
+        f'</div>'
         f'</div>'
     )
     st.markdown(card_c4, unsafe_allow_html=True)
 
 with c5:
     z_rot = iwm_qqq.get("z_score_50d", 0)
+    act_state_rot = iwm_qqq.get("actionable_state", "Small-Cap Coiling")
+    act_text_rot = iwm_qqq.get("action_text", "Early Mean-Reversion Bid in IWM")
+    pct_rot = iwm_qqq.get("percentile_5y", 0)
+    color_rot = iwm_qqq.get("state_color", "#10b981")
     card_c5 = (
         f'<div class="metric-card-lux">'
         f'<div class="card-label"><span>IWM / QQQ (Rotation)</span><span class="pill-amber">{z_rot:+.2f}σ</span></div>'
         f'<div class="card-val">{iwm_qqq.get("current", 0):.4f}</div>'
-        f'<div class="card-sub">5Y %ile: {iwm_qqq.get("percentile_5y")}% (Small vs Tech)</div>'
+        f'<div class="card-sub" style="flex-direction:column; align-items:flex-start; gap:2px;">'
+        f'<div>5Y %ile: <b style="color:#ffffff;">{pct_rot}%</b> • <span style="color:{color_rot}; font-weight:700;">{act_state_rot}</span></div>'
+        f'<div style="font-size:11px; color:#94a3b8;"><b>Action:</b> {act_text_rot}</div>'
+        f'</div>'
         f'</div>'
     )
     st.markdown(card_c5, unsafe_allow_html=True)
