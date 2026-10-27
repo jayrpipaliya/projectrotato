@@ -776,42 +776,61 @@ with tab2:
             direction = t.get("direction", "LONG")
             pill_type = "green" if "LONG" in direction else ("red" if "SHORT" in direction or "FADE" in direction else ("cyan" if "DIP" in direction else "amber"))
             border_col = t.get("card_color", "#10b981")
+            exec_state = t.get("execution_state", "")
+            curr_px = t.get("current_price", t.get("entry"))
+            ext_metric = t.get("extension_metric", "At Support")
+            rr = t.get("risk_reward", "1 : 3.0 R:R")
+            limit_zone = t.get("optimal_entry_zone", t.get("entry"))
+            trigger = t.get("breakout_trigger", "Above 5D Pivot")
+            exec_desc = t.get("execution_desc", "Bidding structural support band rather than market buying.")
 
             t_card_html = (
                 f'<div class="metric-card-lux" style="border-left:4px solid {border_col}; margin-bottom:16px;">'
-                f'<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px; margin-bottom:12px;">'
-                f'<div style="display:flex; align-items:center; gap:10px;">'
+                f'<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px; margin-bottom:12px; flex-wrap:wrap; gap:8px;">'
+                f'<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">'
                 f'<span style="font-size:22px; font-weight:800; color:#ffffff; letter-spacing:-0.5px;">{t["ticker"]}</span>'
                 f'<span class="pill-{pill_type}">{t["direction"]}</span>'
                 f'<span style="font-size:12px; color:#94a3b8; font-weight:600;">{t["type_label"]}</span>'
+                f'{(f"<span class=\"pill-amber\" style=\"font-size:11px; font-weight:700;\">{exec_state}</span>") if exec_state else ""}'
                 f'</div>'
                 f'<div style="display:flex; align-items:center; gap:8px;">'
                 f'<span style="font-size:11px; color:#64748b; text-transform:uppercase;">Conviction:</span>'
                 f'<span class="pill-{pill_type}" style="font-size:12px; font-weight:700;">Score: {t["score"]} ({t["bias_label"]})</span>'
                 f'</div>'
                 f'</div>'
+                # Market Price vs Optimized R:R Banner
+                f'<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:8px; padding:8px 12px; margin-bottom:12px; flex-wrap:wrap; gap:8px; font-size:12px;">'
+                f'<div><span style="color:#94a3b8;">Current Print:</span> <b style="color:#ffffff;">{curr_px}</b> <span style="color:#64748b; margin:0 4px;">|</span> <span style="color:#94a3b8;">Moving Avg Extension:</span> <b style="color:#f59e0b;">{ext_metric}</b></div>'
+                f'<div><span style="font-size:10px; color:#64748b; text-transform:uppercase; margin-right:4px;">Optimized Payoff:</span> <span class="pill-amber" style="font-size:11px; font-weight:800;">{rr}</span></div>'
+                f'</div>'
+                # 4-Box Execution Strategy Grid
                 f'<div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:12px;">'
-                f'<div style="background:rgba(255,255,255,0.02); padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.04);">'
-                f'<div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">Entry Price</div>'
-                f'<div style="font-size:18px; font-weight:800; color:#ffffff; margin-top:2px;">{t["entry"]}</div>'
-                f'<div style="font-size:11px; color:#94a3b8;">Current Execution</div>'
+                f'<div style="background:rgba(245, 158, 11, 0.05); padding:10px 12px; border-radius:8px; border:1px solid rgba(245, 158, 11, 0.25);">'
+                f'<div style="font-size:10px; font-weight:700; color:#f59e0b; text-transform:uppercase;">Optimal Limit Entry</div>'
+                f'<div style="font-size:16px; font-weight:800; color:#ffffff; margin-top:2px;">{limit_zone}</div>'
+                f'<div style="font-size:10px; color:#94a3b8; margin-top:2px;">20 EMA Support Zone</div>'
                 f'</div>'
-                f'<div style="background:rgba(255,255,255,0.02); padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.04);">'
-                f'<div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">Stop Invalidation</div>'
-                f'<div style="font-size:18px; font-weight:800; color:#ef4444; margin-top:2px;">{t["stop"]}</div>'
-                f'<div style="font-size:11px; color:#ef4444;">{t["stop_pct"]} Max Risk</div>'
+                f'<div style="background:rgba(255,255,255,0.02); padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.05);">'
+                f'<div style="font-size:10px; font-weight:700; color:#38bdf8; text-transform:uppercase;">Breakout Trigger</div>'
+                f'<div style="font-size:14px; font-weight:700; color:#ffffff; margin-top:2px;">{trigger}</div>'
+                f'<div style="font-size:10px; color:#94a3b8; margin-top:2px;">Momentum Confirmation</div>'
                 f'</div>'
-                f'<div style="background:rgba(255,255,255,0.02); padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.04);">'
-                f'<div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">Target 1 (Primary)</div>'
-                f'<div style="font-size:18px; font-weight:800; color:#10b981; margin-top:2px;">{t["target1"]}</div>'
-                f'<div style="font-size:11px; color:#10b981;">{t["target1_pct"]} Expected</div>'
+                f'<div style="background:rgba(239, 68, 68, 0.05); padding:10px 12px; border-radius:8px; border:1px solid rgba(239, 68, 68, 0.25);">'
+                f'<div style="font-size:10px; font-weight:700; color:#ef4444; text-transform:uppercase;">Stop Invalidation</div>'
+                f'<div style="font-size:16px; font-weight:800; color:#ef4444; margin-top:2px;">{t["stop"]}</div>'
+                f'<div style="font-size:10px; color:#fca5a5; margin-top:2px;">{t["stop_pct"]} Below Structural Support</div>'
                 f'</div>'
-                f'<div style="background:rgba(255,255,255,0.02); padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.04);">'
-                f'<div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">Target 2 (Runner)</div>'
-                f'<div style="font-size:18px; font-weight:800; color:#10b981; margin-top:2px;">{t["target2"]}</div>'
-                f'<div style="font-size:11px; color:#10b981;">{t["target2_pct"]} Stretch</div>'
+                f'<div style="background:rgba(16, 185, 129, 0.05); padding:10px 12px; border-radius:8px; border:1px solid rgba(16, 185, 129, 0.25);">'
+                f'<div style="font-size:10px; font-weight:700; color:#10b981; text-transform:uppercase;">Profit Targets</div>'
+                f'<div style="font-size:16px; font-weight:800; color:#10b981; margin-top:2px;">{t["target1"]}</div>'
+                f'<div style="font-size:10px; color:#6ee7b7; margin-top:2px;">Runner: {t["target2"]} ({t["target2_pct"]})</div>'
                 f'</div>'
                 f'</div>'
+                # Directive tip
+                f'<div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.05); border-radius:8px; padding:8px 12px; font-size:12px; color:#cbd5e1; margin-bottom:12px;">'
+                f'<span style="color:#f59e0b; margin-right:4px;">💡</span><b style="color:#f59e0b;">Desk Directive:</b> {exec_desc}'
+                f'</div>'
+                # Stats Bar
                 f'<div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">'
                 f'<span style="font-size:12.5px; color:#94a3b8;">20Y Win Rate: <b style="color:#10b981; font-size:14px;">{t["win_rate"]}</b> <span style="color:#64748b;">(N={t["sample_size"]})</span></span>'
                 f'<span style="font-size:12.5px; color:#94a3b8;">Median 20D Alpha: <b style="color:#f59e0b;">{t["median_alpha"]}</b></span>'

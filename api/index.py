@@ -1360,37 +1360,67 @@ HTML_CONTENT = """<!DOCTYPE html>
             cards.forEach(t => {
                     const dir = t.direction || "LONG";
                     const pill = dir.includes("LONG") ? 'pill-green' : (dir.includes("SHORT") || dir.includes("FADE") ? 'pill-red' : 'pill-amber');
+                    const execPill = t.execution_pill || (dir.includes("LONG") ? 'pill-green' : 'pill-amber');
                     html += `
-                        <div class="lux-card p-4 border-l-4" style="border-left-color: ${t.card_color || '#10b981'}">
-                            <div class="flex justify-between items-center pb-2.5 mb-3 border-b border-white/5">
-                                <div class="flex items-center gap-2.5">
-                                    <span class="text-xl font-extrabold text-white">${t.ticker}</span>
-                                    <span class="${pill} px-2 py-0.5 rounded text-xs font-bold">${t.direction}</span>
+                        <div class="lux-card p-4 sm:p-5 border-l-4" style="border-left-color: ${t.card_color || '#10b981'}">
+                            <div class="flex flex-wrap justify-between items-center gap-2 pb-3 mb-3 border-b border-white/5">
+                                <div class="flex flex-wrap items-center gap-2.5">
+                                    <span class="text-2xl font-black text-white">${t.ticker}</span>
+                                    <span class="${pill} px-2.5 py-0.5 rounded text-xs font-bold">${t.direction}</span>
                                     <span class="text-xs font-semibold text-slate-400">${t.type_label}</span>
+                                    ${t.execution_state ? `<span class="${execPill} px-2.5 py-0.5 rounded text-[11px] font-bold tracking-wide">${t.execution_state}</span>` : ''}
                                 </div>
                                 <div class="flex items-center gap-2 text-xs">
                                     <span class="text-slate-500 uppercase">Conviction:</span>
                                     <span class="${pill} px-2 py-0.5 rounded font-bold">Score: ${t.score} (${t.bias_label})</span>
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
-                                <div class="bg-white/[0.02] p-2.5 rounded-lg border border-white/5">
-                                    <div class="text-[10px] font-semibold text-slate-500 uppercase">Entry Price</div>
-                                    <div class="text-base font-bold text-white">${t.entry}</div>
+
+                            <!-- Market Price vs Optimized R:R Banner -->
+                            <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 mb-3 rounded-lg bg-white/[0.02] border border-white/5 text-xs">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-slate-400">Current Print:</span>
+                                    <span class="font-bold text-white">${t.current_price || t.entry}</span>
+                                    <span class="text-slate-500">|</span>
+                                    <span class="text-slate-400">Moving Avg Extension:</span>
+                                    <span class="font-mono ${t.extension_metric && t.extension_metric.includes('+') ? 'text-amber-400' : 'text-slate-300'}">${t.extension_metric || 'At Support'}</span>
                                 </div>
-                                <div class="bg-white/[0.02] p-2.5 rounded-lg border border-white/5">
-                                    <div class="text-[10px] font-semibold text-slate-500 uppercase">Stop Invalidation</div>
-                                    <div class="text-base font-bold text-red-400">${t.stop} <span class="text-xs font-normal">(${t.stop_pct})</span></div>
-                                </div>
-                                <div class="bg-white/[0.02] p-2.5 rounded-lg border border-white/5">
-                                    <div class="text-[10px] font-semibold text-slate-500 uppercase">Target 1</div>
-                                    <div class="text-base font-bold text-emerald-400">${t.target1} <span class="text-xs font-normal">(${t.target1_pct})</span></div>
-                                </div>
-                                <div class="bg-white/[0.02] p-2.5 rounded-lg border border-white/5">
-                                    <div class="text-[10px] font-semibold text-slate-500 uppercase">Target 2</div>
-                                    <div class="text-base font-bold text-emerald-400">${t.target2} <span class="text-xs font-normal">(${t.target2_pct})</span></div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-slate-500 uppercase text-[10px]">Optimized Payoff:</span>
+                                    <span class="pill-amber px-2.5 py-0.5 rounded text-xs font-black tracking-wide">${t.risk_reward || '1 : 3.0 R:R'}</span>
                                 </div>
                             </div>
+
+                            <!-- 4-Box Execution Strategy Grid -->
+                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+                                <div class="bg-gradient-to-b from-amber-500/10 to-transparent p-3 rounded-xl border border-amber-500/25">
+                                    <div class="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Optimal Limit Entry</div>
+                                    <div class="text-base font-extrabold text-white mt-0.5">${t.optimal_entry_zone || t.entry}</div>
+                                    <div class="text-[10px] text-slate-400 mt-1">${t.optimal_entry_label || '20 EMA Support Zone'}</div>
+                                </div>
+                                <div class="bg-white/[0.02] p-3 rounded-xl border border-white/5">
+                                    <div class="text-[10px] font-bold text-sky-400 uppercase tracking-wider">Breakout Trigger</div>
+                                    <div class="text-sm font-bold text-white mt-0.5 leading-snug">${t.breakout_trigger || 'Above 5D Pivot'}</div>
+                                    <div class="text-[10px] text-slate-400 mt-1">Momentum Confirmation</div>
+                                </div>
+                                <div class="bg-gradient-to-b from-red-500/10 to-transparent p-3 rounded-xl border border-red-500/25">
+                                    <div class="text-[10px] font-bold text-red-400 uppercase tracking-wider">Stop Invalidation</div>
+                                    <div class="text-base font-extrabold text-red-400 mt-0.5">${t.stop} <span class="text-xs font-normal text-red-300">(${t.stop_pct})</span></div>
+                                    <div class="text-[10px] text-slate-400 mt-1">Below Structural Support</div>
+                                </div>
+                                <div class="bg-gradient-to-b from-emerald-500/10 to-transparent p-3 rounded-xl border border-emerald-500/25">
+                                    <div class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Profit Targets</div>
+                                    <div class="text-base font-extrabold text-emerald-400 mt-0.5">${t.target1} <span class="text-xs font-normal text-emerald-300">(${t.target1_pct})</span></div>
+                                    <div class="text-[10px] text-slate-400 mt-1">Runner: ${t.target2} (${t.target2_pct})</div>
+                                </div>
+                            </div>
+
+                            <!-- Execution Rule Directive -->
+                            <div class="p-2.5 rounded-lg bg-black/40 border border-white/5 text-xs text-slate-300 mb-3 flex items-start gap-2">
+                                <span class="text-amber-400 text-sm leading-none mt-0.5">💡</span>
+                                <div><b class="text-amber-400">Desk Execution Directive:</b> ${t.execution_desc || 'Bidding the structural liquidity band rather than market buying at extended highs.'}</div>
+                            </div>
+
                             <div class="bg-white/[0.02] p-2.5 rounded-lg border border-white/5 text-xs text-slate-400 flex flex-wrap justify-between gap-2">
                                 <span>20Y Win Rate: <b class="text-emerald-400 font-bold">${t.win_rate}</b> (N=${t.sample_size})</span>
                                 <span>Median 20D Alpha: <b class="text-amber-400 font-bold">${t.median_alpha}</b></span>

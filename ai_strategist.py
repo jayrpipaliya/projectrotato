@@ -252,6 +252,156 @@ RULES FOR RESPONDING:
     return "⚠️ **Agent Error:** Unable to generate response from Gemini models at this moment. Please check your API key or network connection."
 
 
+def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = None) -> dict:
+    """
+    Computes institutional multi-tier entry parameters instead of naive current close:
+    1. Current Market Price & Extension Meter (% from 20 EMA, ATR Stretch)
+    2. Execution State (IN BUY ZONE, EXTENDED - AWAIT PULLBACK, OVERSOLD BOUNCE)
+    3. Optimal Limit Entry Zone (Pullback to 20/50 EMA support)
+    4. Breakout Stop-Limit Trigger (Break of 5-day pivot high on RVOL)
+    5. Invalidation Stop Loss (Anchored to structural support)
+    6. Take-Profit Targets & Recalculated Risk-to-Reward Ratio (R:R)
+    """
+    edge = edge or {}
+    close = float(metrics.get("close", 100.0))
+    ema20 = float(metrics.get("ema20", close))
+    ema50 = float(metrics.get("ema50", close * 0.98))
+    dist_20 = float(metrics.get("dist_ema20", 0.0))
+    atr_stretch = float(metrics.get("atr_stretch", 0.0))
+    atr = float(metrics.get("atr20") or (close * 0.018))
+    high_5d = float(metrics.get("high_5d") or (close * 1.015))
+    low_5d = float(metrics.get("low_5d") or (close * 0.985))
+
+    is_long = "LONG" in direction.upper() or "DIP" in direction.upper()
+
+    if is_long:
+        # Execution State
+        if abs(dist_20) <= 0.8 and abs(atr_stretch) <= 0.6:
+            exec_state = "IN PRIME BUY ZONE"
+            exec_pill = "pill-green"
+            exec_desc = "Price consolidating right at 20 EMA support. Immediate limit execution feasible."
+        elif dist_20 > 1.2 or atr_stretch > 1.0:
+            exec_state = f"EXTENDED (+{dist_20:+.1f}%) — AWAIT PULLBACK"
+            exec_pill = "pill-amber"
+            exec_desc = f"Stretched {dist_20:+.1f}% above 20 EMA. High probability of mean-reversion retest. Do not chase."
+        elif dist_20 < -1.5:
+            exec_state = "DEEP DISCOUNT PULLBACK"
+            exec_pill = "pill-cyan"
+            exec_desc = "Oversold pullback into 50 EMA support band. Scaling in with limit orders."
+        else:
+            exec_state = "CONSOLIDATION RETEST"
+            exec_pill = "pill-green"
+            exec_desc = "Testing upper support band. Limit bids favored."
+
+        # Optimal Limit Zone: Limit buy MUST be at or below current market price
+        if close > ema20:
+            # Price is above 20 EMA -> Bid the pullback to the 20 EMA
+            limit_high = round(min(close * 0.992, ema20 + 0.35 * atr), 2)
+            limit_low = round(max(ema50, ema20 * 0.995), 2)
+            if limit_high <= limit_low:
+                limit_low = round(limit_high - 0.3 * atr, 2)
+        else:
+            # Price is already below 20 EMA -> Bid support between 50 EMA and current close
+            limit_high = round(close * 0.998, 2)
+            limit_low = round(max(ema50, close - 0.5 * atr), 2)
+            if limit_high <= limit_low:
+                limit_low = round(limit_high - 0.25 * atr, 2)
+
+        opt_entry_mid = round((limit_low + limit_high) / 2.0, 2)
+
+        # Breakout Trigger: Must be above current close and above 5D high
+        breakout_trigger = round(max(high_5d * 1.002, close + 0.25 * atr), 2)
+
+        # Invalidation Stop: Structural support strictly below limit zone
+        mae = abs(float(edge.get("max_adverse_excursion", 2.2))) if edge.get("max_adverse_excursion", 0) != 0 else 2.2
+        stop_price = round(min(limit_low * 0.985, ema50 * 0.99), 2)
+        stop_pct = round(((stop_price - opt_entry_mid) / opt_entry_mid) * 100.0, 1)
+
+        # Targets
+        med_ret = float(edge.get("median_return_20d", 3.8))
+        if med_ret <= 0:
+            med_ret = 3.8
+        target1 = round(opt_entry_mid * (1 + med_ret / 100.0), 2)
+        target2 = round(opt_entry_mid * (1 + (med_ret * 1.6) / 100.0), 2)
+
+        risk = max(opt_entry_mid - stop_price, 0.01)
+        reward = max(target1 - opt_entry_mid, 0.01)
+        rr_ratio = round(reward / risk, 1)
+
+        return {
+            "current_price": f"${close:,.2f}",
+            "extension_metric": f"{dist_20:+.2f}% vs 20 EMA",
+            "execution_state": exec_state,
+            "execution_pill": exec_pill,
+            "execution_desc": exec_desc,
+            "optimal_entry_zone": f"${limit_low:,.2f} - ${limit_high:,.2f}",
+            "optimal_entry_label": "20 EMA Support Retest Zone" if close > ema20 else "50 EMA Support Value Zone",
+            "breakout_trigger": f"Above ${breakout_trigger:,.2f} on RVOL > 1.2x",
+            "stop": f"${stop_price:,.2f}",
+            "stop_pct": f"{stop_pct:+.1f}%",
+            "target1": f"${target1:,.2f}",
+            "target1_pct": f"+{med_ret:.1f}%",
+            "target2": f"${target2:,.2f}",
+            "target2_pct": f"+{med_ret * 1.6:.1f}%",
+            "risk_reward": f"1 : {rr_ratio:.1f} R:R",
+            "opt_entry_mid": opt_entry_mid
+        }
+    else:
+        # SHORT / FADE Setup
+        if dist_20 < -2.0 or atr_stretch < -1.5:
+            exec_state = "OVERSOLD TRAP — DO NOT SHORT HOLE"
+            exec_pill = "pill-red"
+            exec_desc = "Asset is dump-extended. Short-covering squeeze imminent. Await relief bounce to 20 EMA."
+        elif dist_20 > -0.6:
+            exec_state = "PRIME RESISTANCE FADE ZONE"
+            exec_pill = "pill-amber"
+            exec_desc = "Price testing broken 20/50 EMA overhead supply. Prime fade entry."
+        else:
+            exec_state = "AWAIT 20 EMA RELIEF BOUNCE"
+            exec_pill = "pill-amber"
+            exec_desc = "Patience required. Place limit offers above market at the 20 EMA."
+
+        # Optimal Fade Zone: Retest of 20 EMA resistance from underneath
+        limit_low = round(max(close * 1.01, ema20 * 0.99), 2)
+        limit_high = round(max(close * 1.025, ema20 * 1.01), 2)
+        if limit_high <= limit_low:
+            limit_high = round(limit_low + 0.3 * atr, 2)
+        opt_entry_mid = round((limit_low + limit_high) / 2.0, 2)
+
+        # Breakdown Trigger
+        breakdown_trigger = round(min(low_5d * 0.998, close - 0.25 * atr), 2)
+
+        # Invalidation Stop: Above 50 EMA / resistance
+        stop_price = round(max(opt_entry_mid * 1.03, ema50 * 1.01), 2)
+        stop_pct = round(((stop_price - opt_entry_mid) / opt_entry_mid) * 100.0, 1)
+
+        target1 = round(opt_entry_mid * 0.95, 2)
+        target2 = round(opt_entry_mid * 0.91, 2)
+
+        risk = max(stop_price - opt_entry_mid, 0.01)
+        reward = max(opt_entry_mid - target1, 0.01)
+        rr_ratio = round(reward / risk, 1)
+
+        return {
+            "current_price": f"${close:,.2f}",
+            "extension_metric": f"{dist_20:+.2f}% vs 20 EMA",
+            "execution_state": exec_state,
+            "execution_pill": exec_pill,
+            "execution_desc": exec_desc,
+            "optimal_entry_zone": f"${limit_low:,.2f} - ${limit_high:,.2f}",
+            "optimal_entry_label": "Fade 20 EMA Resistance Relief",
+            "breakout_trigger": f"Below ${breakdown_trigger:,.2f} on RVOL > 1.2x",
+            "stop": f"${stop_price:,.2f}",
+            "stop_pct": f"+{stop_pct:.1f}%",
+            "target1": f"${target1:,.2f}",
+            "target1_pct": "-5.0%",
+            "target2": f"${target2:,.2f}",
+            "target2_pct": "-9.0%",
+            "risk_reward": f"1 : {rr_ratio:.1f} R:R",
+            "opt_entry_mid": opt_entry_mid
+        }
+
+
 def build_structured_briefing_and_trades(market_data: dict, confluences: list[dict]) -> dict:
     """Builds clean, modular, high-contrast structured data for compact rendering."""
     narrative_title = market_data.get("narrative_title", "Secular Uptrend")
@@ -311,11 +461,7 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
         ticker = best_green["ticker"]
         t_data = best_green["metrics"]
         edge = t_data.get("edge_match", {})
-        price = t_data["close"]
-        mae = abs(edge.get("max_adverse_excursion", 2.5)) if edge.get("max_adverse_excursion", 0) != 0 else 2.5
-        med_ret = edge.get("median_return_20d", 3.5)
-        if med_ret <= 0:
-            med_ret = 3.5
+        opt = calculate_optimized_trade_entry("LONG", t_data, edge)
 
         trades.append({
             "ticker": ticker,
@@ -326,16 +472,25 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             "confirmations": f"{best_green['bull_count']} of 7 Bullish Confirmations",
             "status_desc": best_green["flicker_status"],
             "thesis": f"Holding firm above 20 EMA with 20D vol compressing ({t_data.get('rv20')}%) and strong institutional accumulation.",
-            "entry": f"${price:,.2f}",
-            "stop": f"${price * (1 - mae/100):,.2f}",
-            "stop_pct": f"-{mae:.1f}%",
-            "target1": f"${price * (1 + med_ret/100):,.2f}",
-            "target1_pct": f"+{med_ret:.1f}%",
-            "target2": f"${price * (1 + (med_ret*1.6)/100):,.2f}",
-            "target2_pct": f"+{med_ret*1.6:.1f}%",
+            "current_price": opt["current_price"],
+            "extension_metric": opt["extension_metric"],
+            "execution_state": opt["execution_state"],
+            "execution_pill": opt["execution_pill"],
+            "execution_desc": opt["execution_desc"],
+            "optimal_entry_zone": opt["optimal_entry_zone"],
+            "optimal_entry_label": opt["optimal_entry_label"],
+            "breakout_trigger": opt["breakout_trigger"],
+            "stop": opt["stop"],
+            "stop_pct": opt["stop_pct"],
+            "target1": opt["target1"],
+            "target1_pct": opt["target1_pct"],
+            "target2": opt["target2"],
+            "target2_pct": opt["target2_pct"],
+            "risk_reward": opt["risk_reward"],
+            "entry": opt["optimal_entry_zone"],
             "win_rate": f"{edge.get('win_rate_20d', 0)}%",
             "sample_size": edge.get("sample_size", 0),
-            "median_alpha": f"+{med_ret:.1f}%",
+            "median_alpha": opt["target1_pct"],
             "card_color": "#10b981"
         })
 
@@ -348,7 +503,8 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
         weakest = red_candidates[0]
         w_ticker = weakest["ticker"]
         w_data = weakest["metrics"]
-        w_price = w_data["close"]
+        w_edge = w_data.get("edge_match", {})
+        w_opt = calculate_optimized_trade_entry("SHORT", w_data, w_edge)
 
         trades.append({
             "ticker": w_ticker,
@@ -359,13 +515,22 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             "confirmations": f"{weakest['bear_count']} of 7 Bearish Warnings",
             "status_desc": weakest["flicker_status"],
             "thesis": f"Broken below key 20 EMA and 50 EMA on elevated volume ({w_data.get('rvol')}x RVOL). Avoid buying until a firm base establishes.",
-            "entry": f"${w_price:,.2f}",
-            "stop": f"${w_price * 1.035:,.2f}",
-            "stop_pct": "+3.5%",
-            "target1": f"${w_price * 0.95:,.2f}",
-            "target1_pct": "-5.0%",
-            "target2": f"${w_price * 0.92:,.2f}",
-            "target2_pct": "-8.0%",
+            "current_price": w_opt["current_price"],
+            "extension_metric": w_opt["extension_metric"],
+            "execution_state": w_opt["execution_state"],
+            "execution_pill": w_opt["execution_pill"],
+            "execution_desc": w_opt["execution_desc"],
+            "optimal_entry_zone": w_opt["optimal_entry_zone"],
+            "optimal_entry_label": w_opt["optimal_entry_label"],
+            "breakout_trigger": w_opt["breakout_trigger"],
+            "stop": w_opt["stop"],
+            "stop_pct": w_opt["stop_pct"],
+            "target1": w_opt["target1"],
+            "target1_pct": w_opt["target1_pct"],
+            "target2": w_opt["target2"],
+            "target2_pct": w_opt["target2_pct"],
+            "risk_reward": w_opt["risk_reward"],
+            "entry": w_opt["optimal_entry_zone"],
             "win_rate": "N/A (Fade Setup)",
             "sample_size": 0,
             "median_alpha": "Downside Bias",
@@ -389,11 +554,8 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             d_ticker = best_dip["ticker"]
             d_data = best_dip["metrics"]
             d_edge = d_data.get("edge_match", {})
-            d_price = d_data["close"]
-            d_mae = abs(d_edge.get("max_adverse_excursion", 2.2)) if d_edge.get("max_adverse_excursion", 0) != 0 else 2.2
-            d_med = d_edge.get("median_return_20d", 3.8)
-            if d_med <= 0:
-                d_med = 3.8
+            d_opt = calculate_optimized_trade_entry("DIP BUY", d_data, d_edge)
+
             trades.append({
                 "ticker": d_ticker,
                 "direction": "DIP BUY",
@@ -403,16 +565,25 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
                 "confirmations": f"Low RVOL ({d_data.get('rvol')}x) | Above 50 EMA",
                 "status_desc": "Healthy Pullback Without Institutional Dumping",
                 "thesis": f"Down {abs(d_data.get('pct_1d', 0)):.2f}% on low volume ({d_data.get('rvol')}x RVOL) while holding above 50 EMA. Rubber-band dip-buy opportunity.",
-                "entry": f"${d_price:,.2f}",
-                "stop": f"${d_price * (1 - d_mae/100):,.2f}",
-                "stop_pct": f"-{d_mae:.1f}%",
-                "target1": f"${d_price * (1 + d_med/100):,.2f}",
-                "target1_pct": f"+{d_med:.1f}%",
-                "target2": f"${d_price * (1 + (d_med*1.5)/100):,.2f}",
-                "target2_pct": f"+{d_med*1.5:.1f}%",
+                "current_price": d_opt["current_price"],
+                "extension_metric": d_opt["extension_metric"],
+                "execution_state": d_opt["execution_state"],
+                "execution_pill": d_opt["execution_pill"],
+                "execution_desc": d_opt["execution_desc"],
+                "optimal_entry_zone": d_opt["optimal_entry_zone"],
+                "optimal_entry_label": d_opt["optimal_entry_label"],
+                "breakout_trigger": d_opt["breakout_trigger"],
+                "stop": d_opt["stop"],
+                "stop_pct": d_opt["stop_pct"],
+                "target1": d_opt["target1"],
+                "target1_pct": d_opt["target1_pct"],
+                "target2": d_opt["target2"],
+                "target2_pct": d_opt["target2_pct"],
+                "risk_reward": d_opt["risk_reward"],
+                "entry": d_opt["optimal_entry_zone"],
                 "win_rate": f"{d_edge.get('win_rate_20d', 71.0)}%",
                 "sample_size": d_edge.get("sample_size", 34),
-                "median_alpha": f"+{d_med:.1f}%",
+                "median_alpha": d_opt["target1_pct"],
                 "card_color": "#06b6d4"
             })
 

@@ -129,6 +129,9 @@ def compute_all_metrics(df: pd.DataFrame) -> dict:
     curr_vol_ratio = float(df["Vol_Ratio"].iloc[-1]) if pd.notnull(df["Vol_Ratio"].iloc[-1]) else 1.0
     curr_dd_ath = float(df["Drawdown_ATH"].iloc[-1])
     curr_dd_52w = float(df["Drawdown_52W"].iloc[-1])
+    curr_atr = float(df["ATR20"].iloc[-1]) if ("ATR20" in df and pd.notnull(df["ATR20"].iloc[-1])) else (curr_close * 0.018)
+    high_5d = float(df["High"].tail(5).max()) if "High" in df else curr_close
+    low_5d = float(df["Low"].tail(5).min()) if "Low" in df else curr_close
 
     # Percentage changes
     pct_1d = float((curr_close / close.iloc[-2] - 1) * 100) if len(close) > 1 else 0.0
@@ -186,6 +189,9 @@ def compute_all_metrics(df: pd.DataFrame) -> dict:
         "rsi_divergence": rsi_div,
         "rvol": round(curr_rvol, 2),
         "atr_stretch": round(curr_atr_stretch, 2),
+        "atr20": round(curr_atr, 2),
+        "high_5d": round(high_5d, 2),
+        "low_5d": round(low_5d, 2),
         # Realized Volatility suite
         "rv20": round(curr_rv20, 1),
         "rv60": round(curr_rv60, 1),
