@@ -12,11 +12,12 @@ load_dotenv()
 
 from data_manager import (
     load_ticker_data, update_all_tickers, get_available_tickers,
-    MAG_7, INDEXES, SECTORS, MACRO_ASSETS, generate_synthetic_ratios
+    MAG_7, INDEXES, SECTORS, MACRO_ASSETS, generate_synthetic_ratios,
+    is_core_data_stale, auto_sync_core_data
 )
 from indicators import compute_all_metrics
 from narrative_engine import analyze_market_narrative, compute_ratio_analytics
-from ai_strategist import generate_ai_ideas
+from ai_strategist import generate_ai_ideas, query_ai_agent
 from confluence_engine import compute_confluence_score, compute_all_confluences
 
 st.set_page_config(
@@ -337,7 +338,13 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.caption("Data source: Local `raw_csv` + `yfinance` daily sync.")
 
-# ----------------- LOAD DATA & METRICS -----------------
+# ----------------- AUTO-SYNC & LOAD DATA -----------------
+if "auto_synced_on_load" not in st.session_state:
+    if is_core_data_stale():
+        with st.spinner("Checking market data... auto-syncing today's prices from yfinance..."):
+            auto_sync_core_data()
+    st.session_state["auto_synced_on_load"] = True
+
 @st.cache_data(ttl=300)
 def get_market_analysis():
     generate_synthetic_ratios()
@@ -398,6 +405,10 @@ def render_ticker_tape():
 st.markdown(render_ticker_tape(), unsafe_allow_html=True)
 
 # ----------------- HERO BRAND BAR -----------------
+last_market_session = "Today"
+if not spy_df.empty and "Date" in spy_df.columns:
+    last_market_session = str(spy_df["Date"].iloc[-1]).split()[0]
+
 brand_hero_html = (
     '<div class="brand-hero">'
     '<div class="brand-title-group">'
@@ -411,7 +422,7 @@ brand_hero_html = (
     '<div class="status-dot-green"></div>'
     '<span>Desk Active</span>'
     '<span style="color:#64748b;">•</span>'
-    '<span style="color:#f59e0b; font-weight:700;">79 Assets Synced</span>'
+    f'<span style="color:#f59e0b; font-weight:700;">Prices: {last_market_session}</span>'
     '</div>'
     '</div>'
 )
@@ -553,22 +564,23 @@ st.caption(f"**Cross-Asset Macro Barometer Reading:** {macro_reading}")
 st.markdown("---")
 
 # ----------------- MODERN TABS -----------------
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "AI Macro Briefing",
-    "AI Trade Ideas",
-    "Confirmation & Confluence Radar",
-    "Mag 7 Deep Dive & Realized Vol",
-    "Indexes & Sector Money Flow",
-    "Key Ratio & Breadth Radar",
-    "Single Ticker Explorer"
+tab1, tab_agent, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    "📊 Daily AI Macro Briefing",
+    "🤖 Interactive AI Quant Agent",
+    "🎯 AI Trade Ideas",
+    "📡 Confirmation & Confluence Radar",
+    "⚡ Mag 7 Deep Dive & Realized Vol",
+    "🔄 Indexes & Sector Money Flow",
+    "📈 Key Ratio & Breadth Radar",
+    "🔍 Single Ticker Explorer"
 ])
 
-# ================= TAB 1: AI MACRO BRIEFING =================
+# ================= TAB 1: DAILY AI MACRO BRIEFING =================
 with tab1:
     col_t1, col_t2 = st.columns([3, 1])
     with col_t1:
-        st.subheader("Daily Institutional Macro Briefing")
-        st.caption("Automated Cross-Asset Liquidity & Market Regime Assessment")
+        st.subheader("Daily Institutional Macro Briefing & AI Analysis")
+        st.caption("AI-Powered Cross-Asset Liquidity & Market Regime Intelligence")
     with col_t2:
         refresh_ai = st.button("Generate Fresh Briefing", use_container_width=True)
 
@@ -624,36 +636,24 @@ with tab1:
         )
         st.markdown(flow_card_html, unsafe_allow_html=True)
 
-    # 2. Desk Macro Synthesis Card
-    st.markdown("<div style='margin-top:14px;'></div>", unsafe_allow_html=True)
+    # 2. Comprehensive Daily AI Analysis Report
+    st.markdown("<div style='margin-top:16px;'></div>", unsafe_allow_html=True)
     llm_summary = ai_output.get("llm_summary")
     engine_source = ai_output.get("source", "Quantitative Confluence Desk")
 
     if llm_summary:
-        synth_html = (
-            f'<div class="metric-card-lux" style="border:1px solid rgba(245, 158, 11, 0.3); background:linear-gradient(180deg, #13161f 0%, #0d0e13 100%);">'
-            f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">'
-            f'<span style="font-size:12px; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px;">Institutional Executive Synthesis</span>'
-            f'<span class="pill-amber" style="font-size:11px;">{engine_source}</span>'
+        st.markdown(
+            f'<div class="metric-card-lux" style="border:1px solid rgba(245, 158, 11, 0.35); background:linear-gradient(180deg, #13161f 0%, #0d0e13 100%); margin-bottom:14px;">'
+            f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px;">'
+            f'<div style="display:flex; align-items:center; gap:8px;">'
+            f'<span style="font-size:13px; font-weight:800; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px;">Institutional Daily Market Intelligence Briefing</span>'
             f'</div>'
-            f'<div style="font-size:13.5px; color:#cbd5e1; line-height:1.6;">'
+            f'<span class="pill-amber" style="font-size:11px; font-weight:700;">{engine_source}</span>'
+            f'</div>'
+            f'</div>',
+            unsafe_allow_html=True
         )
-        for line in llm_summary.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            if line.startswith("1.") or line.startswith("2.") or line.startswith("3."):
-                parts = line.split(":", 1)
-                if len(parts) == 2:
-                    header = parts[0].replace("**", "").replace("1.", "").replace("2.", "").replace("3.", "").strip()
-                    body = parts[1].strip()
-                    synth_html += f'<div style="margin-bottom:8px;"><b style="color:#ffffff;">• {header}:</b> <span style="color:#94a3b8;">{body}</span></div>'
-                else:
-                    synth_html += f'<div style="margin-bottom:8px;">{line}</div>'
-            else:
-                synth_html += f'<div style="margin-bottom:6px;">{line}</div>'
-        synth_html += '</div></div>'
-        st.markdown(synth_html, unsafe_allow_html=True)
+        st.markdown(llm_summary)
     else:
         synth_html = (
             f'<div class="metric-card-lux" style="border:1px solid rgba(245, 158, 11, 0.3);">'
@@ -665,9 +665,77 @@ with tab1:
             f'<div style="margin-bottom:8px;"><b style="color:#ffffff;">• Regime Mechanics:</b> <span style="color:#94a3b8;">{regime_detail}</span></div>'
             f'<div style="margin-bottom:8px;"><b style="color:#ffffff;">• Cross-Asset Flow:</b> <span style="color:#94a3b8;">{macro_reading}</span></div>'
             f'<div style="margin-bottom:8px;"><b style="color:#ef4444;">• Desk Risk Warning:</b> <span style="color:#94a3b8;">Monitor mega-cap breadth concentration (SPY/RSP at 5-year highs). Avoid front-running unconfirmed dip buys on broken distribution names.</span></div>'
-            f'</div></div>'
+            f'</div>'
+            f'<div style="margin-top:12px; font-size:12px; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:8px;">'
+            f'<i>💡 Tip: Ensure your Gemini API Key is active in the sidebar to generate full daily macro briefings and activate the AI Agent.</i>'
+            f'</div>'
+            f'</div>'
         )
         st.markdown(synth_html, unsafe_allow_html=True)
+
+
+# ================= TAB: INTERACTIVE AI QUANT AGENT =================
+with tab_agent:
+    col_a1, col_a2 = st.columns([3, 1])
+    with col_a1:
+        st.subheader("Interactive Quant Analyst & Risk Officer")
+        st.caption("On-Demand AI Reasoning Across Live Regimes, Tickers, Confluences & Ratios")
+    with col_a2:
+        if st.button("Clear Chat History", use_container_width=True):
+            st.session_state["agent_chat"] = []
+            st.rerun()
+
+    if "agent_chat" not in st.session_state:
+        st.session_state["agent_chat"] = [
+            {
+                "role": "assistant",
+                "content": f"**Greetings Trader.** I am your Quantitative Desk Analyst. I have fully indexed today's market metrics ({last_market_session}), including 20/50/200 EMAs, RSI, ATR stretches, RVOL, sector velocities, and confluence scores for the entire core universe.\n\nAsk me about any ticker, rotation setup, or market risk, or click one of the quick prompts below."
+            }
+        ]
+
+    # Quick Prompts Row
+    st.markdown("<div style='font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:6px;'>Quick Desk Inquiries:</div>", unsafe_allow_html=True)
+    qp1, qp2, qp3, qp4 = st.columns(4)
+    prompt_clicked = None
+    with qp1:
+        if st.button("🔍 Mag 7 Divergence & Risks", use_container_width=True):
+            prompt_clicked = "Analyze today's Mag 7 divergence. Which tech leaders are showing institutional accumulation vs distribution, and what are the key invalidation levels?"
+    with qp2:
+        if st.button("🚀 Sector Rotation Leaders", use_container_width=True):
+            prompt_clicked = "Based on the 5-day sector velocities, where is institutional smart money rotating right now? Which sector is leading?"
+    with qp3:
+        if st.button("⚠️ Top Distribution Warnings", use_container_width=True):
+            prompt_clicked = "What are the biggest distribution traps and high-risk names on the desk today? Where should retail traders avoid dip buying?"
+    with qp4:
+        if st.button("🎯 Best High-Conviction Setups", use_container_width=True):
+            prompt_clicked = "Give me the top 3 high-probability setups from today's confluence radar with exact entry rationale, targets, and stop-loss levels."
+
+    # Render Chat History
+    for msg in st.session_state["agent_chat"]:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # User Input
+    user_input = st.chat_input("Ask the Quant AI Agent anything about today's data, tickers, or setups...")
+    active_prompt = prompt_clicked or user_input
+
+    if active_prompt:
+        st.session_state["agent_chat"].append({"role": "user", "content": active_prompt})
+        with st.chat_message("user"):
+            st.markdown(active_prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("AI Quant Agent analyzing live quantitative data..."):
+                confluence_items = get_cached_confluences(tuple(MAG_7 + INDEXES + SECTORS + MACRO_ASSETS))
+                response_text = query_ai_agent(
+                    user_query=active_prompt,
+                    market_data=market_data,
+                    confluences=confluence_items,
+                    gemini_api_key=user_api_key,
+                    chat_history=st.session_state["agent_chat"]
+                )
+                st.markdown(response_text)
+                st.session_state["agent_chat"].append({"role": "assistant", "content": response_text})
 
 # ================= TAB 2: AI TRADE IDEAS =================
 with tab2:

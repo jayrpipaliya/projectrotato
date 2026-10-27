@@ -58,7 +58,7 @@ def load_ticker_data(ticker: str) -> pd.DataFrame:
             df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
 
-def update_single_ticker(ticker: str) -> dict:
+def update_single_ticker(ticker: str, force: bool = False) -> dict:
     """Fetch incremental daily updates from yfinance and append to CSV."""
     filepath = ticker_to_filename(ticker)
     if not os.path.exists(filepath):
@@ -85,16 +85,16 @@ def update_single_ticker(ticker: str) -> dict:
     else:
         last_date_str = str(df_existing["Date"].iloc[-1]).split()[0]
 
-    last_date = pd.to_datetime(last_date_str)
-    today = datetime.now()
+    last_date = pd.to_datetime(last_date_str).date()
+    today = datetime.now().date()
 
-    if (today - last_date).days < 1:
+    if not force and last_date >= today:
         return {"ticker": ticker, "status": "up_to_date", "added_rows": 0, "last_date": last_date_str}
 
-    # Download from last_date forward
+    # Download from last_date forward (with lookback to handle splits & refresh recent bars)
     try:
-        # Download with a small lookback to handle adjustments/splits
-        start_date = (last_date - pd.Timedelta(days=2)).strftime("%Y-%m-%d")
+        lookback_days = 5 if force else 2
+        start_date = (pd.to_datetime(last_date) - pd.Timedelta(days=lookback_days)).strftime("%Y-%m-%d")
         df_new = yf.download(ticker, start=start_date, progress=False)
         if df_new.empty:
             return {"ticker": ticker, "status": "up_to_date", "added_rows": 0, "last_date": last_date_str}
@@ -103,26 +103,51 @@ def update_single_ticker(ticker: str) -> dict:
             df_new.columns = [c[0] for c in df_new.columns]
         df_new = df_new.reset_index()
         df_new["Date"] = pd.to_datetime(df_new["Date"]).dt.strftime("%Y-%m-%d")
-        
-        # Keep only dates strictly greater than last_date_str
-        df_to_add = df_new[df_new["Date"] > last_date_str].copy()
-        if df_to_add.empty:
-            return {"ticker": ticker, "status": "up_to_date", "added_rows": 0, "last_date": last_date_str}
 
         cols = ["Date", "Open", "High", "Low", "Close", "Volume"]
-        df_to_add = df_to_add[[c for c in cols if c in df_to_add.columns]]
+        df_new = df_new[[c for c in cols if c in df_new.columns]]
 
-        # Append
-        df_combined = pd.concat([df_existing, df_to_add], ignore_index=True)
-        df_combined = df_combined.drop_duplicates(subset=["Date"]).sort_values("Date")
+        # Merge existing with new by replacing overlapping dates with fresh prices
+        df_existing["Date"] = pd.to_datetime(df_existing["Date"]).dt.strftime("%Y-%m-%d")
+        new_dates = set(df_new["Date"])
+        df_kept = df_existing[~df_existing["Date"].isin(new_dates)]
+        df_combined = pd.concat([df_kept, df_new], ignore_index=True)
+        df_combined = df_combined.drop_duplicates(subset=["Date"]).sort_values("Date").reset_index(drop=True)
         df_combined.to_csv(filepath, index=False)
 
         new_last_date = str(df_combined["Date"].iloc[-1])
-        return {"ticker": ticker, "status": "updated", "added_rows": len(df_to_add), "last_date": new_last_date}
+        added_count = len(df_combined) - len(df_existing)
+        return {"ticker": ticker, "status": "updated", "added_rows": max(0, added_count), "last_date": new_last_date}
     except Exception as e:
         return {"ticker": ticker, "status": "error", "error": str(e), "added_rows": 0}
 
-def update_all_tickers(tickers: list[str] = None, progress_callback=None) -> list[dict]:
+def is_core_data_stale() -> bool:
+    """Checks if SPY or core assets haven't been updated to the latest trading date."""
+    spy_path = ticker_to_filename("SPY")
+    if not os.path.exists(spy_path):
+        return True
+    try:
+        df = pd.read_csv(spy_path)
+        if df.empty or "Date" not in df.columns:
+            return True
+        last_date_str = str(df["Date"].iloc[-1]).split()[0]
+        last_date = pd.to_datetime(last_date_str).date()
+        today = datetime.now().date()
+        # If weekday and last date is older than today, consider stale
+        if last_date < today and today.weekday() < 5:
+            return True
+        return False
+    except Exception:
+        return True
+
+def auto_sync_core_data(force: bool = False, progress_callback=None) -> list[dict]:
+    """Automatically syncs core assets (Mag 7, Indexes, Sectors, Macro) if stale or forced."""
+    if not force and not is_core_data_stale():
+        return []
+    core_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS
+    return update_all_tickers(tickers=core_tickers, progress_callback=progress_callback)
+
+def update_all_tickers(tickers: list[str] = None, progress_callback=None, force: bool = False) -> list[dict]:
     """Updates all specified tickers (or all available CSVs) incrementally."""
     if tickers is None:
         # Prioritize Mag 7, Indexes, Sectors, Macro Assets first, then any other files in raw_csv
@@ -134,7 +159,7 @@ def update_all_tickers(tickers: list[str] = None, progress_callback=None) -> lis
     results = []
     total = len(tickers)
     for idx, ticker in enumerate(tickers):
-        res = update_single_ticker(ticker)
+        res = update_single_ticker(ticker, force=force)
         results.append(res)
         if progress_callback:
             progress_callback(idx + 1, total, ticker, res)

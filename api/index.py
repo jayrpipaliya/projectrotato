@@ -38,13 +38,14 @@ def get_cached_analysis():
     _CACHE["market_data_time"] = now
     return data
 
-def get_cached_ai(market_data):
+def get_cached_ai(market_data, api_key: Optional[str] = None):
     now = time.time()
-    if "ai_output" in _CACHE and now - _CACHE.get("ai_time", 0) < 600:
-        return _CACHE["ai_output"]
-    ai = generate_ai_ideas(market_data)
-    _CACHE["ai_output"] = ai
-    _CACHE["ai_time"] = now
+    cache_key = f"ai_{api_key or 'default'}"
+    if cache_key in _CACHE and now - _CACHE.get(f"{cache_key}_time", 0) < 600:
+        return _CACHE[cache_key]
+    ai = generate_ai_ideas(market_data, gemini_api_key=api_key)
+    _CACHE[cache_key] = ai
+    _CACHE[f"{cache_key}_time"] = now
     return ai
 
 def get_cached_confluence(scope: str = "core"):
@@ -68,9 +69,9 @@ def get_cached_confluence(scope: str = "core"):
     return items
 
 @app.get("/api/market-data")
-def api_market_data():
+def api_market_data(api_key: Optional[str] = Query(None)):
     market_data = get_cached_analysis()
-    ai_output = get_cached_ai(market_data)
+    ai_output = get_cached_ai(market_data, api_key=api_key)
     confluences = get_cached_confluence("core")
     
     spy_df = load_ticker_data("SPY")
@@ -79,6 +80,10 @@ def api_market_data():
     qqq_metrics = compute_all_metrics(qqq_df)
     iwm_df = load_ticker_data("IWM")
     iwm_metrics = compute_all_metrics(iwm_df)
+    
+    last_date = "Today"
+    if not spy_df.empty and "Date" in spy_df.columns:
+        last_date = str(spy_df["Date"].iloc[-1]).split()[0]
     
     return clean_json({
         "market_data": market_data,
@@ -89,8 +94,30 @@ def api_market_data():
             "QQQ": qqq_metrics,
             "IWM": iwm_metrics
         },
+        "last_market_session": last_date,
         "available_tickers": get_available_tickers()
     })
+
+@app.post("/api/agent-chat")
+async def api_agent_chat(payload: dict):
+    user_query = payload.get("query", "")
+    api_key = payload.get("api_key") or os.getenv("GEMINI_API_KEY")
+    history = payload.get("history", [])
+    market_data = get_cached_analysis()
+    confluences = get_cached_confluence("core")
+    from ai_strategist import query_ai_agent
+    answer = query_ai_agent(user_query, market_data, confluences, gemini_api_key=api_key, chat_history=history)
+    return {"answer": answer}
+
+@app.post("/api/sync-data")
+def api_sync_data(payload: dict = None):
+    scope = (payload or {}).get("scope", "core")
+    target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS if scope == "core" else None
+    from data_manager import update_all_tickers
+    results = update_all_tickers(tickers=target_tickers, force=True)
+    updated_count = sum(1 for r in results if r.get("status") in ["updated", "created"])
+    _CACHE.clear()
+    return {"status": "success", "updated_count": updated_count, "total": len(results)}
 
 @app.get("/api/confluence")
 def api_confluence(scope: str = Query("core")):
@@ -169,6 +196,7 @@ HTML_CONTENT = """<!DOCTYPE html>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         body {
             font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
@@ -204,15 +232,75 @@ HTML_CONTENT = """<!DOCTYPE html>
         table td, table th { padding: 10px 12px; }
     </style>
 </head>
-<body class="min-h-screen">
+<body class="min-h-screen bg-[#08090d] text-[#f8fafc] flex flex-col antialiased">
 
     <!-- Top Ticker Ribbon -->
-    <div id="tickerRibbon" class="ticker-ribbon py-2 px-6 flex items-center gap-6 overflow-x-auto text-xs font-semibold whitespace-nowrap">
+    <div id="tickerRibbon" class="ticker-ribbon py-2 px-6 flex items-center gap-6 overflow-x-auto text-xs font-semibold whitespace-nowrap shrink-0 border-b border-white/5">
         <span class="text-slate-500">Loading market tickers...</span>
     </div>
 
-    <!-- Main Container -->
-    <div class="max-w-7xl mx-auto px-6 py-6">
+    <!-- App Wrapper: Left Sidebar + Main Dashboard -->
+    <div class="flex flex-1 min-h-0">
+
+        <!-- Left Sidebar (Matching Streamlit sidebar exactly) -->
+        <aside id="sidebar" class="w-72 bg-[#0a0b10] border-r border-white/5 p-5 flex flex-col shrink-0 overflow-y-auto space-y-6">
+            <!-- Sidebar Header Brand -->
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center font-extrabold text-base text-slate-950 shadow-md shadow-amber-500/20">
+                    R
+                </div>
+                <span class="text-lg font-extrabold text-white tracking-tight">Rotato</span>
+            </div>
+
+            <!-- Data Feeds Section -->
+            <div class="space-y-3 pt-3 border-t border-white/5">
+                <div class="text-xs font-bold text-slate-300 uppercase tracking-wider">Data Feeds (yfinance)</div>
+                <div class="space-y-2">
+                    <label class="flex items-start gap-2.5 text-xs text-slate-300 cursor-pointer">
+                        <input type="radio" name="syncScope" value="core" checked class="mt-0.5 accent-amber-500">
+                        <span>Core Universe (Mag 7 + Indexes + Sectors + Macro)</span>
+                    </label>
+                    <label class="flex items-start gap-2.5 text-xs text-slate-400 cursor-pointer">
+                        <input type="radio" name="syncScope" value="all" class="mt-0.5 accent-amber-500">
+                        <span>All 79 Tickers in raw_csv</span>
+                    </label>
+                </div>
+                <button onclick="triggerDataSync()" id="syncBtn" class="w-full bg-[#161822] hover:bg-[#1d202d] border border-white/10 hover:border-amber-500/40 text-xs font-bold text-slate-200 py-2 px-3 rounded-lg flex items-center justify-center gap-2 transition">
+                    <span id="syncSpinner" class="hidden animate-spin">⏳</span>
+                    <span id="syncBtnText">Sync Daily Closes Now</span>
+                </button>
+                <div id="syncStatus" class="hidden text-[11px] text-emerald-400 pt-1"></div>
+            </div>
+
+            <!-- AI Strategist Engine Section -->
+            <div class="space-y-3 pt-3 border-t border-white/5">
+                <div class="text-xs font-bold text-slate-300 uppercase tracking-wider">AI Strategist Engine</div>
+                <div class="space-y-1.5">
+                    <label class="text-[11px] text-slate-400 block font-medium">Gemini API Key</label>
+                    <input id="sidebarApiKey" type="password" placeholder="Enter Gemini API key..." class="w-full bg-[#13151f] border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 font-mono">
+                </div>
+                <button onclick="saveSidebarApiKey()" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs py-2 px-3 rounded-lg transition">
+                    Save Key Permanently
+                </button>
+                <div id="sidebarApiStatus" class="text-[11px] text-slate-400 flex items-center gap-1.5">
+                    <span id="apiStatusDot" class="w-2 h-2 rounded-full bg-amber-500"></span>
+                    <span id="apiStatusText">Status: Checking Key...</span>
+                </div>
+            </div>
+
+            <!-- Sidebar Info / Footer -->
+            <div class="pt-4 border-t border-white/5 text-[11px] text-slate-500 space-y-2 mt-auto">
+                <div>Data source: Local <code class="text-slate-400 bg-white/5 px-1 py-0.5 rounded">raw_csv</code> + <code class="text-slate-400 bg-white/5 px-1 py-0.5 rounded">yfinance</code> daily sync.</div>
+                <div class="flex items-center gap-1.5 text-slate-400 pt-1">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>Desktop Parity Active</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Dashboard View on the Right -->
+        <main class="flex-1 min-w-0 p-6 overflow-y-auto">
+            <div class="max-w-7xl mx-auto">
 
         <!-- Hero Brand Header -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-5 mb-5 border-b border-white/10 gap-4">
@@ -225,11 +313,16 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <p class="text-xs text-slate-400">Quantitative Macro & Confluence Intelligence Desk</p>
                 </div>
             </div>
-            <div class="flex items-center gap-2 bg-[#111319] border border-white/10 px-3.5 py-1.5 rounded-full text-xs font-semibold text-slate-300">
-                <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500"></span>
-                <span>Desk Active</span>
-                <span class="text-slate-600">•</span>
-                <span class="text-amber-400 font-bold">79 Assets Synced</span>
+            <div class="flex items-center gap-3">
+                <button onclick="promptApiKey()" id="apiKeyBtn" class="bg-[#111319] hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-300 flex items-center gap-1.5 transition">
+                    <span>🔑</span> <span id="apiKeyStatus">Set Gemini Key</span>
+                </button>
+                <div class="flex items-center gap-2 bg-[#111319] border border-white/10 px-3.5 py-1.5 rounded-full text-xs font-semibold text-slate-300">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500"></span>
+                    <span>Desk Active</span>
+                    <span class="text-slate-600">•</span>
+                    <span id="sessionDateBadge" class="text-amber-400 font-bold">Prices: Loading...</span>
+                </div>
             </div>
         </div>
 
@@ -259,12 +352,56 @@ HTML_CONTENT = """<!DOCTYPE html>
         <!-- Navigation Tabs -->
         <div class="bg-[#0d0e13] p-1.5 rounded-xl border border-white/5 flex gap-1.5 overflow-x-auto mb-6">
             <button onclick="switchTab('tab1')" id="btn-tab1" class="tab-btn active px-4 py-2 rounded-lg text-xs font-bold">AI Macro Briefing</button>
+            <button onclick="switchTab('tab_agent')" id="btn-tab_agent" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5"><span>🤖</span> AI Quant Agent</button>
             <button onclick="switchTab('tab2')" id="btn-tab2" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">AI Trade Ideas</button>
             <button onclick="switchTab('tab3')" id="btn-tab3" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Confirmation & Confluence</button>
-            <button onclick="switchTab('tab4')" id="btn-tab4" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Mag 7 Granular Diagnostics</button>
+            <button onclick="switchTab('tab4')" id="btn-tab4" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Mag 7 Diagnostics</button>
             <button onclick="switchTab('tab5')" id="btn-tab5" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Indexes & Sector Flow</button>
             <button onclick="switchTab('tab6')" id="btn-tab6" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Key Ratio & Breadth Radar</button>
             <button onclick="switchTab('tab7')" id="btn-tab7" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Single Ticker Explorer</button>
+        </div>
+
+        <!-- Tab Agent: Interactive AI Quant Agent -->
+        <div id="tab_agent" class="tab-pane hidden">
+            <div class="lux-card p-5 mb-4">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-3 mb-4 border-b border-white/10 gap-3">
+                    <div>
+                        <h2 class="text-lg font-bold text-white flex items-center gap-2"><span>🤖</span> Interactive Quant Analyst & Risk Officer</h2>
+                        <p class="text-xs text-slate-400">On-Demand AI Reasoning Across Live Regimes, Tickers, Confluences & Ratios</p>
+                    </div>
+                    <button onclick="clearAgentChat()" class="text-xs text-slate-400 hover:text-white px-3 py-1 rounded bg-white/5 border border-white/10 transition">Clear Chat</button>
+                </div>
+                
+                <!-- Quick Prompts -->
+                <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Quick Desk Inquiries:</div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
+                    <button onclick="sendQuickPrompt('Analyze today\'s Mag 7 divergence. Which tech leaders are showing institutional accumulation vs distribution, and what are the key invalidation levels?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
+                        🔍 <b>Mag 7 Divergence & Risks</b>
+                    </button>
+                    <button onclick="sendQuickPrompt('Based on the 5-day sector velocities, where is institutional smart money rotating right now? Which sector is leading?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
+                        🚀 <b>Sector Rotation Leaders</b>
+                    </button>
+                    <button onclick="sendQuickPrompt('What are the biggest distribution traps and high-risk names on the desk today? Where should retail traders avoid dip buying?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
+                        ⚠️ <b>Top Distribution Warnings</b>
+                    </button>
+                    <button onclick="sendQuickPrompt('Give me the top 3 high-probability setups from today\'s confluence radar with exact entry rationale, targets, and stop-loss levels.')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
+                        🎯 <b>Best High-Conviction Setups</b>
+                    </button>
+                </div>
+
+                <!-- Chat History Window -->
+                <div id="chatHistory" class="space-y-3 min-h-[300px] max-h-[500px] overflow-y-auto p-4 rounded-xl bg-[#090a0f] border border-white/5 mb-4">
+                    <!-- Messages dynamically rendered -->
+                </div>
+
+                <!-- Chat Input Bar -->
+                <form onsubmit="handleAgentSubmit(event)" class="flex gap-2">
+                    <input id="chatInput" type="text" placeholder="Ask the Quant AI Agent anything about today's market data, tickers, or setups..." class="flex-1 bg-[#13151f] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500">
+                    <button type="submit" id="chatSendBtn" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition">
+                        <span>Send</span>
+                    </button>
+                </form>
+            </div>
         </div>
 
         <!-- Tab 1: AI Macro Briefing -->
@@ -425,12 +562,102 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
         </div>
 
+            </div>
+        </main>
     </div>
 
     <!-- JavaScript Application Logic -->
     <script>
         let DATA = null;
         let CURRENT_HORIZON = "All Historical Data";
+        let USER_API_KEY = localStorage.getItem('rotato_gemini_key') || '';
+
+        function updateApiKeyUI() {
+            const sidebarInput = document.getElementById('sidebarApiKey');
+            const textEl = document.getElementById('apiStatusText');
+            const dotEl = document.getElementById('apiStatusDot');
+            const headerBtn = document.getElementById('apiKeyStatus');
+
+            if (sidebarInput && document.activeElement !== sidebarInput) {
+                sidebarInput.value = USER_API_KEY;
+            }
+            if (headerBtn) {
+                headerBtn.innerText = USER_API_KEY ? 'Gemini Key Active' : 'Set Gemini Key';
+            }
+            if (textEl && dotEl) {
+                if (USER_API_KEY) {
+                    textEl.innerText = 'Status: Gemini API Key Active';
+                    textEl.className = 'text-emerald-400 font-semibold';
+                    dotEl.className = 'w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500';
+                } else {
+                    textEl.innerText = 'Status: Using Built-in Quantitative Heuristic AI';
+                    textEl.className = 'text-slate-400';
+                    dotEl.className = 'w-2 h-2 rounded-full bg-amber-500';
+                }
+            }
+        }
+
+        function saveSidebarApiKey() {
+            const input = document.getElementById('sidebarApiKey');
+            const key = input ? input.value.trim() : '';
+            if (key) {
+                USER_API_KEY = key;
+                localStorage.setItem('rotato_gemini_key', key);
+            } else {
+                USER_API_KEY = '';
+                localStorage.removeItem('rotato_gemini_key');
+            }
+            updateApiKeyUI();
+            init();
+        }
+
+        function promptApiKey() {
+            const key = prompt("Enter your Google Gemini API Key to enable AI Briefings & Agent Chat on Vercel:", USER_API_KEY);
+            if (key !== null) {
+                USER_API_KEY = key.trim();
+                if (USER_API_KEY) {
+                    localStorage.setItem('rotato_gemini_key', USER_API_KEY);
+                } else {
+                    localStorage.removeItem('rotato_gemini_key');
+                }
+                updateApiKeyUI();
+                init();
+            }
+        }
+
+        async function triggerDataSync() {
+            const scope = document.querySelector('input[name="syncScope"]:checked')?.value || 'core';
+            const btn = document.getElementById('syncBtn');
+            const spinner = document.getElementById('syncSpinner');
+            const btnText = document.getElementById('syncBtnText');
+            const statusDiv = document.getElementById('syncStatus');
+
+            btn.disabled = true;
+            spinner.classList.remove('hidden');
+            btnText.innerText = 'Syncing yfinance...';
+            statusDiv.classList.add('hidden');
+
+            try {
+                const res = await fetch('/api/sync-data', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ scope: scope })
+                });
+                const data = await res.json();
+                statusDiv.innerText = `Sync complete! ${data.updated_count} tickers updated.`;
+                statusDiv.className = 'text-[11px] text-emerald-400 pt-1 font-semibold';
+                statusDiv.classList.remove('hidden');
+                await init();
+            } catch (err) {
+                statusDiv.innerText = 'Sync error: ' + err.message;
+                statusDiv.className = 'text-[11px] text-red-400 pt-1';
+                statusDiv.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                spinner.classList.add('hidden');
+                btnText.innerText = 'Sync Daily Closes Now';
+            }
+        }
 
         function switchTab(tabId) {
             document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
@@ -446,10 +673,13 @@ HTML_CONTENT = """<!DOCTYPE html>
         }
 
         async function init() {
+            updateApiKeyUI();
             try {
-                const res = await fetch('/api/market-data');
+                const url = USER_API_KEY ? `/api/market-data?api_key=${encodeURIComponent(USER_API_KEY)}` : '/api/market-data';
+                const res = await fetch(url);
                 DATA = await res.json();
                 renderAll();
+                initAgentChat();
             } catch (err) {
                 console.error("Failed to load market data:", err);
             }
@@ -468,6 +698,90 @@ HTML_CONTENT = """<!DOCTYPE html>
             loadRatio('SPY_RSP');
             populateTickersDropdown();
             loadSingleTicker();
+        }
+
+        let AGENT_CHAT_HISTORY = [
+            {
+                role: 'assistant',
+                content: 'Greetings Trader. I am your Quantitative Desk Analyst. I have indexed today\\'s live metrics (20/50/200 EMAs, RSI, ATR stretches, RVOL, sector velocities, and confluence scores). Ask me about any ticker, setup, or rotation risk.'
+            }
+        ];
+
+        function initAgentChat() {
+            renderChatHistory();
+        }
+
+        function renderChatHistory() {
+            const container = document.getElementById('chatHistory');
+            if (!container) return;
+            let html = '';
+            AGENT_CHAT_HISTORY.forEach(msg => {
+                const isUser = msg.role === 'user';
+                const bg = isUser ? 'bg-amber-500/10 border-amber-500/20 text-amber-100 ml-6' : 'bg-[#12141c] border-white/5 text-slate-200 mr-6';
+                const label = isUser ? '<b class="text-amber-400 text-[11px] block mb-1">YOU</b>' : '<b class="text-slate-400 text-[11px] block mb-1">QUANT AI AGENT</b>';
+                const parsedContent = window.marked ? marked.parse(msg.content) : msg.content;
+                html += `
+                    <div class="p-3 rounded-xl border ${bg}">
+                        ${label}
+                        <div class="text-xs leading-relaxed prose prose-invert max-w-none">${parsedContent}</div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function clearAgentChat() {
+            AGENT_CHAT_HISTORY = [
+                {
+                    role: 'assistant',
+                    content: 'Chat history cleared. What quantitative setups or market dynamics would you like to review?'
+                }
+            ];
+            renderChatHistory();
+        }
+
+        function sendQuickPrompt(promptText) {
+            document.getElementById('chatInput').value = promptText;
+            handleAgentSubmit(null);
+        }
+
+        async function handleAgentSubmit(e) {
+            if (e && e.preventDefault) e.preventDefault();
+            const input = document.getElementById('chatInput');
+            const query = input.value.trim();
+            if (!query) return;
+
+            AGENT_CHAT_HISTORY.push({ role: 'user', content: query });
+            input.value = '';
+            renderChatHistory();
+
+            const container = document.getElementById('chatHistory');
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'p-3 rounded-xl border bg-[#12141c] border-white/5 text-slate-400 mr-6 text-xs';
+            loadingDiv.innerHTML = '<b class="text-slate-500 text-[11px] block mb-1">QUANT AI AGENT</b><span class="animate-pulse">Analyzing quantitative data & generating desk response...</span>';
+            container.appendChild(loadingDiv);
+            container.scrollTop = container.scrollHeight;
+
+            try {
+                const res = await fetch('/api/agent-chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: query,
+                        api_key: USER_API_KEY,
+                        history: AGENT_CHAT_HISTORY
+                    })
+                });
+                const data = await res.json();
+                container.removeChild(loadingDiv);
+                AGENT_CHAT_HISTORY.push({ role: 'assistant', content: data.answer || 'No response.' });
+                renderChatHistory();
+            } catch (err) {
+                container.removeChild(loadingDiv);
+                AGENT_CHAT_HISTORY.push({ role: 'assistant', content: '⚠️ Error connecting to AI Agent: ' + err.message });
+                renderChatHistory();
+            }
         }
 
         function renderTickerTape() {
@@ -504,6 +818,10 @@ HTML_CONTENT = """<!DOCTYPE html>
             document.getElementById('regimeTitle').innerText = md.narrative_title || "Secular Uptrend";
             document.getElementById('regimeDetail').innerText = md.narrative_detail || "";
             document.getElementById('regimeRiskBadge').innerText = md.risk_level || "Moderate";
+            const sessionBadge = document.getElementById('sessionDateBadge');
+            if (sessionBadge) {
+                sessionBadge.innerText = 'Prices: ' + (DATA.last_market_session || '2026-10-27');
+            }
         }
 
         function renderBenchmarks() {
@@ -636,19 +954,25 @@ HTML_CONTENT = """<!DOCTYPE html>
             document.getElementById('basketsGrid').innerHTML = bHtml;
 
             const summary = ai.llm_summary || "";
-            if (summary) {
-                let lines = summary.split('\\n').filter(l => l.trim().length > 0);
+            if (summary && window.marked) {
+                document.getElementById('synthesisText').innerHTML = marked.parse(summary);
+                document.getElementById('aiSourceBadge').innerText = ai.source || "Google Gemini";
+            } else if (summary) {
+                let lines = summary.split('\n').filter(l => l.trim().length > 0);
                 let sHtml = '';
                 lines.forEach(l => {
                     sHtml += `<div class="mb-1.5">${l.replace(/\\*\\*(.*?)\\*\\*/g, '<b class="text-white">$1</b>')}</div>`;
                 });
                 document.getElementById('synthesisText').innerHTML = sHtml;
+                document.getElementById('aiSourceBadge').innerText = ai.source || "Google Gemini";
             } else {
                 document.getElementById('synthesisText').innerHTML = `
                     <div>• <b>Regime Mechanics:</b> ${ai.regime_detail || ""}</div>
                     <div>• <b>Cross-Asset Flow:</b> ${DATA.market_data.macro_context || ""}</div>
                     <div>• <b class="text-red-400">Desk Risk Warning:</b> Monitor mega-cap breadth concentration (SPY/RSP at 5-year highs). Avoid front-running unconfirmed dip buys on broken distribution names.</div>
+                    <div class="mt-2 pt-2 text-xs text-slate-500 border-t border-white/5"><i>💡 Tip: Set your Gemini API key in the top bar to enable the full daily AI briefing.</i></div>
                 `;
+                document.getElementById('aiSourceBadge').innerText = "Quantitative Desk";
             }
         }
 

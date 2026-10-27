@@ -7,63 +7,233 @@ from data_manager import MAG_7, INDEXES, SECTORS, MACRO_ASSETS
 
 load_dotenv()
 
+# Validated working model cascade
+GEMINI_MODELS = [
+    "gemini-flash-lite-latest",
+    "gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-flash-latest",
+    "gemini-3-flash-preview",
+    "gemini-2.5-pro",
+]
+
+def get_gemini_client(api_key: str = None):
+    key = api_key or os.getenv("GEMINI_API_KEY")
+    if not key:
+        return None, None
+    try:
+        from google import genai
+        client = genai.Client(api_key=key.strip())
+        return client, key.strip()
+    except Exception as e:
+        return None, str(e)
+
 def generate_ai_ideas(market_data: dict, gemini_api_key: str = None) -> dict:
     """
-    Generates actionable trade ideas, narrative thesis, and risk levels.
-    Returns both structured data (for compact visual card rendering) and LLM summary if available.
+    Generates actionable trade ideas, narrative thesis, and comprehensive daily AI market analysis.
+    Returns structured data for cards and deep daily analysis from Gemini.
     """
     api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
 
     core_universe = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS
     confluences = compute_all_confluences(core_universe)
-    confluence_dict = {c["ticker"]: c for c in confluences}
 
-    # Generate structured cards first
+    # Generate structured quantitative cards first
     structured_data = build_structured_briefing_and_trades(market_data, confluences)
 
-    if api_key:
+    client, err = get_gemini_client(api_key)
+    if client:
         try:
-            from google import genai
-            client = genai.Client(api_key=api_key)
+            # Build comprehensive quantitative summary payload for Gemini
+            green_setups = [
+                {
+                    "ticker": c["ticker"],
+                    "score": c["score"],
+                    "bias": c["bias_label"],
+                    "price": c["metrics"].get("close"),
+                    "pct_1d": c["metrics"].get("pct_1d"),
+                    "rvol": c["metrics"].get("rvol"),
+                    "rsi": c["metrics"].get("rsi14"),
+                    "dist_ema20": c["metrics"].get("dist_ema20")
+                }
+                for c in confluences if c["score"] >= 15
+            ][:5]
 
-            summary_payload = {
+            red_warnings = [
+                {
+                    "ticker": c["ticker"],
+                    "score": c["score"],
+                    "bias": c["bias_label"],
+                    "price": c["metrics"].get("close"),
+                    "pct_1d": c["metrics"].get("pct_1d"),
+                    "rvol": c["metrics"].get("rvol"),
+                    "rsi": c["metrics"].get("rsi14"),
+                    "dist_ema20": c["metrics"].get("dist_ema20")
+                }
+                for c in confluences if c["score"] <= -15
+            ][:5]
+
+            macro_assets = market_data.get("macro_assets", {})
+            macro_summary = {
+                k: {
+                    "close": v.get("close"),
+                    "pct_1d": v.get("pct_1d"),
+                    "pct_5d": v.get("pct_5d"),
+                    "rsi": v.get("rsi14"),
+                    "trend": "Above 50EMA" if v.get("close", 0) > v.get("ema50", 0) else "Below 50EMA"
+                }
+                for k, v in macro_assets.items() if k in ["TLT", "GLD", "USO", "IBIT"]
+            }
+
+            baskets = market_data.get("baskets_5d", {})
+            ratios = market_data.get("ratios", {})
+            ratio_summary = {
+                k: {
+                    "current": v.get("current"),
+                    "pct_5d": v.get("pct_5d"),
+                    "pct_20d": v.get("pct_20d"),
+                    "z_score_50d": v.get("z_score_50d")
+                }
+                for k, v in ratios.items() if k in ["SPY_RSP", "QQQ_RSP", "IWM_QQQ"]
+            }
+
+            analysis_payload = {
                 "date": datetime.now().strftime("%Y-%m-%d"),
                 "narrative": market_data.get("narrative_title"),
+                "narrative_detail": market_data.get("narrative_detail"),
                 "macro_reading": market_data.get("macro_context"),
-                "confluence_top_green": [c for c in confluences if c["score"] >= 20][:3],
-                "confluence_top_red": [c for c in confluences if c["score"] <= -20][:3],
+                "baskets_5d": baskets,
+                "macro_assets": macro_summary,
+                "key_ratios": ratio_summary,
+                "top_green_confluence": green_setups,
+                "top_red_confluence": red_warnings,
             }
 
             prompt = f"""
-You are a senior quantitative portfolio manager.
-Review this market snapshot and provide a COMPACT, high-impact macro synthesis:
-{json.dumps(summary_payload, indent=2, default=str)}
+You are the Chief Quantitative Strategist and Senior Portfolio Risk Officer at a multi-billion dollar quantitative macro fund.
+Conduct an exhaustive, high-conviction **DAILY INSTITUTIONAL MARKET INTELLIGENCE BRIEFING** based strictly on the following quantitative desk snapshot for {datetime.now().strftime('%A, %B %d, %Y')}:
 
-Keep it strictly to 3 bullet points:
-1. **Regime Insight**: Where institutional capital is flowing and why (max 2 sentences).
-2. **Cross-Asset Signal**: What Bonds (TLT), Gold (GLD), Oil (USO), and Crypto (IBIT) tell us about risk appetite.
-3. **Desk Risk Warning**: 1 high-conviction risk warning for the week.
-Use bold highlights for key asset tickers and percentages.
+```json
+{json.dumps(analysis_payload, indent=2, default=str)}
+```
+
+Structure your analysis into 4 clear, professional institutional sections:
+
+### 1. Macro Regime & Cross-Asset Liquidity Assessment
+- Detail the prevailing regime ({market_data.get('narrative_title')}).
+- Unpack what the 4 macro pillars are signaling: Treasuries (**TLT** - yield pressure/easing), Gold (**GLD** - debasement hedge), Oil (**USO** - inflation/supply shock), and Bitcoin (**IBIT** - liquidity & speculative risk appetite).
+- Explain whether current institutional capital flows are Risk-On, Risk-Off, or Selective Dispersion.
+
+### 2. Sector Velocity & Breadth Concentration Dynamics
+- Evaluate the 5-day velocity across Growth vs Cyclical vs Defensive vs Energy. Where is smart money rotating?
+- Assess market breadth using **SPY/RSP** (mega-cap concentration) and **IWM/QQQ** (small-cap vs large-cap tech divergence). Is rally participation healthy or dangerously concentrated?
+
+### 3. Actionable Setups & Trade Confluence
+- Highlight the strongest long setups from the top green confluence assets. Detail technical alignment (EMAs, RVOL, stretch).
+- Detail the distribution warnings and fade setups from red confluence assets. Point out traps where retail traders might mistakenly buy failing dips.
+
+### 4. Desk Game Plan & Tactical Risk Boundaries
+- Provide 3 explicit risk parameters for today: what to add risk to, what to hedge/trim, and exact price or ratio invalidation levels to respect.
+
+Write in a crisp, Wall Street institutional tone. Bold all key tickers, percentages, and metrics.
 """
-            models_to_try = [
-                "gemini-3.1-flash-lite",
-                "gemini-3.5-flash-lite",
-                "gemini-flash-lite-latest",
-                "gemini-3.5-flash"
-            ]
-            for m in models_to_try:
+
+            for m in GEMINI_MODELS:
                 try:
                     response = client.models.generate_content(model=m, contents=prompt)
-                    if response.text:
+                    if response and response.text:
                         structured_data["llm_summary"] = response.text.strip()
-                        structured_data["source"] = f"Google {m}"
+                        structured_data["source"] = f"Gemini ({m})"
+                        structured_data["agent_status"] = "Active"
                         break
-                except Exception:
+                except Exception as model_err:
                     continue
-        except Exception:
-            pass
+        except Exception as e:
+            structured_data["agent_error"] = str(e)
 
     return structured_data
+
+
+def query_ai_agent(
+    user_query: str, 
+    market_data: dict, 
+    confluences: list[dict] = None, 
+    gemini_api_key: str = None, 
+    chat_history: list = None
+) -> str:
+    """
+    Interactive Q&A: Allows the user to chat with the Quantitative AI Agent.
+    The agent has access to all current daily metrics, ratios, confluences, and regimes.
+    """
+    client, key = get_gemini_client(gemini_api_key)
+    if not client:
+        return "⚠️ **Gemini API Key Missing or Invalid:** Please enter your Gemini API key in the sidebar to interact with the AI Quant Agent."
+
+    if confluences is None:
+        core_universe = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS
+        confluences = compute_all_confluences(core_universe)
+
+    confluence_map = {
+        c["ticker"]: {
+            "score": c["score"],
+            "bias": c["bias_label"],
+            "bull_count": c["bull_count"],
+            "bear_count": c["bear_count"],
+            "flicker": c["flicker_status"],
+            "close": c["metrics"].get("close"),
+            "pct_1d": c["metrics"].get("pct_1d"),
+            "pct_5d": c["metrics"].get("pct_5d"),
+            "rsi": c["metrics"].get("rsi14"),
+            "rvol": c["metrics"].get("rvol"),
+            "atr_stretch": c["metrics"].get("atr_stretch"),
+            "above_20ema": c["metrics"].get("close", 0) > c["metrics"].get("ema20", 0),
+            "above_50ema": c["metrics"].get("close", 0) > c["metrics"].get("ema50", 0),
+            "above_200ema": c["metrics"].get("close", 0) > c["metrics"].get("ema200", 0)
+        }
+        for c in confluences
+    }
+
+    baskets = market_data.get("baskets_5d", {})
+    ratios = market_data.get("ratios", {})
+
+    system_context = f"""
+You are the **Rotato Quantitative AI Analyst & Portfolio Risk Strategist**, an institutional-grade trading and macro AI agent embedded in the Rotato Quantitative Dashboard.
+The user is asking you for quantitative analysis, market insight, or trade evaluations.
+
+CURRENT LIVE MARKET SNAPSHOT ({datetime.now().strftime('%Y-%m-%d %H:%M')}):
+- Market Regime: {market_data.get('narrative_title')} | Bias: {market_data.get('macro_context')}
+- 5-Day Sector Velocity Baskets: {json.dumps(baskets)}
+- Key Ratio Analytics (SPY/RSP, QQQ/RSP, IWM/QQQ): {json.dumps({k: {'val': v.get('current'), '5d': v.get('pct_5d'), 'z_score': v.get('z_score_50d')} for k, v in ratios.items() if k in ['SPY_RSP', 'QQQ_RSP', 'IWM_QQQ']})}
+- Core Universe Confluence Snapshot:
+{json.dumps(confluence_map, indent=1, default=str)}
+
+RULES FOR RESPONDING:
+1. Always be direct, precise, quantitative, and institutional.
+2. Ground your explanations in the mathematical indicators (20/50/200 EMAs, RSI, ATR stretch, RVOL, Confluence Score).
+3. If asked about a specific stock, provide: Trend Status, Support/Resistance (EMAs), Volume Confirmation (RVOL), Overbought/Oversold Stretch (ATR), and Actionable Desk Verdict (Buy/Wait/Fade).
+4. If asked about broader market risk, evaluate breadth (SPY/RSP) and macro assets (TLT, GLD, USO, IBIT).
+5. Always provide explicit risk invalidation levels (e.g. "Stop invalidation below 50 EMA at $XXX").
+"""
+
+    messages = [{"role": "system", "content": system_context}]
+    if chat_history:
+        for item in chat_history[-6:]:  # Keep recent context
+            role = item.get("role", "user")
+            content = item.get("content", "")
+            if role in ["user", "model", "assistant"]:
+                messages.append({"role": "user" if role == "user" else "model", "content": content})
+
+    full_prompt = f"{system_context}\n\nUSER QUESTION: {user_query}\n\nANSWER AS ROTATO QUANT AI AGENT:"
+
+    for m in GEMINI_MODELS:
+        try:
+            res = client.models.generate_content(model=m, contents=full_prompt)
+            if res and res.text:
+                return res.text.strip()
+        except Exception:
+            continue
+
+    return "⚠️ **Agent Error:** Unable to generate response from Gemini models at this moment. Please check your API key or network connection."
 
 
 def build_structured_briefing_and_trades(market_data: dict, confluences: list[dict]) -> dict:
