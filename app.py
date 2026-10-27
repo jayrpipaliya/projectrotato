@@ -20,7 +20,7 @@ from ai_strategist import generate_ai_ideas
 from confluence_engine import compute_confluence_score, compute_all_confluences
 
 st.set_page_config(
-    page_title="AlphaRadar | Quantitative Macro & Equity Desk",
+    page_title="Rotato | Quantitative Macro & Equity Desk",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -280,17 +280,17 @@ def apply_dark_theme(fig, height=360, title=None):
 def style_table_status(val):
     if not isinstance(val, str):
         return ""
-    if any(w in val for w in ["Alert", "Bearish", "Explosion", "Overbought"]):
+    if any(w in val for w in ["Alert", "Bearish", "Explosion", "Overbought", "Upside"]):
         return "color: #ef4444; font-weight: 700;"
-    if any(w in val for w in ["Healthy", "Bullish", "Squeeze", "Support", "Bounce"]):
+    if any(w in val for w in ["Healthy", "Bullish", "Squeeze", "Support", "Bounce", "Downside"]):
         return "color: #10b981; font-weight: 700;"
     return "color: #94a3b8;"
 
 # ----------------- SIDEBAR CONTROLS -----------------
 st.sidebar.markdown("""
 <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
-    <div style="background:linear-gradient(135deg, #f59e0b, #d97706); width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:800; color:#08090d;">Q</div>
-    <span style="font-size:18px; font-weight:800; color:#ffffff;">Alpha<span style="color:#f59e0b;">Radar</span></span>
+    <div style="background:linear-gradient(135deg, #f59e0b, #d97706); width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:800; color:#08090d;">R</div>
+    <span style="font-size:18px; font-weight:800; color:#ffffff;">Rot<span style="color:#f59e0b;">ato</span></span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -401,9 +401,9 @@ st.markdown(render_ticker_tape(), unsafe_allow_html=True)
 brand_hero_html = (
     '<div class="brand-hero">'
     '<div class="brand-title-group">'
-    '<div class="brand-logo-box">Q</div>'
+    '<div class="brand-logo-box">R</div>'
     '<div>'
-    '<h1 class="brand-title">Alpha<span class="brand-title-accent">Radar</span></h1>'
+    '<h1 class="brand-title">Rot<span class="brand-title-accent">ato</span></h1>'
     '<span style="font-size:13px; color:#94a3b8;">Quantitative Macro & Confluence Intelligence Desk</span>'
     '</div>'
     '</div>'

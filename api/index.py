@@ -21,7 +21,7 @@ from narrative_engine import analyze_market_narrative, compute_ratio_analytics
 from confluence_engine import compute_all_confluences
 from ai_strategist import generate_ai_ideas
 
-app = FastAPI(title="AlphaRadar Quantitative Market Intelligence Desk")
+app = FastAPI(title="Rotato Quantitative Market Intelligence Desk")
 
 def clean_json(obj):
     return json.loads(json.dumps(obj, default=lambda x: int(x) if isinstance(x, np.integer) else float(x) if isinstance(x, np.floating) else str(x)))
@@ -160,7 +160,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AlphaRadar | Quantitative Macro & Equity Desk</title>
+    <title>Rotato | Quantitative Macro & Equity Desk</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -215,10 +215,10 @@ HTML_CONTENT = """<!DOCTYPE html>
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-5 mb-5 border-b border-white/10 gap-4">
             <div class="flex items-center gap-3.5">
                 <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center font-black text-2xl text-slate-950 shadow-lg shadow-amber-500/30">
-                    Q
+                    R
                 </div>
                 <div>
-                    <h1 class="text-2xl font-extrabold text-white tracking-tight">Alpha<span class="text-amber-500">Radar</span></h1>
+                    <h1 class="text-2xl font-extrabold text-white tracking-tight">Rot<span class="text-amber-500">ato</span></h1>
                     <p class="text-xs text-slate-400">Quantitative Macro & Confluence Intelligence Desk</p>
                 </div>
             </div>
@@ -666,6 +666,18 @@ HTML_CONTENT = """<!DOCTYPE html>
             document.getElementById('tradeCardsContainer').innerHTML = html;
         }
 
+        function getStateColor(state) {
+            if (!state) return 'text-slate-400';
+            const s = String(state);
+            if (s.includes('Alert') || s.includes('Overbought') || s.includes('Bearish') || s.includes('Exhaustion (Overbought') || s.includes('Upside') || s.includes('Fading')) {
+                return 'text-red-400 font-bold';
+            }
+            if (s.includes('Healthy') || s.includes('Support') || s.includes('Downside') || s.includes('Bounce') || s.includes('Bullish') || s.includes('Signal') || s.includes('Confirmed') || s.includes('Breakout')) {
+                return 'text-emerald-400 font-bold';
+            }
+            return 'text-slate-400 font-medium';
+        }
+
         async function loadConfluence(scope, btn) {
             document.querySelectorAll('.conf-pill').forEach(p => {
                 p.classList.remove('bg-white/10', 'text-white');
@@ -719,10 +731,10 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <td class="font-bold text-white">${c.ticker}</td>
                         <td>$${Number(m.close || 0).toFixed(2)}</td>
                         <td><span class="${pill} px-2 py-0.5 rounded font-bold">${c.score}</span></td>
-                        <td>${c.bias_label}</td>
+                        <td class="${getStateColor(c.bias_label)} font-bold">${c.bias_label}</td>
                         <td class="text-emerald-400 font-semibold">${c.bull_count} / 7</td>
                         <td class="text-red-400 font-semibold">${c.bear_count} / 7</td>
-                        <td>${c.flicker_status}</td>
+                        <td class="${getStateColor(c.flicker_status)}">${c.flicker_status}</td>
                         <td>${edge.win_rate_20d || 0}%</td>
                         <td>${m.rsi || 0}</td>
                         <td>${m.rvol || 0}x</td>
@@ -794,7 +806,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <td>${d.drawdown_ath}%</td>
                         <td class="text-emerald-400 font-bold">${edge.win_rate_20d || 0}%</td>
                         <td class="${edge.median_return_20d >= 0 ? 'text-emerald-400' : 'text-red-400'}">${edge.median_return_20d >= 0 ? '+' : ''}${edge.median_return_20d || 0}%</td>
-                        <td>${d.tech_status}</td>
+                        <td class="${getStateColor(d.tech_status)}">${d.tech_status}</td>
                     </tr>
                 `;
             });
@@ -856,7 +868,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <td>${d.rvol}x</td>
                         <td>${d.atr_stretch}</td>
                         <td>${d.drawdown_ath}%</td>
-                        <td>${d.tech_status}</td>
+                        <td class="${getStateColor(d.tech_status)}">${d.tech_status}</td>
                     </tr>
                 `;
             });
