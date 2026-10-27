@@ -455,21 +455,21 @@ def render_metric_card(label, price, change, sub_text, pill_type="green"):
 with c1:
     st.markdown(render_metric_card(
         "SPY • S&P 500", spy_metrics.get("close", 0), spy_metrics.get("pct_1d", 0),
-        f"ATH DD: {spy_metrics.get('drawdown_ath')}% | 20D RV: {spy_metrics.get('rv20')}%",
+        f"ATH DD: {spy_metrics.get('drawdown_ath')}% | 5D: {spy_metrics.get('pct_5d', 0):+.2f}% | RSI: {spy_metrics.get('rsi')}",
         "green" if spy_metrics.get("pct_1d", 0) >= 0 else "red"
     ), unsafe_allow_html=True)
 
 with c2:
     st.markdown(render_metric_card(
         "QQQ • Nasdaq 100", qqq_metrics.get("close", 0), qqq_metrics.get("pct_1d", 0),
-        f"ATH DD: {qqq_metrics.get('drawdown_ath')}% | 20D RV: {qqq_metrics.get('rv20')}%",
+        f"ATH DD: {qqq_metrics.get('drawdown_ath')}% | 5D: {qqq_metrics.get('pct_5d', 0):+.2f}% | RSI: {qqq_metrics.get('rsi')}",
         "green" if qqq_metrics.get("pct_1d", 0) >= 0 else "red"
     ), unsafe_allow_html=True)
 
 with c3:
     st.markdown(render_metric_card(
         "IWM • Russell 2000", iwm_metrics.get("close", 0), iwm_metrics.get("pct_1d", 0),
-        f"ATH DD: {iwm_metrics.get('drawdown_ath')}% | 20D RV: {iwm_metrics.get('rv20')}%",
+        f"ATH DD: {iwm_metrics.get('drawdown_ath')}% | 5D: {iwm_metrics.get('pct_5d', 0):+.2f}% | RSI: {iwm_metrics.get('rsi')}",
         "green" if iwm_metrics.get("pct_1d", 0) >= 0 else "red"
     ), unsafe_allow_html=True)
 
@@ -501,28 +501,28 @@ mc1, mc2, mc3, mc4 = st.columns(4)
 with mc1:
     st.markdown(render_metric_card(
         "GLD • Gold Debasement", gld_m.get("close", 0), gld_m.get("pct_1d", 0),
-        f"5D: {gld_m.get('pct_5d')}% | 20D RV: {gld_m.get('rv20')}% | Safe Haven",
+        f"5D: {gld_m.get('pct_5d', 0):+.2f}% | 20D: {gld_m.get('pct_20d', 0):+.2f}% | Safe Haven",
         "green" if gld_m.get("pct_1d", 0) >= 0 else "red"
     ), unsafe_allow_html=True)
 
 with mc2:
     st.markdown(render_metric_card(
         "USO • Crude Oil", uso_m.get("close", 0), uso_m.get("pct_1d", 0),
-        f"5D: {uso_m.get('pct_5d')}% | 20D RV: {uso_m.get('rv20')}% | Energy Cost",
+        f"5D: {uso_m.get('pct_5d', 0):+.2f}% | 20D: {uso_m.get('pct_20d', 0):+.2f}% | Energy Cost",
         "green" if uso_m.get("pct_1d", 0) >= 0 else "red"
     ), unsafe_allow_html=True)
 
 with mc3:
     st.markdown(render_metric_card(
         "TLT • 20Y Treasuries", tlt_m.get("close", 0), tlt_m.get("pct_1d", 0),
-        f"5D: {tlt_m.get('pct_5d')}% | 20D RV: {tlt_m.get('rv20')}% | Yield Pressure",
+        f"5D: {tlt_m.get('pct_5d', 0):+.2f}% | 20D: {tlt_m.get('pct_20d', 0):+.2f}% | Yield Pressure",
         "green" if tlt_m.get("pct_1d", 0) >= 0 else "red"
     ), unsafe_allow_html=True)
 
 with mc4:
     st.markdown(render_metric_card(
         "IBIT • Bitcoin Trust", ibit_m.get("close", 0), ibit_m.get("pct_1d", 0),
-        f"5D: {ibit_m.get('pct_5d')}% | 20D RV: {ibit_m.get('rv20')}% | Liquidity",
+        f"5D: {ibit_m.get('pct_5d', 0):+.2f}% | 20D: {ibit_m.get('pct_20d', 0):+.2f}% | Liquidity",
         "green" if ibit_m.get("pct_1d", 0) >= 0 else "red"
     ), unsafe_allow_html=True)
 
@@ -602,34 +602,7 @@ with tab1:
         )
         st.markdown(flow_card_html, unsafe_allow_html=True)
 
-    # 2. Cross-Asset Barometers (4 micro-cards)
-    st.markdown("<div style='margin-top:14px;'></div>", unsafe_allow_html=True)
-    c_m1, c_m2, c_m3, c_m4 = st.columns(4)
-
-    def render_macro_micro_card(ticker, name, d5, rv, desc, border_col):
-        sign = "+" if d5 >= 0 else ""
-        col_c = "#10b981" if d5 >= 0 else "#ef4444"
-        return (
-            f'<div class="metric-card-lux" style="border-left:3px solid {border_col}; padding:12px 14px; margin-bottom:0px;">'
-            f'<div style="display:flex; justify-content:space-between; align-items:center;">'
-            f'<span style="font-size:13px; font-weight:700; color:#ffffff;">{ticker} <span style="font-size:11px; color:#64748b; font-weight:400;">{name}</span></span>'
-            f'<span style="font-size:12px; font-weight:700; color:{col_c};">{sign}{d5:.2f}% 5D</span>'
-            f'</div>'
-            f'<div style="font-size:11.5px; color:#cbd5e1; margin-top:4px;"><b>Signal:</b> {desc}</div>'
-            f'<div style="font-size:10.5px; color:#64748b; margin-top:2px;">20D Vol: {rv}%</div>'
-            f'</div>'
-        )
-
-    with c_m1:
-        st.markdown(render_macro_micro_card("TLT", "Bonds", tlt_m.get("pct_5d", 0), tlt_m.get("rv20", 0), "Yield Relief (Growth Multiple Relief)", "#3b82f6"), unsafe_allow_html=True)
-    with c_m2:
-        st.markdown(render_macro_micro_card("GLD", "Gold", gld_m.get("pct_5d", 0), gld_m.get("rv20", 0), "Monetary Debasement & Safe-Haven Bid", "#f59e0b"), unsafe_allow_html=True)
-    with c_m3:
-        st.markdown(render_macro_micro_card("USO", "Crude Oil", uso_m.get("pct_5d", 0), uso_m.get("rv20", 0), "Cost-Push Inflation & Energy Drag", "#ef4444"), unsafe_allow_html=True)
-    with c_m4:
-        st.markdown(render_macro_micro_card("IBIT", "Bitcoin", ibit_m.get("pct_5d", 0), ibit_m.get("rv20", 0), "Speculative Liquidity & Risk Appetite", "#10b981"), unsafe_allow_html=True)
-
-    # 3. Desk Macro Synthesis Card
+    # 2. Desk Macro Synthesis Card
     st.markdown("<div style='margin-top:14px;'></div>", unsafe_allow_html=True)
     llm_summary = ai_output.get("llm_summary")
     engine_source = ai_output.get("source", "Quantitative Confluence Desk")
@@ -835,7 +808,7 @@ with tab3:
             "Hist. 20D Win Rate (%)": f"{edge.get('win_rate_20d', 0)}% (N={edge.get('sample_size', 0)})",
             "14D RSI": m.get("rsi"),
             "RVOL": f"{m.get('rvol')}x",
-            "20D RV (%)": f"{m.get('rv20')}%",
+            "vs 50SMA (%)": f"{m.get('dist_sma50', 0):+.2f}%",
             "Vol Squeeze Ratio": m.get("vol_ratio"),
             "Drawdown ATH (%)": f"{m.get('drawdown_ath')}%"
         })
@@ -1002,8 +975,8 @@ with tab5:
             "20D %": d.get("pct_20d"),
             "14D RSI": d.get("rsi"),
             "RVOL": d.get("rvol"),
+            "vs 50SMA %": d.get("dist_sma50"),
             "ATR Stretch": d.get("atr_stretch"),
-            "20D Realized Vol (%)": d.get("rv20"),
             "Drawdown ATH (%)": d.get("drawdown_ath"),
             "State": d.get("tech_status")
         })
@@ -1017,17 +990,17 @@ with tab5:
                 "20D %": "{:+.2f}%",
                 "14D RSI": "{:.1f}",
                 "RVOL": "{:.2f}x",
+                "vs 50SMA %": "{:+.2f}%",
                 "ATR Stretch": "{:+.2f}",
-                "20D Realized Vol (%)": "{:.1f}%",
                 "Drawdown ATH (%)": "{:.2f}%"
             })
             .background_gradient(subset=["1D %"], cmap="RdYlGn", vmin=-3, vmax=3)
             .background_gradient(subset=["5D %"], cmap="RdYlGn", vmin=-5, vmax=5)
             .background_gradient(subset=["20D %"], cmap="RdYlGn", vmin=-8, vmax=8)
+            .background_gradient(subset=["vs 50SMA %"], cmap="RdYlGn", vmin=-6, vmax=6)
             .background_gradient(subset=["14D RSI"], cmap="coolwarm", vmin=30, vmax=70)
             .background_gradient(subset=["RVOL"], cmap="YlOrRd", vmin=0.7, vmax=2.2)
             .background_gradient(subset=["ATR Stretch"], cmap="coolwarm", vmin=-2.5, vmax=2.5)
-            .background_gradient(subset=["20D Realized Vol (%)"], cmap="YlOrRd", vmin=12, vmax=35)
             .background_gradient(subset=["Drawdown ATH (%)"], cmap="RdYlGn", vmin=-25, vmax=0)
             .map(style_table_status, subset=["State"]),
             use_container_width=True,
@@ -1107,7 +1080,7 @@ with tab7:
     if t_metrics:
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Current Price", f"${t_metrics['close']}", f"{t_metrics['pct_1d']}% (1D)")
-        c2.metric("20D Realized Vol", f"{t_metrics['rv20']}%", f"Ratio: {t_metrics['vol_ratio']}")
+        c2.metric("50-Day SMA Trend", f"${t_metrics['sma50']:.2f}", f"{t_metrics['dist_sma50']:+.2f}% vs 50SMA")
         c3.metric("ATH Drawdown", f"{t_metrics['drawdown_ath']}%", f"Days: {t_metrics['days_in_drawdown']}")
         c4.metric("14D RSI", f"{t_metrics['rsi']}", f"RVOL: {t_metrics['rvol']}x")
 
