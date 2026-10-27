@@ -290,7 +290,7 @@ def style_table_status(val):
 st.sidebar.markdown("""
 <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
     <div style="background:linear-gradient(135deg, #f59e0b, #d97706); width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:800; color:#08090d;">R</div>
-    <span style="font-size:18px; font-weight:800; color:#ffffff;">Rot<span style="color:#f59e0b;">ato</span></span>
+    <span style="font-size:18px; font-weight:800; color:#ffffff;">Rotato</span>
 </div>
 """, unsafe_allow_html=True)
 
@@ -403,7 +403,7 @@ brand_hero_html = (
     '<div class="brand-title-group">'
     '<div class="brand-logo-box">R</div>'
     '<div>'
-    '<h1 class="brand-title">Rot<span class="brand-title-accent">ato</span></h1>'
+    '<h1 class="brand-title">Rotato</h1>'
     '<span style="font-size:13px; color:#94a3b8;">Quantitative Macro & Confluence Intelligence Desk</span>'
     '</div>'
     '</div>'

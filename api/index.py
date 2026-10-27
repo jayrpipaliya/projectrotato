@@ -221,7 +221,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                     R
                 </div>
                 <div>
-                    <h1 class="text-2xl font-extrabold text-white tracking-tight">Rot<span class="text-amber-500">ato</span></h1>
+                    <h1 class="text-2xl font-extrabold text-white tracking-tight">Rotato</h1>
                     <p class="text-xs text-slate-400">Quantitative Macro & Confluence Intelligence Desk</p>
                 </div>
             </div>
