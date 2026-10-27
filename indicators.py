@@ -71,12 +71,10 @@ def compute_all_metrics(df: pd.DataFrame) -> dict:
     close = df["Close"]
     volume = df["Volume"]
 
-    # 1. Moving Averages (All EMAs + benchmark SMAs)
+    # 1. Moving Averages (Strictly 20, 50, 200 EMAs)
     df["EMA20"] = close.ewm(span=20, adjust=False).mean()
     df["EMA50"] = close.ewm(span=50, adjust=False).mean()
     df["EMA200"] = close.ewm(span=200, adjust=False).mean()
-    df["SMA50"] = close.rolling(50).mean()
-    df["SMA200"] = close.rolling(200).mean()
     
     # 2. RSI & ATR
     df["RSI"] = calculate_rsi(close, period=14)
@@ -84,8 +82,8 @@ def compute_all_metrics(df: pd.DataFrame) -> dict:
     df["ATR_Stretch"] = (close - df["EMA20"]) / df["ATR20"].replace(0, np.nan)
 
     # 3. Relative Volume (RVOL)
-    df["VolSMA20"] = volume.rolling(20).mean()
-    df["RVOL"] = volume / df["VolSMA20"].replace(0, np.nan)
+    df["VolAvg20"] = volume.rolling(20).mean()
+    df["RVOL"] = volume / df["VolAvg20"].replace(0, np.nan)
 
     # 4. Realized Volatility (Annualized %)
     log_ret = np.log(close / close.shift(1))
@@ -124,8 +122,6 @@ def compute_all_metrics(df: pd.DataFrame) -> dict:
     curr_ema20 = float(df["EMA20"].iloc[-1])
     curr_ema50 = float(df["EMA50"].iloc[-1]) if pd.notnull(df["EMA50"].iloc[-1]) else curr_close
     curr_ema200 = float(df["EMA200"].iloc[-1]) if pd.notnull(df["EMA200"].iloc[-1]) else curr_close
-    curr_sma50 = float(df["SMA50"].iloc[-1]) if pd.notnull(df["SMA50"].iloc[-1]) else curr_close
-    curr_sma200 = float(df["SMA200"].iloc[-1]) if pd.notnull(df["SMA200"].iloc[-1]) else curr_close
     curr_rsi = float(df["RSI"].iloc[-1])
     curr_rvol = float(df["RVOL"].iloc[-1]) if pd.notnull(df["RVOL"].iloc[-1]) else 1.0
     curr_atr_stretch = float(df["ATR_Stretch"].iloc[-1]) if pd.notnull(df["ATR_Stretch"].iloc[-1]) else 0.0
@@ -140,12 +136,10 @@ def compute_all_metrics(df: pd.DataFrame) -> dict:
     pct_20d = float((curr_close / close.iloc[-21] - 1) * 100) if len(close) > 20 else 0.0
     pct_60d = float((curr_close / close.iloc[-61] - 1) * 100) if len(close) > 60 else 0.0
 
-    # Distances to Moving Averages (EMAs + SMAs)
+    # Distances to Moving Averages (Strictly 20, 50, 200 EMAs)
     dist_ema20 = (curr_close / curr_ema20 - 1) * 100
     dist_ema50 = (curr_close / curr_ema50 - 1) * 100
     dist_ema200 = (curr_close / curr_ema200 - 1) * 100
-    dist_sma50 = (curr_close / curr_sma50 - 1) * 100
-    dist_sma200 = (curr_close / curr_sma200 - 1) * 100
 
     # RSI Divergence detection
     rsi_div = detect_rsi_divergence(df, window=20)
@@ -163,15 +157,15 @@ def compute_all_metrics(df: pd.DataFrame) -> dict:
         tech_status = "[Alert] Upside Exhaustion (Overbought / Pullback Risk)"
     elif curr_atr_stretch < -2.0 or (curr_rsi < 30 and "Bullish" in rsi_div):
         tech_status = "[Signal] Downside Exhaustion (Oversold Dip / Bounce Watch)"
-    elif curr_dd_ath < -3.0 and curr_close > curr_sma50 and curr_rvol < 0.9:
+    elif curr_dd_ath < -3.0 and curr_close > curr_ema50 and curr_rvol < 0.9:
         tech_status = "[Signal] Orderly Pullback to Support (Low Volume Dip)"
-    elif curr_close > curr_ema20 and curr_ema20 > curr_sma50:
+    elif curr_close > curr_ema20 and curr_ema20 > curr_ema50:
         tech_status = "Healthy Uptrend Continuation"
     else:
         tech_status = "Neutral / Consolidation"
 
     # 7. Historical Edge Match Engine
-    edge_match = find_historical_edge(df, curr_dd_ath, curr_rsi, curr_atr_stretch, curr_rvol, curr_close > curr_sma50)
+    edge_match = find_historical_edge(df, curr_dd_ath, curr_rsi, curr_atr_stretch, curr_rvol, curr_close > curr_ema50)
 
     return {
         "date": curr_date,
@@ -183,13 +177,11 @@ def compute_all_metrics(df: pd.DataFrame) -> dict:
         "ema20": round(curr_ema20, 2),
         "ema50": round(curr_ema50, 2),
         "ema200": round(curr_ema200, 2),
-        "sma50": round(curr_sma50, 2),
-        "sma200": round(curr_sma200, 2),
         "dist_ema20": round(dist_ema20, 2),
         "dist_ema50": round(dist_ema50, 2),
         "dist_ema200": round(dist_ema200, 2),
-        "dist_sma50": round(dist_sma50, 2),
-        "dist_sma200": round(dist_sma200, 2),
+        # Backward-compatibility alias for dist_sma50
+        "dist_sma50": round(dist_ema50, 2),
         "rsi": round(curr_rsi, 1),
         "rsi_divergence": rsi_div,
         "rvol": round(curr_rvol, 2),
@@ -221,7 +213,7 @@ def find_historical_edge(df: pd.DataFrame, curr_dd: float, curr_rsi: float, curr
     closes = df["Close"].values
     rsis = df["RSI"].values
     dd_aths = df["Drawdown_ATH"].values
-    sma50s = df["SMA50"].values
+    ema50s = df["EMA50"].values
 
     matches = []
     atr_values = df["ATR20"].replace(0, np.nan).fillna(1.0).values
@@ -232,14 +224,14 @@ def find_historical_edge(df: pd.DataFrame, curr_dd: float, curr_rsi: float, curr
         rule_name = "Overbought Exhaustion Fade (RSI > 68 or ATR Stretch > 1.8)"
         cond = (rsis > 68) | (df["ATR_Stretch"].fillna(0).values > 1.8)
     elif curr_dd < -3.0 and above_50:
-        rule_name = f"Uptrend Pullback ({round(curr_dd-2, 0)}% to {round(curr_dd+2, 0)}% Drawdown above 50SMA)"
-        cond = (dd_aths <= curr_dd + 2.0) & (dd_aths >= curr_dd - 3.0) & (closes > sma50s)
+        rule_name = f"Uptrend Pullback ({round(curr_dd-2, 0)}% to {round(curr_dd+2, 0)}% Drawdown above 50 EMA)"
+        cond = (dd_aths <= curr_dd + 2.0) & (dd_aths >= curr_dd - 3.0) & (closes > ema50s)
     elif curr_stretch < -1.8 or curr_rsi < 35:
         rule_name = "Oversold Washout Bounce (RSI < 35 or ATR Stretch < -1.8)"
         cond = (rsis < 35) | (df["ATR_Stretch"].fillna(0).values < -1.8)
     else:
         rule_name = "Trend Continuation / Value Pullback to 20 EMA"
-        cond = (np.abs(closes - ema20_values) / atr_values < 0.6) & (closes > sma50s)
+        cond = (np.abs(closes - ema20_values) / atr_values < 0.6) & (closes > ema50s)
 
     # We need at least 60 trading days of future data to test forward outcomes
     valid_indices = np.where(cond)[0]

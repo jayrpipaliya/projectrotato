@@ -7,7 +7,7 @@ def compute_confluence_score(ticker: str, market_narrative: dict = None) -> dict
     """
     Computes a multi-factor conviction score from -100 (Deep Bearish Red) to +100 (Deep Bullish Green).
     Scores 7 independent confirmation layers:
-    1. Structural Trend (Price vs 20EMA, 50SMA, 200SMA)
+    1. Structural Trend (Price vs 20EMA, 50EMA, 200EMA)
     2. Value / Extension Zone (Drawdown from ATH, ATR Stretch)
     3. Volume Flow (RVOL & Up/Down Volume participation)
     4. Momentum & Divergence (14D RSI, Bullish/Bearish Divergence)
@@ -30,8 +30,8 @@ def compute_confluence_score(ticker: str, market_narrative: dict = None) -> dict
 
     close = m["close"]
     ema20 = m["ema20"]
-    sma50 = m["sma50"]
-    sma200 = m["sma200"]
+    ema50 = m.get("ema50", close)
+    ema200 = m.get("ema200", close)
     rsi = m["rsi"]
     rsi_div = m["rsi_divergence"]
     atr_stretch = m["atr_stretch"]
@@ -44,41 +44,41 @@ def compute_confluence_score(ticker: str, market_narrative: dict = None) -> dict
     # -------------------------------------------------------------
     # LAYER 1: STRUCTURAL TREND (Max +/- 15 pts)
     # -------------------------------------------------------------
-    if close > ema20 and ema20 > sma50 and close > sma200:
+    if close > ema20 and ema20 > ema50 and close > ema200:
         score += 15
         bull_confirmations += 1
         checklist.append({
             "layer": "Structural Trend",
             "status": "PASS_BULL",
             "points": "+15",
-            "detail": f"Price (${close}) holding above 20 EMA (${ema20}), 50 SMA, and 200 SMA (Full Bullish Stack)"
+            "detail": f"Price (${close}) holding above 20 EMA (${ema20}), 50 EMA, and 200 EMA (Full Bullish Stack)"
         })
-    elif close > sma50 and close > sma200:
+    elif close > ema50 and close > ema200:
         score += 10
         bull_confirmations += 1
         checklist.append({
             "layer": "Structural Trend",
             "status": "PASS_BULL",
             "points": "+10",
-            "detail": f"Price above 50 SMA (${sma50}) and 200 SMA in secular uptrend"
+            "detail": f"Price above 50 EMA (${ema50}) and 200 EMA in secular uptrend"
         })
-    elif close < ema20 and close < sma50 and close < sma200:
+    elif close < ema20 and close < ema50 and close < ema200:
         score -= 15
         bear_confirmations += 1
         checklist.append({
             "layer": "Structural Trend",
             "status": "PASS_BEAR",
             "points": "-15",
-            "detail": f"Price (${close}) broken below 20 EMA, 50 SMA, and 200 SMA (Full Bearish Stack)"
+            "detail": f"Price (${close}) broken below 20 EMA, 50 EMA, and 200 EMA (Full Bearish Stack)"
         })
-    elif close < ema20 and close < sma50:
+    elif close < ema20 and close < ema50:
         score -= 10
         bear_confirmations += 1
         checklist.append({
             "layer": "Structural Trend",
             "status": "PASS_BEAR",
             "points": "-10",
-            "detail": f"Price lost 20 EMA and 50 SMA support"
+            "detail": f"Price lost 20 EMA and 50 EMA support"
         })
     else:
         checklist.append({
@@ -91,7 +91,7 @@ def compute_confluence_score(ticker: str, market_narrative: dict = None) -> dict
     # -------------------------------------------------------------
     # LAYER 2: VALUE & EXTENSION ZONE (Max +/- 15 pts)
     # -------------------------------------------------------------
-    if -10.0 <= dd_ath <= -3.0 and close > sma50 and atr_stretch < 0.5:
+    if -10.0 <= dd_ath <= -3.0 and close > ema50 and atr_stretch < 0.5:
         score += 15
         bull_confirmations += 1
         checklist.append({
@@ -255,11 +255,11 @@ def compute_confluence_score(ticker: str, market_narrative: dict = None) -> dict
     # If SPY or QQQ is in uptrend and asset has positive relative strength
     spy_df = load_ticker_data("SPY")
     spy_close = spy_df["Close"].iloc[-1]
-    spy_sma50 = spy_df["Close"].rolling(50).mean().iloc[-1]
+    spy_ema50 = spy_df["Close"].ewm(span=50, adjust=False).mean().iloc[-1]
     spy_pct_5d = (spy_close / spy_df["Close"].iloc[-6] - 1) * 100 if len(spy_df) > 5 else 0.0
 
     rel_strength = pct_5d - spy_pct_5d
-    if rel_strength > 1.0 and spy_close > spy_sma50:
+    if rel_strength > 1.0 and spy_close > spy_ema50:
         score += 15
         bull_confirmations += 1
         checklist.append({

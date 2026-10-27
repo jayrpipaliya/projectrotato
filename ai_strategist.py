@@ -172,7 +172,7 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             "bias_label": weakest["bias_label"],
             "confirmations": f"{weakest['bear_count']} of 7 Bearish Warnings",
             "status_desc": weakest["flicker_status"],
-            "thesis": f"Broken below key 20 EMA and 50 SMA on elevated volume ({w_data.get('rvol')}x RVOL). Avoid buying until a firm base establishes.",
+            "thesis": f"Broken below key 20 EMA and 50 EMA on elevated volume ({w_data.get('rvol')}x RVOL). Avoid buying until a firm base establishes.",
             "entry": f"${w_price:,.2f}",
             "stop": f"${w_price * 1.035:,.2f}",
             "stop_pct": "+3.5%",
@@ -191,7 +191,7 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
     for c in confluences:
         t_data = c["metrics"]
         if (t_data.get("pct_1d", 0) < -0.1 and 
-            t_data.get("close", 0) > t_data.get("sma50", 0) and 
+            t_data.get("close", 0) > t_data.get("ema50", 0) and 
             t_data.get("rvol", 1.0) < 1.15 and 
             c["score"] >= 0 and
             c["ticker"] in MAG_7 + INDEXES):
@@ -214,9 +214,9 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
                 "type_label": "Orderly Pullback to Support",
                 "score": f"+{best_dip['score']}",
                 "bias_label": best_dip["bias_label"],
-                "confirmations": f"Low RVOL ({d_data.get('rvol')}x) | Above 50 SMA",
+                "confirmations": f"Low RVOL ({d_data.get('rvol')}x) | Above 50 EMA",
                 "status_desc": "Healthy Pullback Without Institutional Dumping",
-                "thesis": f"Down {abs(d_data.get('pct_1d', 0)):.2f}% on low volume ({d_data.get('rvol')}x RVOL) while holding above 50 SMA. Rubber-band dip-buy opportunity.",
+                "thesis": f"Down {abs(d_data.get('pct_1d', 0)):.2f}% on low volume ({d_data.get('rvol')}x RVOL) while holding above 50 EMA. Rubber-band dip-buy opportunity.",
                 "entry": f"${d_price:,.2f}",
                 "stop": f"${d_price * (1 - d_mae/100):,.2f}",
                 "stop_pct": f"-{d_mae:.1f}%",
@@ -245,9 +245,9 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             "entry": f"{iwm_qqq.get('current', 0):.4f} spread",
             "stop": "Break by > 0.5σ",
             "stop_pct": "-0.5σ",
-            "target1": f"{iwm_qqq.get('sma50', 0):.4f} (50 SMA)",
+            "target1": f"{iwm_qqq.get('ema50', iwm_qqq.get('sma50', 0)):.4f} (50 EMA)",
             "target1_pct": "Mean Revert",
-            "target2": "200 SMA",
+            "target2": "200 EMA",
             "target2_pct": "Full Cycle",
             "win_rate": "72.4%",
             "sample_size": 47,

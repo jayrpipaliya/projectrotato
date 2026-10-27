@@ -101,16 +101,17 @@ def api_ratio(ratio_name: str):
     df = load_ticker_data(ratio_name)
     if df.empty:
         return {"error": "Ratio not found"}
-    df["SMA50"] = df["Close"].rolling(50).mean()
+    df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
     df["STD50"] = df["Close"].rolling(50).std()
-    df["Upper2"] = df["SMA50"] + 2 * df["STD50"]
-    df["Lower2"] = df["SMA50"] - 2 * df["STD50"]
+    df["Upper2"] = df["EMA50"] + 2 * df["STD50"]
+    df["Lower2"] = df["EMA50"] - 2 * df["STD50"]
     sub = df.iloc[-500:].copy()
     sub["Date"] = sub["Date"].dt.strftime("%Y-%m-%d")
     return clean_json({
         "dates": sub["Date"].tolist(),
         "close": [round(float(v), 4) for v in sub["Close"]],
-        "sma50": [round(float(v), 4) if v == v else None for v in sub["SMA50"]],
+        "ema50": [round(float(v), 4) if v == v else None for v in sub["EMA50"]],
+        "sma50": [round(float(v), 4) if v == v else None for v in sub["EMA50"]],
         "upper2": [round(float(v), 4) if v == v else None for v in sub["Upper2"]],
         "lower2": [round(float(v), 4) if v == v else None for v in sub["Lower2"]]
     })
@@ -322,7 +323,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <table class="w-full text-left text-xs border-collapse" id="confluenceTable">
                     <thead>
                         <tr class="border-b border-white/10 text-slate-400 bg-black/20">
-                            <th>Ticker</th><th>Price</th><th>Score</th><th>Bias</th><th>Bull Confirmations</th><th>Bear Confirmations</th><th>Status</th><th>20Y Win Rate</th><th>RSI</th><th>RVOL</th><th>vs 50SMA</th><th>Drawdown ATH</th>
+                            <th>Ticker</th><th>Price</th><th>Score</th><th>Bias</th><th>Bull Confirmations</th><th>Bear Confirmations</th><th>Status</th><th>20Y Win Rate</th><th>RSI</th><th>RVOL</th><th>vs 50EMA</th><th>Drawdown ATH</th>
                         </tr>
                     </thead>
                     <tbody id="confluenceTableBody"></tbody>
@@ -346,7 +347,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <table class="w-full text-left text-xs border-collapse" id="mag7Table">
                     <thead>
                         <tr class="border-b border-white/10 text-slate-400 bg-black/20">
-                            <th>Ticker</th><th>Price</th><th>1D %</th><th>5D %</th><th>20D %</th><th>vs 20EMA</th><th>vs 50SMA</th><th>14D RSI</th><th>RVOL</th><th>Drawdown ATH</th><th>20Y Win Rate</th><th>Median 20D Alpha</th><th>Technical State</th>
+                            <th>Ticker</th><th>Price</th><th>1D %</th><th>5D %</th><th>20D %</th><th>vs 20EMA</th><th>vs 50EMA</th><th>14D RSI</th><th>RVOL</th><th>Drawdown ATH</th><th>20Y Win Rate</th><th>Median 20D Alpha</th><th>Technical State</th>
                         </tr>
                     </thead>
                     <tbody id="mag7TableBody"></tbody>
@@ -366,7 +367,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <table class="w-full text-left text-xs border-collapse" id="sectorTable">
                     <thead>
                         <tr class="border-b border-white/10 text-slate-400 bg-black/20">
-                            <th>Sector</th><th>Price</th><th>1D %</th><th>5D %</th><th>20D %</th><th>vs 50SMA</th><th>14D RSI</th><th>RVOL</th><th>ATR Stretch</th><th>Drawdown ATH</th><th>State</th>
+                            <th>Sector</th><th>Price</th><th>1D %</th><th>5D %</th><th>20D %</th><th>vs 50EMA</th><th>14D RSI</th><th>RVOL</th><th>ATR Stretch</th><th>Drawdown ATH</th><th>State</th>
                         </tr>
                     </thead>
                     <tbody id="sectorTableBody"></tbody>
@@ -765,7 +766,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <td>${edge.win_rate_20d || 0}%</td>
                         <td>${m.rsi || 0}</td>
                         <td>${m.rvol || 0}x</td>
-                        <td class="${(m.dist_sma50 || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${(m.dist_sma50 || 0) >= 0 ? '+' : ''}${(m.dist_sma50 || 0).toFixed(2)}%</td>
+                        <td class="${(m.dist_ema50 ?? m.dist_sma50 ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${(m.dist_ema50 ?? m.dist_sma50 ?? 0) >= 0 ? '+' : ''}${(m.dist_ema50 ?? m.dist_sma50 ?? 0).toFixed(2)}%</td>
                         <td>${m.drawdown_ath || 0}%</td>
                     </tr>
                 `;
@@ -827,7 +828,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <td class="${d.pct_5d >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${d.pct_5d >= 0 ? '+' : ''}${d.pct_5d}%</td>
                         <td class="${d.pct_20d >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${d.pct_20d >= 0 ? '+' : ''}${d.pct_20d}%</td>
                         <td class="${d.dist_ema20 >= 0 ? 'text-emerald-400' : 'text-red-400'}">${d.dist_ema20 >= 0 ? '+' : ''}${d.dist_ema20}%</td>
-                        <td class="${d.dist_sma50 >= 0 ? 'text-emerald-400' : 'text-red-400'}">${d.dist_sma50 >= 0 ? '+' : ''}${d.dist_sma50}%</td>
+                        <td class="${(d.dist_ema50 ?? d.dist_sma50) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${(d.dist_ema50 ?? d.dist_sma50) >= 0 ? '+' : ''}${d.dist_ema50 ?? d.dist_sma50}%</td>
                         <td>${d.rsi}</td>
                         <td>${d.rvol}x</td>
                         <td>${d.drawdown_ath}%</td>
@@ -890,7 +891,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <td class="${d.pct_1d >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${d.pct_1d >= 0 ? '+' : ''}${d.pct_1d}%</td>
                         <td class="${d.pct_5d >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${d.pct_5d >= 0 ? '+' : ''}${d.pct_5d}%</td>
                         <td class="${d.pct_20d >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${d.pct_20d >= 0 ? '+' : ''}${d.pct_20d}%</td>
-                        <td class="${d.dist_sma50 >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${d.dist_sma50 >= 0 ? '+' : ''}${d.dist_sma50}%</td>
+                        <td class="${(d.dist_ema50 ?? d.dist_sma50) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${(d.dist_ema50 ?? d.dist_sma50) >= 0 ? '+' : ''}${d.dist_ema50 ?? d.dist_sma50}%</td>
                         <td>${d.rsi}</td>
                         <td>${d.rvol}x</td>
                         <td>${d.atr_stretch}</td>
@@ -938,11 +939,11 @@ HTML_CONTENT = """<!DOCTYPE html>
             const traces = [
                 { x: data.dates, y: data.upper2, name: "+2σ Extreme", mode: "lines", line: { color: "rgba(239, 68, 68, 0.4)", dash: "dot" } },
                 { x: data.dates, y: data.lower2, name: "-2σ Extreme", mode: "lines", line: { color: "rgba(16, 185, 129, 0.4)", dash: "dot" } },
-                { x: data.dates, y: data.sma50, name: "50-Day SMA", mode: "lines", line: { color: "#f59e0b", width: 1.5 } },
+                { x: data.dates, y: data.ema50 || data.sma50, name: "50-Day EMA", mode: "lines", line: { color: "#f59e0b", width: 1.5 } },
                 { x: data.dates, y: data.close, name: ratioName.replace('_', '/'), mode: "lines", line: { color: "#3b82f6", width: 2.5 } }
             ];
             const layout = {
-                title: { text: `${ratioName.replace('_', '/')} Ratio with 50-Day Moving Average & ±2σ Envelopes`, font: { color: '#ffffff', size: 15 } },
+                title: { text: `${ratioName.replace('_', '/')} Ratio with 50-Day EMA & ±2σ Envelopes`, font: { color: '#ffffff', size: 15 } },
                 plot_bgcolor: "#111319",
                 paper_bgcolor: "#111319",
                 font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 12 },
@@ -990,9 +991,9 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <div class="text-xs ${m.pct_1d >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold mt-0.5">${m.pct_1d >= 0 ? '+' : ''}${m.pct_1d}% (1D)</div>
                 </div>
                 <div class="lux-card p-3.5">
-                    <div class="text-[11px] font-semibold text-slate-400 uppercase">50-Day SMA Trend</div>
-                    <div class="text-xl font-bold text-white mt-1">$${m.sma50}</div>
-                    <div class="text-xs ${m.dist_sma50 >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold mt-0.5">${m.dist_sma50 >= 0 ? '+' : ''}${m.dist_sma50}% vs 50SMA</div>
+                    <div class="text-[11px] font-semibold text-slate-400 uppercase">50-Day EMA Trend</div>
+                    <div class="text-xl font-bold text-white mt-1">$${m.ema50 || m.sma50 || m.close}</div>
+                    <div class="text-xs ${(m.dist_ema50 ?? m.dist_sma50) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold mt-0.5">${(m.dist_ema50 ?? m.dist_sma50) >= 0 ? '+' : ''}${m.dist_ema50 ?? m.dist_sma50}% vs 50EMA</div>
                 </div>
                 <div class="lux-card p-3.5">
                     <div class="text-[11px] font-semibold text-slate-400 uppercase">ATH Drawdown</div>

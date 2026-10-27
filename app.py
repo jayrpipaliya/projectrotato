@@ -822,7 +822,7 @@ with tab3:
             "Hist. 20D Win Rate (%)": f"{edge.get('win_rate_20d', 0)}% (N={edge.get('sample_size', 0)})",
             "14D RSI": m.get("rsi"),
             "RVOL": f"{m.get('rvol')}x",
-            "vs 50SMA (%)": f"{m.get('dist_sma50', 0):+.2f}%",
+            "vs 50EMA (%)": f"{m.get('dist_ema50', 0):+.2f}%",
             "Vol Squeeze Ratio": m.get("vol_ratio"),
             "Drawdown ATH (%)": f"{m.get('drawdown_ath')}%"
         })
@@ -890,7 +890,7 @@ with tab4:
             "5D %": d.get("pct_5d"),
             "20D %": d.get("pct_20d"),
             "vs 20EMA %": d.get("dist_ema20"),
-            "vs 50SMA %": d.get("dist_sma50"),
+            "vs 50EMA %": d.get("dist_ema50"),
             "14D RSI": d.get("rsi"),
             "RSI Divergence": d.get("rsi_divergence"),
             "RVOL": d.get("rvol"),
@@ -914,7 +914,7 @@ with tab4:
                 "5D %": "{:+.2f}%",
                 "20D %": "{:+.2f}%",
                 "vs 20EMA %": "{:+.2f}%",
-                "vs 50SMA %": "{:+.2f}%",
+                "vs 50EMA %": "{:+.2f}%",
                 "14D RSI": "{:.1f}",
                 "RVOL": "{:.2f}x",
                 "20D Realized Vol (%)": "{:.1f}%",
@@ -928,7 +928,7 @@ with tab4:
             .background_gradient(subset=["5D %"], cmap="RdYlGn", vmin=-5, vmax=5)
             .background_gradient(subset=["20D %"], cmap="RdYlGn", vmin=-10, vmax=10)
             .background_gradient(subset=["vs 20EMA %"], cmap="RdYlGn", vmin=-5, vmax=5)
-            .background_gradient(subset=["vs 50SMA %"], cmap="RdYlGn", vmin=-6, vmax=6)
+            .background_gradient(subset=["vs 50EMA %"], cmap="RdYlGn", vmin=-6, vmax=6)
             .background_gradient(subset=["14D RSI"], cmap="coolwarm", vmin=30, vmax=70)
             .background_gradient(subset=["RVOL"], cmap="YlOrRd", vmin=0.7, vmax=2.2)
             .background_gradient(subset=["20D Realized Vol (%)"], cmap="YlOrRd", vmin=15, vmax=50)
@@ -989,7 +989,7 @@ with tab5:
             "20D %": d.get("pct_20d"),
             "14D RSI": d.get("rsi"),
             "RVOL": d.get("rvol"),
-            "vs 50SMA %": d.get("dist_sma50"),
+            "vs 50EMA %": d.get("dist_ema50"),
             "ATR Stretch": d.get("atr_stretch"),
             "Drawdown ATH (%)": d.get("drawdown_ath"),
             "State": d.get("tech_status")
@@ -1004,14 +1004,14 @@ with tab5:
                 "20D %": "{:+.2f}%",
                 "14D RSI": "{:.1f}",
                 "RVOL": "{:.2f}x",
-                "vs 50SMA %": "{:+.2f}%",
+                "vs 50EMA %": "{:+.2f}%",
                 "ATR Stretch": "{:+.2f}",
                 "Drawdown ATH (%)": "{:.2f}%"
             })
             .background_gradient(subset=["1D %"], cmap="RdYlGn", vmin=-3, vmax=3)
             .background_gradient(subset=["5D %"], cmap="RdYlGn", vmin=-5, vmax=5)
             .background_gradient(subset=["20D %"], cmap="RdYlGn", vmin=-8, vmax=8)
-            .background_gradient(subset=["vs 50SMA %"], cmap="RdYlGn", vmin=-6, vmax=6)
+            .background_gradient(subset=["vs 50EMA %"], cmap="RdYlGn", vmin=-6, vmax=6)
             .background_gradient(subset=["14D RSI"], cmap="coolwarm", vmin=30, vmax=70)
             .background_gradient(subset=["RVOL"], cmap="YlOrRd", vmin=0.7, vmax=2.2)
             .background_gradient(subset=["ATR Stretch"], cmap="coolwarm", vmin=-2.5, vmax=2.5)
@@ -1067,20 +1067,20 @@ with tab6:
     ratio_df = load_ticker_data(ratio_choice)
 
     if not ratio_df.empty:
-        ratio_df["SMA50"] = ratio_df["Close"].rolling(50).mean()
+        ratio_df["EMA50"] = ratio_df["Close"].ewm(span=50, adjust=False).mean()
         ratio_df["STD50"] = ratio_df["Close"].rolling(50).std()
-        ratio_df["Upper2"] = ratio_df["SMA50"] + 2 * ratio_df["STD50"]
-        ratio_df["Lower2"] = ratio_df["SMA50"] - 2 * ratio_df["STD50"]
+        ratio_df["Upper2"] = ratio_df["EMA50"] + 2 * ratio_df["STD50"]
+        ratio_df["Lower2"] = ratio_df["EMA50"] - 2 * ratio_df["STD50"]
 
         sub_ratio = ratio_df.iloc[-500:].copy()
 
         fig_r = go.Figure()
         fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["Upper2"], line=dict(color="rgba(239, 68, 68, 0.4)", dash="dot"), name="+2σ Extreme"))
         fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["Lower2"], line=dict(color="rgba(16, 185, 129, 0.4)", dash="dot"), name="-2σ Extreme"))
-        fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["SMA50"], line=dict(color="#f59e0b", width=1.5), name="50-Day SMA"))
+        fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["EMA50"], line=dict(color="#f59e0b", width=1.5), name="50-Day EMA"))
         fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["Close"], line=dict(color="#3b82f6", width=2.5), name=ratio_choice.replace("_", "/")))
 
-        apply_dark_theme(fig_r, height=450, title=f"{ratio_choice.replace('_', '/')} Ratio with 50-Day Moving Average & ±2σ Statistical Envelopes")
+        apply_dark_theme(fig_r, height=450, title=f"{ratio_choice.replace('_', '/')} Ratio with 50-Day EMA & ±2σ Statistical Envelopes")
         fig_r.update_layout(yaxis_title="Ratio Value")
         st.plotly_chart(fig_r, use_container_width=True)
 
@@ -1101,7 +1101,7 @@ with tab7:
     if t_metrics:
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Current Price", f"${t_metrics['close']}", f"{t_metrics['pct_1d']}% (1D)")
-        c2.metric("50-Day SMA Trend", f"${t_metrics['sma50']:.2f}", f"{t_metrics['dist_sma50']:+.2f}% vs 50SMA")
+        c2.metric("50-Day EMA Trend", f"${t_metrics['ema50']:.2f}", f"{t_metrics['dist_ema50']:+.2f}% vs 50EMA")
         c3.metric("ATH Drawdown", f"{t_metrics['drawdown_ath']}%", f"Days: {t_metrics['days_in_drawdown']}")
         c4.metric("14D RSI", f"{t_metrics['rsi']}", f"RVOL: {t_metrics['rvol']}x")
 

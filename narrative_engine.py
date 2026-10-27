@@ -4,15 +4,15 @@ from data_manager import load_ticker_data, SECTORS, INDEXES, MAG_7, MACRO_ASSETS
 from indicators import compute_all_metrics
 
 def compute_ratio_analytics(ratio_name: str) -> dict:
-    """Computes price, Z-score, moving averages, and 5Y percentile for synthetic pairs."""
+    """Computes price, Z-score, 50 EMA, and 5Y percentile for synthetic pairs."""
     df = load_ticker_data(ratio_name)
     if df.empty or len(df) < 50:
         return {}
 
     close = df["Close"]
-    sma50 = close.rolling(50).mean()
+    ema50 = close.ewm(span=50, adjust=False).mean()
     std50 = close.rolling(50).std()
-    z_score_50 = (close - sma50) / std50.replace(0, np.nan)
+    z_score_50 = (close - ema50) / std50.replace(0, np.nan)
 
     # 5-year percentile (approx 1260 days)
     lookback = min(len(close), 1260)
@@ -81,7 +81,7 @@ def compute_ratio_analytics(ratio_name: str) -> dict:
             state_color = "#94a3b8"
     else:
         state_label = "Range-Bound Ratio"
-        action_text = "Monitor Moving Average Crossover"
+        action_text = "Monitor 50 EMA Mean Reversion"
         state_color = "#94a3b8"
 
     return {
@@ -90,7 +90,8 @@ def compute_ratio_analytics(ratio_name: str) -> dict:
         "pct_1d": round(float(pct_1d), 2),
         "pct_5d": round(float(pct_5d), 2),
         "pct_20d": round(float(pct_20d), 2),
-        "sma50": round(float(sma50.iloc[-1]), 4),
+        "ema50": round(float(ema50.iloc[-1]), 4),
+        "sma50": round(float(ema50.iloc[-1]), 4),
         "z_score_50d": round(curr_z, 2),
         "percentile_5y": round(float(pctile_5y), 1),
         "is_stretched": abs(curr_z) >= 1.8,
