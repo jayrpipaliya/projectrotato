@@ -239,7 +239,7 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             "type_label": "Small-Cap vs Tech Rotation",
             "score": f"{iwm_qqq.get('z_score_50d', 0):+.2f}σ",
             "bias_label": "MEAN REVERSION",
-            "confirmations": f"5Y %ile: {iwm_qqq.get('percentile_5y')}%",
+            "confirmations": f"5D: {iwm_qqq.get('pct_5d', 0):+.2f}% | 20D: {iwm_qqq.get('pct_20d', 0):+.2f}% | vs 50EMA: {iwm_qqq.get('dist_ema50', 0):+.2f}%",
             "status_desc": "Extreme Valuation Divergence",
             "thesis": "Small caps are historically discounted relative to mega-cap tech.",
             "entry": f"{iwm_qqq.get('current', 0):.4f} spread",

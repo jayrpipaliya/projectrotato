@@ -4,76 +4,95 @@ from data_manager import load_ticker_data, SECTORS, INDEXES, MAG_7, MACRO_ASSETS
 from indicators import compute_all_metrics
 
 def compute_ratio_analytics(ratio_name: str) -> dict:
-    """Computes price, Z-score, 50 EMA, and 5Y percentile for synthetic pairs."""
+    """Computes price, 5D/20D trend, 20 EMA, 50 EMA, and actionable states for synthetic pairs."""
     df = load_ticker_data(ratio_name)
     if df.empty or len(df) < 50:
         return {}
 
     close = df["Close"]
+    ema20 = close.ewm(span=20, adjust=False).mean()
     ema50 = close.ewm(span=50, adjust=False).mean()
+    curr_close = float(close.iloc[-1])
+    curr_ema20 = float(ema20.iloc[-1])
+    curr_ema50 = float(ema50.iloc[-1])
+
+    dist_ema20 = float((curr_close / curr_ema20 - 1) * 100)
+    dist_ema50 = float((curr_close / curr_ema50 - 1) * 100)
+
     std50 = close.rolling(50).std()
     z_score_50 = (close - ema50) / std50.replace(0, np.nan)
+    curr_z = float(z_score_50.iloc[-1])
 
-    # 5-year percentile (approx 1260 days)
+    # 5-year percentile (preserved for backward compatibility)
     lookback = min(len(close), 1260)
     history_window = close.iloc[-lookback:]
-    curr_close = close.iloc[-1]
     pctile_5y = float((history_window < curr_close).mean() * 100)
 
     pct_1d = float((curr_close / close.iloc[-2] - 1) * 100) if len(close) > 1 else 0.0
     pct_5d = float((curr_close / close.iloc[-6] - 1) * 100) if len(close) > 5 else 0.0
     pct_20d = float((curr_close / close.iloc[-21] - 1) * 100) if len(close) > 20 else 0.0
-    curr_z = float(z_score_50.iloc[-1])
 
-    # Dynamic actionable state based on 5Y percentile, 50D Z-score, and 5D trend
+    # Dynamic actionable state driven purely by 5D/20D trend and 20 EMA / 50 EMA relationship
     if "SPY" in ratio_name and "RSP" in ratio_name:
-        if pctile_5y >= 85:
-            if curr_z < 0 or pct_5d < -0.5:
-                state_label = "Concentration Peaking"
-                action_text = "Rotate into Equal-Weight (RSP)"
+        # SPY/RSP: Cap-Weighted vs Equal-Weight (Mega Concentration vs Broad Breadth)
+        if dist_ema20 > 0 and dist_ema50 > 0:
+            if curr_z > 1.5 or dist_ema20 > 1.2:
+                state_label = "Mega Concentration Peaking"
+                action_text = "Overextended vs 20/50 EMA; Rotate into RSP"
+                state_color = "#ef4444"
+            elif pct_5d > 0.5:
+                state_label = "Mega-Cap Tech Dominance"
+                action_text = "5D/20D Trend Bullish; Stay with Cap-Weight"
                 state_color = "#f59e0b"
             else:
-                state_label = "Extreme Mega Concentration"
-                action_text = "Fragile Rally; Cap-Weighted Exhaustion"
-                state_color = "#ef4444"
-        elif pctile_5y >= 65:
-            state_label = "Elevated Mega Dominance"
-            action_text = "Favor Quality Tech over Broad Market"
-            state_color = "#f59e0b"
-        elif pctile_5y <= 20:
-            state_label = "Broad Market Dominance"
-            action_text = "Broad Breadth; Overweight RSP"
-            state_color = "#10b981"
-        elif pctile_5y <= 40:
-            state_label = "Healthy Breadth Expansion"
-            action_text = "Broad Cyclical Participation"
+                state_label = "Mega-Cap Bull Trend (Slowing)"
+                action_text = "Holding Above 20/50 EMA; Monitor for Divergence"
+                state_color = "#f59e0b"
+        elif dist_ema20 < 0 and dist_ema50 < 0:
+            if pct_5d < -0.5 and pct_20d < -1.0:
+                state_label = "Broad Breadth Expansion"
+                action_text = "Downtrend Below 20/50 EMA; Overweight RSP"
+                state_color = "#10b981"
+            else:
+                state_label = "Equal-Weight Outperformance"
+                action_text = "RSP Gaining Relative Strength vs Mega-Caps"
+                state_color = "#10b981"
+        elif dist_ema20 < 0 and dist_ema50 >= 0:
+            state_label = "Pullback to 50 EMA Support"
+            action_text = "Testing 50 EMA; RSP Rotation Building"
             state_color = "#10b981"
         else:
-            state_label = "Balanced Breadth"
-            action_text = "Neutral Allocation (SPY vs RSP)"
+            state_label = "Balanced Breadth Regime"
+            action_text = "Consolidating Across 20/50 EMA"
             state_color = "#94a3b8"
 
     elif "IWM" in ratio_name and "QQQ" in ratio_name:
-        if pctile_5y <= 15:
-            if curr_z > -0.5 and pct_5d > 1.0:
-                state_label = "Small-Cap Value Coiling"
-                action_text = "Early Mean-Reversion Bid in IWM"
+        # IWM/QQQ: Small-Caps vs Mega Tech Rotation
+        if dist_ema20 > 0 and dist_ema50 > 0:
+            if pct_5d > 1.0 and pct_20d > 2.0:
+                state_label = "Aggressive Small-Cap Rotation"
+                action_text = "5D/20D Momentum Strong; Overweight IWM"
                 state_color = "#10b981"
             else:
-                state_label = "Tech Secular Monopoly"
-                action_text = "Underweight Small-Caps; Stay in QQQ"
+                state_label = "Small-Cap Trend Above 20/50 EMA"
+                action_text = "Healthy Small-Cap Outperformance"
+                state_color = "#10b981"
+        elif dist_ema20 < 0 and dist_ema50 < 0:
+            if curr_z < -1.5 or (pct_5d > 0.5 and dist_ema20 > -1.0):
+                state_label = "Small-Cap Value Coiling"
+                action_text = "Oversold vs 50 EMA; Watch for 20 EMA Reclaim"
+                state_color = "#10b981"
+            elif pct_5d < -0.5:
+                state_label = "Tech Monopoly Regime"
+                action_text = "Downtrend Below 20/50 EMA; Stay in QQQ"
                 state_color = "#3b82f6"
-        elif pctile_5y <= 35:
-            state_label = "Tech Leadership Regime"
-            action_text = "Avoid IWM Dips; Stick with Tech"
-            state_color = "#3b82f6"
-        elif pctile_5y >= 80:
-            state_label = "Small-Cap Extension"
-            action_text = "Trim High-Beta; Rotate Back to QQQ"
-            state_color = "#ef4444"
-        elif pctile_5y >= 60:
-            state_label = "Aggressive Risk-On Rotation"
-            action_text = "Overweight IWM & Cyclicals"
+            else:
+                state_label = "Tech Leadership Steady"
+                action_text = "Underweight Small-Caps; Respect Tech Trend"
+                state_color = "#3b82f6"
+        elif dist_ema20 >= 0 and dist_ema50 < 0:
+            state_label = "Small-Cap Reversal Bid"
+            action_text = "Reclaimed 20 EMA; Targeting 50 EMA Mean-Reversion"
             state_color = "#10b981"
         else:
             state_label = "Balanced Tech / Small"
@@ -81,7 +100,7 @@ def compute_ratio_analytics(ratio_name: str) -> dict:
             state_color = "#94a3b8"
     else:
         state_label = "Range-Bound Ratio"
-        action_text = "Monitor 50 EMA Mean Reversion"
+        action_text = "Consolidating Between 20/50 EMA"
         state_color = "#94a3b8"
 
     return {
@@ -90,8 +109,11 @@ def compute_ratio_analytics(ratio_name: str) -> dict:
         "pct_1d": round(float(pct_1d), 2),
         "pct_5d": round(float(pct_5d), 2),
         "pct_20d": round(float(pct_20d), 2),
-        "ema50": round(float(ema50.iloc[-1]), 4),
-        "sma50": round(float(ema50.iloc[-1]), 4),
+        "ema20": round(curr_ema20, 4),
+        "ema50": round(curr_ema50, 4),
+        "dist_ema20": round(dist_ema20, 2),
+        "dist_ema50": round(dist_ema50, 2),
+        "sma50": round(curr_ema50, 4),
         "z_score_50d": round(curr_z, 2),
         "percentile_5y": round(float(pctile_5y), 1),
         "is_stretched": abs(curr_z) >= 1.8,

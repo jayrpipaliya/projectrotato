@@ -477,15 +477,19 @@ with c4:
     z_val = spy_rsp.get("z_score_50d", 0)
     act_state = spy_rsp.get("actionable_state", "Concentration Peaking")
     act_text = spy_rsp.get("action_text", "Rotate into Equal-Weight (RSP)")
-    pct_val = spy_rsp.get("percentile_5y", 0)
+    p5d = spy_rsp.get("pct_5d", 0)
+    p20d = spy_rsp.get("pct_20d", 0)
+    d_ema20 = spy_rsp.get("dist_ema20", 0)
+    d_ema50 = spy_rsp.get("dist_ema50", 0)
     color_val = spy_rsp.get("state_color", "#f59e0b")
     card_c4 = (
         f'<div class="metric-card-lux">'
         f'<div class="card-label"><span>SPY / RSP (Breadth)</span><span class="pill-amber">{z_val:+.2f}σ</span></div>'
         f'<div class="card-val">{spy_rsp.get("current", 0):.4f}</div>'
         f'<div class="card-sub" style="flex-direction:column; align-items:flex-start; gap:2px;">'
-        f'<div>5Y %ile: <b style="color:#ffffff;">{pct_val}%</b> • <span style="color:{color_val}; font-weight:700;">{act_state}</span></div>'
-        f'<div style="font-size:11px; color:#94a3b8;"><b>Action:</b> {act_text}</div>'
+        f'<div><b>5D:</b> <span style="color:{"#10b981" if p5d >= 0 else "#ef4444"}; font-weight:700;">{p5d:+.2f}%</span> • <b>20D:</b> <span style="color:{"#10b981" if p20d >= 0 else "#ef4444"}; font-weight:700;">{p20d:+.2f}%</span> • <span style="color:{color_val}; font-weight:700;">{act_state}</span></div>'
+        f'<div style="font-size:11px; color:#94a3b8;"><b>vs 20EMA:</b> {d_ema20:+.2f}% &nbsp;|&nbsp; <b>vs 50EMA:</b> {d_ema50:+.2f}%</div>'
+        f'<div style="font-size:11px; color:#cbd5e1;"><b>Action:</b> {act_text}</div>'
         f'</div>'
         f'</div>'
     )
@@ -495,15 +499,19 @@ with c5:
     z_rot = iwm_qqq.get("z_score_50d", 0)
     act_state_rot = iwm_qqq.get("actionable_state", "Small-Cap Coiling")
     act_text_rot = iwm_qqq.get("action_text", "Early Mean-Reversion Bid in IWM")
-    pct_rot = iwm_qqq.get("percentile_5y", 0)
+    p5d_rot = iwm_qqq.get("pct_5d", 0)
+    p20d_rot = iwm_qqq.get("pct_20d", 0)
+    d_ema20_rot = iwm_qqq.get("dist_ema20", 0)
+    d_ema50_rot = iwm_qqq.get("dist_ema50", 0)
     color_rot = iwm_qqq.get("state_color", "#10b981")
     card_c5 = (
         f'<div class="metric-card-lux">'
         f'<div class="card-label"><span>IWM / QQQ (Rotation)</span><span class="pill-amber">{z_rot:+.2f}σ</span></div>'
         f'<div class="card-val">{iwm_qqq.get("current", 0):.4f}</div>'
         f'<div class="card-sub" style="flex-direction:column; align-items:flex-start; gap:2px;">'
-        f'<div>5Y %ile: <b style="color:#ffffff;">{pct_rot}%</b> • <span style="color:{color_rot}; font-weight:700;">{act_state_rot}</span></div>'
-        f'<div style="font-size:11px; color:#94a3b8;"><b>Action:</b> {act_text_rot}</div>'
+        f'<div><b>5D:</b> <span style="color:{"#10b981" if p5d_rot >= 0 else "#ef4444"}; font-weight:700;">{p5d_rot:+.2f}%</span> • <b>20D:</b> <span style="color:{"#10b981" if p20d_rot >= 0 else "#ef4444"}; font-weight:700;">{p20d_rot:+.2f}%</span> • <span style="color:{color_rot}; font-weight:700;">{act_state_rot}</span></div>'
+        f'<div style="font-size:11px; color:#94a3b8;"><b>vs 20EMA:</b> {d_ema20_rot:+.2f}% &nbsp;|&nbsp; <b>vs 50EMA:</b> {d_ema50_rot:+.2f}%</div>'
+        f'<div style="font-size:11px; color:#cbd5e1;"><b>Action:</b> {act_text_rot}</div>'
         f'</div>'
         f'</div>'
     )
@@ -1067,6 +1075,7 @@ with tab6:
     ratio_df = load_ticker_data(ratio_choice)
 
     if not ratio_df.empty:
+        ratio_df["EMA20"] = ratio_df["Close"].ewm(span=20, adjust=False).mean()
         ratio_df["EMA50"] = ratio_df["Close"].ewm(span=50, adjust=False).mean()
         ratio_df["STD50"] = ratio_df["Close"].rolling(50).std()
         ratio_df["Upper2"] = ratio_df["EMA50"] + 2 * ratio_df["STD50"]
@@ -1077,10 +1086,11 @@ with tab6:
         fig_r = go.Figure()
         fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["Upper2"], line=dict(color="rgba(239, 68, 68, 0.4)", dash="dot"), name="+2σ Extreme"))
         fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["Lower2"], line=dict(color="rgba(16, 185, 129, 0.4)", dash="dot"), name="-2σ Extreme"))
+        fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["EMA20"], line=dict(color="#06b6d4", width=1.5), name="20-Day EMA"))
         fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["EMA50"], line=dict(color="#f59e0b", width=1.5), name="50-Day EMA"))
         fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["Close"], line=dict(color="#3b82f6", width=2.5), name=ratio_choice.replace("_", "/")))
 
-        apply_dark_theme(fig_r, height=450, title=f"{ratio_choice.replace('_', '/')} Ratio with 50-Day EMA & ±2σ Statistical Envelopes")
+        apply_dark_theme(fig_r, height=450, title=f"{ratio_choice.replace('_', '/')} Ratio with 20/50 EMA & ±2σ Statistical Envelopes")
         fig_r.update_layout(yaxis_title="Ratio Value")
         st.plotly_chart(fig_r, use_container_width=True)
 

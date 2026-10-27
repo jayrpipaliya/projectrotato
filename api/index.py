@@ -101,6 +101,7 @@ def api_ratio(ratio_name: str):
     df = load_ticker_data(ratio_name)
     if df.empty:
         return {"error": "Ratio not found"}
+    df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
     df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()
     df["STD50"] = df["Close"].rolling(50).std()
     df["Upper2"] = df["EMA50"] + 2 * df["STD50"]
@@ -110,6 +111,7 @@ def api_ratio(ratio_name: str):
     return clean_json({
         "dates": sub["Date"].tolist(),
         "close": [round(float(v), 4) for v in sub["Close"]],
+        "ema20": [round(float(v), 4) if v == v else None for v in sub["EMA20"]],
         "ema50": [round(float(v), 4) if v == v else None for v in sub["EMA50"]],
         "sma50": [round(float(v), 4) if v == v else None for v in sub["EMA50"]],
         "upper2": [round(float(v), 4) if v == v else None for v in sub["Upper2"]],
@@ -518,19 +520,25 @@ HTML_CONTENT = """<!DOCTYPE html>
                     name: "SPY / RSP (Breadth)", 
                     p: spy_rsp.current, 
                     sigma: spy_rsp.z_score_50d, 
+                    pct_5d: spy_rsp.pct_5d,
+                    pct_20d: spy_rsp.pct_20d,
+                    dist_ema20: spy_rsp.dist_ema20,
+                    dist_ema50: spy_rsp.dist_ema50,
                     state: spy_rsp.actionable_state || "Concentration Peaking",
                     action: spy_rsp.action_text || "Rotate into Equal-Weight (RSP)",
-                    color: spy_rsp.state_color || "#f59e0b",
-                    pctile: spy_rsp.percentile_5y 
+                    color: spy_rsp.state_color || "#f59e0b"
                 },
                 { 
                     name: "IWM / QQQ (Rotation)", 
                     p: iwm_qqq.current, 
                     sigma: iwm_qqq.z_score_50d, 
+                    pct_5d: iwm_qqq.pct_5d,
+                    pct_20d: iwm_qqq.pct_20d,
+                    dist_ema20: iwm_qqq.dist_ema20,
+                    dist_ema50: iwm_qqq.dist_ema50,
                     state: iwm_qqq.actionable_state || "Small-Cap Coiling",
                     action: iwm_qqq.action_text || "Early Mean-Reversion Bid in IWM",
-                    color: iwm_qqq.state_color || "#10b981",
-                    pctile: iwm_qqq.percentile_5y 
+                    color: iwm_qqq.state_color || "#10b981"
                 }
             ];
 
@@ -543,10 +551,15 @@ HTML_CONTENT = """<!DOCTYPE html>
                 
                 let subHtml = `<div class="text-[11px] text-slate-400 mt-1">${card.sub}</div>`;
                 if (isRatio) {
+                    const sign5d = (card.pct_5d || 0) >= 0 ? '+' : '';
+                    const sign20d = (card.pct_20d || 0) >= 0 ? '+' : '';
+                    const signEma20 = (card.dist_ema20 || 0) >= 0 ? '+' : '';
+                    const signEma50 = (card.dist_ema50 || 0) >= 0 ? '+' : '';
                     subHtml = `
                         <div class="text-[11px] text-slate-400 mt-1 flex flex-col gap-0.5">
-                            <div>5Y %ile: <b class="text-white">${card.pctile}%</b> • <span style="color:${card.color};" class="font-bold">${card.state}</span></div>
-                            <div class="text-[10.5px] text-slate-400"><b>Action:</b> ${card.action}</div>
+                            <div><b>5D:</b> <span class="${(card.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-bold">${sign5d}${card.pct_5d}%</span> • <b>20D:</b> <span class="${(card.pct_20d || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-bold">${sign20d}${card.pct_20d}%</span> • <span style="color:${card.color};" class="font-bold">${card.state}</span></div>
+                            <div class="text-[10px] text-slate-400"><b>vs 20EMA:</b> <span class="${(card.dist_ema20 || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${signEma20}${card.dist_ema20}%</span> &nbsp;|&nbsp; <b>vs 50EMA:</b> <span class="${(card.dist_ema50 || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${signEma50}${card.dist_ema50}%</span></div>
+                            <div class="text-[10.5px] text-slate-300"><b>Action:</b> ${card.action}</div>
                         </div>
                     `;
                 }
@@ -939,11 +952,12 @@ HTML_CONTENT = """<!DOCTYPE html>
             const traces = [
                 { x: data.dates, y: data.upper2, name: "+2σ Extreme", mode: "lines", line: { color: "rgba(239, 68, 68, 0.4)", dash: "dot" } },
                 { x: data.dates, y: data.lower2, name: "-2σ Extreme", mode: "lines", line: { color: "rgba(16, 185, 129, 0.4)", dash: "dot" } },
+                { x: data.dates, y: data.ema20, name: "20-Day EMA", mode: "lines", line: { color: "#06b6d4", width: 1.5 } },
                 { x: data.dates, y: data.ema50 || data.sma50, name: "50-Day EMA", mode: "lines", line: { color: "#f59e0b", width: 1.5 } },
                 { x: data.dates, y: data.close, name: ratioName.replace('_', '/'), mode: "lines", line: { color: "#3b82f6", width: 2.5 } }
             ];
             const layout = {
-                title: { text: `${ratioName.replace('_', '/')} Ratio with 50-Day EMA & ±2σ Envelopes`, font: { color: '#ffffff', size: 15 } },
+                title: { text: `${ratioName.replace('_', '/')} Ratio with 20/50 EMA & ±2σ Envelopes`, font: { color: '#ffffff', size: 15 } },
                 plot_bgcolor: "#111319",
                 paper_bgcolor: "#111319",
                 font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 12 },
