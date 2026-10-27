@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import json
+from datetime import datetime
 import numpy as np
 from typing import Optional
 from fastapi import FastAPI, Query
@@ -414,7 +415,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <!-- Quick Prompts -->
                 <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Quick Desk Inquiries:</div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
-                    <button onclick="sendQuickPrompt('Analyze today\'s Mag 7 divergence. Which tech leaders are showing institutional accumulation vs distribution, and what are the key invalidation levels?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
+                    <button onclick="sendQuickPrompt('Analyze todays Mag 7 divergence. Which tech leaders are showing institutional accumulation vs distribution, and what are the key invalidation levels?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
                         🔍 <b>Mag 7 Divergence & Risks</b>
                     </button>
                     <button onclick="sendQuickPrompt('Based on the 5-day sector velocities, where is institutional smart money rotating right now? Which sector is leading?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
@@ -423,7 +424,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <button onclick="sendQuickPrompt('What are the biggest distribution traps and high-risk names on the desk today? Where should retail traders avoid dip buying?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
                         ⚠️ <b>Top Distribution Warnings</b>
                     </button>
-                    <button onclick="sendQuickPrompt('Give me the top 3 high-probability setups from today\'s confluence radar with exact entry rationale, targets, and stop-loss levels.')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
+                    <button onclick="sendQuickPrompt('Give me the top 3 high-probability setups from todays confluence radar with exact entry rationale, targets, and stop-loss levels.')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
                         🎯 <b>Best High-Conviction Setups</b>
                     </button>
                 </div>
@@ -836,7 +837,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         let AGENT_CHAT_HISTORY = [
             {
                 role: 'assistant',
-                content: 'Greetings Trader. I am your Quantitative Desk Analyst. I have indexed today\\'s live metrics (20/50/200 EMAs, RSI, ATR stretches, RVOL, sector velocities, and confluence scores). Ask me about any ticker, setup, or rotation risk.'
+                content: "Greetings Trader. I am your Quantitative Desk Analyst. I have indexed today's live metrics (20/50/200 EMAs, RSI, ATR stretches, RVOL, sector velocities, and confluence scores). Ask me about any ticker, setup, or rotation risk."
             }
         ];
 
@@ -1122,7 +1123,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 synthBox.innerHTML = marked.parse(summary);
                 if (sourceBadge) sourceBadge.innerText = AI_DATA.source || "Google Gemini";
             } else if (summary) {
-                let lines = summary.split('\n').filter(l => l.trim().length > 0);
+                let lines = summary.split(String.fromCharCode(10)).filter(l => l.trim().length > 0);
                 let sHtml = '';
                 lines.forEach(l => {
                     sHtml += `<div class="mb-1.5">${l.replace(/\\*\\*(.*?)\\*\\*/g, '<b class="text-white">$1</b>')}</div>`;
@@ -1203,7 +1204,6 @@ HTML_CONTENT = """<!DOCTYPE html>
                         </div>
                     `;
                 });
-            }
             document.getElementById('tradeCardsContainer').innerHTML = html;
         }
 

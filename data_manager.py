@@ -3,6 +3,10 @@ import glob
 import pandas as pd
 import numpy as np
 import yfinance as yf
+try:
+    yf.set_tz_cache_location("/tmp")
+except Exception:
+    pass
 from datetime import datetime
 
 RAW_CSV_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "raw_csv")
