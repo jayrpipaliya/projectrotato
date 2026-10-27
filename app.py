@@ -277,6 +277,15 @@ def apply_dark_theme(fig, height=360, title=None):
     )
     return fig
 
+def style_table_status(val):
+    if not isinstance(val, str):
+        return ""
+    if any(w in val for w in ["Alert", "Bearish", "Explosion", "Overbought"]):
+        return "color: #ef4444; font-weight: 700;"
+    if any(w in val for w in ["Healthy", "Bullish", "Squeeze", "Support", "Bounce"]):
+        return "color: #10b981; font-weight: 700;"
+    return "color: #94a3b8;"
+
 # ----------------- SIDEBAR CONTROLS -----------------
 st.sidebar.markdown("""
 <div style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
@@ -927,10 +936,23 @@ with tab4:
                 "Drawdown ATH (%)": "{:.2f}%",
                 "20D Hist. Win Rate (%)": "{:.1f}%",
                 "Median 20D Alpha (%)": "{:+.2f}%"
-            }).background_gradient(subset=["20D Hist. Win Rate (%)"], cmap="Greens", vmin=50, vmax=85)
-              .background_gradient(subset=["20D Realized Vol (%)"], cmap="YlOrRd", vmin=15, vmax=50),
+            })
+            .background_gradient(subset=["1D %"], cmap="RdYlGn", vmin=-3, vmax=3)
+            .background_gradient(subset=["5D %"], cmap="RdYlGn", vmin=-5, vmax=5)
+            .background_gradient(subset=["20D %"], cmap="RdYlGn", vmin=-10, vmax=10)
+            .background_gradient(subset=["vs 20EMA %"], cmap="RdYlGn", vmin=-5, vmax=5)
+            .background_gradient(subset=["vs 50SMA %"], cmap="RdYlGn", vmin=-6, vmax=6)
+            .background_gradient(subset=["14D RSI"], cmap="coolwarm", vmin=30, vmax=70)
+            .background_gradient(subset=["RVOL"], cmap="YlOrRd", vmin=0.7, vmax=2.2)
+            .background_gradient(subset=["20D Realized Vol (%)"], cmap="YlOrRd", vmin=15, vmax=50)
+            .background_gradient(subset=["60D Realized Vol (%)"], cmap="YlOrRd", vmin=15, vmax=50)
+            .background_gradient(subset=["Vol Ratio (20/60)"], cmap="coolwarm", vmin=0.75, vmax=1.35)
+            .background_gradient(subset=["Drawdown ATH (%)"], cmap="RdYlGn", vmin=-25, vmax=0)
+            .background_gradient(subset=["20D Hist. Win Rate (%)"], cmap="Greens", vmin=50, vmax=80)
+            .background_gradient(subset=["Median 20D Alpha (%)"], cmap="RdYlGn", vmin=-4, vmax=8)
+            .map(style_table_status, subset=["RSI Divergence", "Vol Regime", "Technical State"]),
             use_container_width=True,
-            height=320
+            height=340
         )
 
     # Mag 7 Visual Comparison Charts
@@ -998,9 +1020,18 @@ with tab5:
                 "ATR Stretch": "{:+.2f}",
                 "20D Realized Vol (%)": "{:.1f}%",
                 "Drawdown ATH (%)": "{:.2f}%"
-            }).background_gradient(subset=["5D %"], cmap="RdYlGn", vmin=-4, vmax=4),
+            })
+            .background_gradient(subset=["1D %"], cmap="RdYlGn", vmin=-3, vmax=3)
+            .background_gradient(subset=["5D %"], cmap="RdYlGn", vmin=-5, vmax=5)
+            .background_gradient(subset=["20D %"], cmap="RdYlGn", vmin=-8, vmax=8)
+            .background_gradient(subset=["14D RSI"], cmap="coolwarm", vmin=30, vmax=70)
+            .background_gradient(subset=["RVOL"], cmap="YlOrRd", vmin=0.7, vmax=2.2)
+            .background_gradient(subset=["ATR Stretch"], cmap="coolwarm", vmin=-2.5, vmax=2.5)
+            .background_gradient(subset=["20D Realized Vol (%)"], cmap="YlOrRd", vmin=12, vmax=35)
+            .background_gradient(subset=["Drawdown ATH (%)"], cmap="RdYlGn", vmin=-25, vmax=0)
+            .map(style_table_status, subset=["State"]),
             use_container_width=True,
-            height=360
+            height=380
         )
 
     # 2. 5-Day Basket Performance UNDERNEATH
