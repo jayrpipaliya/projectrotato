@@ -69,10 +69,8 @@ def get_cached_confluence(scope: str = "core"):
     return items
 
 @app.get("/api/market-data")
-def api_market_data(api_key: Optional[str] = Query(None)):
+def api_market_data():
     market_data = get_cached_analysis()
-    ai_output = get_cached_ai(market_data, api_key=api_key)
-    confluences = get_cached_confluence("core")
     
     spy_df = load_ticker_data("SPY")
     spy_metrics = compute_all_metrics(spy_df)
@@ -87,8 +85,6 @@ def api_market_data(api_key: Optional[str] = Query(None)):
     
     return clean_json({
         "market_data": market_data,
-        "ai_output": ai_output,
-        "confluences": confluences,
         "benchmarks": {
             "SPY": spy_metrics,
             "QQQ": qqq_metrics,
@@ -97,6 +93,12 @@ def api_market_data(api_key: Optional[str] = Query(None)):
         "last_market_session": last_date,
         "available_tickers": get_available_tickers()
     })
+
+@app.get("/api/ai-briefing")
+def api_ai_briefing(api_key: Optional[str] = Query(None)):
+    market_data = get_cached_analysis()
+    ai_output = get_cached_ai(market_data, api_key=api_key)
+    return clean_json(ai_output)
 
 @app.post("/api/agent-chat")
 async def api_agent_chat(payload: dict):
@@ -756,45 +758,79 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
         }
 
+        const LOADED_TABS = new Set(['tab1']);
+        let AI_DATA = null;
+
         function switchTab(tabId) {
             document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
             document.getElementById(tabId).classList.remove('hidden');
             document.getElementById('btn-' + tabId).classList.add('active');
 
-            if (tabId === 'tab3') setTimeout(() => Plotly.Plots.resize('confluenceChart'), 50);
-            if (tabId === 'tab4') setTimeout(() => Plotly.Plots.resize('mag7NormChart'), 50);
-            if (tabId === 'tab5') setTimeout(() => Plotly.Plots.resize('basketChart'), 50);
-            if (tabId === 'tab6') setTimeout(() => Plotly.Plots.resize('ratioChart'), 50);
-            if (tabId === 'tab7') setTimeout(() => Plotly.Plots.resize('singleTickerCombinedChart'), 50);
+            // Lazy load tabs on demand
+            if (tabId === 'tab2') {
+                LOADED_TABS.add('tab2');
+                renderTradeCards();
+            } else if (tabId === 'tab3') {
+                if (!LOADED_TABS.has('tab3')) {
+                    LOADED_TABS.add('tab3');
+                    renderConfluence();
+                } else {
+                    setTimeout(() => Plotly.Plots.resize('confluenceChart'), 50);
+                }
+            } else if (tabId === 'tab4') {
+                if (!LOADED_TABS.has('tab4')) {
+                    LOADED_TABS.add('tab4');
+                    renderMag7();
+                } else {
+                    setTimeout(() => Plotly.Plots.resize('mag7NormChart'), 50);
+                }
+            } else if (tabId === 'tab5') {
+                if (!LOADED_TABS.has('tab5')) {
+                    LOADED_TABS.add('tab5');
+                    renderSectors();
+                } else {
+                    setTimeout(() => Plotly.Plots.resize('basketChart'), 50);
+                }
+            } else if (tabId === 'tab6') {
+                if (!LOADED_TABS.has('tab6')) {
+                    LOADED_TABS.add('tab6');
+                    loadRatio('SPY_RSP');
+                } else {
+                    setTimeout(() => Plotly.Plots.resize('ratioChart'), 50);
+                }
+            } else if (tabId === 'tab7') {
+                if (!LOADED_TABS.has('tab7')) {
+                    LOADED_TABS.add('tab7');
+                    populateTickersDropdown();
+                    loadSingleTicker();
+                } else {
+                    setTimeout(() => Plotly.Plots.resize('singleTickerCombinedChart'), 50);
+                }
+            }
         }
 
         async function init() {
             updateApiKeyUI();
             try {
-                const url = USER_API_KEY ? `/api/market-data?api_key=${encodeURIComponent(USER_API_KEY)}` : '/api/market-data';
-                const res = await fetch(url);
+                // 1. Fetch core market numerical metrics instantly (< 300ms)
+                const res = await fetch('/api/market-data');
                 DATA = await res.json();
-                renderAll();
+                
+                // 2. Render primary dashboard shell immediately
+                renderTickerTape();
+                renderRegime();
+                renderBenchmarks();
+                renderMacroBarometers();
+                renderBriefingBaskets();
                 initAgentChat();
+
+                // 3. Asynchronously load AI briefing in background without blocking UI
+                loadAiBriefingAsync();
+
             } catch (err) {
                 console.error("Failed to load market data:", err);
             }
-        }
-
-        function renderAll() {
-            renderTickerTape();
-            renderRegime();
-            renderBenchmarks();
-            renderMacroBarometers();
-            renderBriefing();
-            renderTradeCards();
-            renderConfluence();
-            renderMag7();
-            renderSectors();
-            loadRatio('SPY_RSP');
-            populateTickersDropdown();
-            loadSingleTicker();
         }
 
         let AGENT_CHAT_HISTORY = [
@@ -1023,14 +1059,13 @@ HTML_CONTENT = """<!DOCTYPE html>
             document.getElementById('macroBarometersRow').innerHTML = html;
         }
 
-        function renderBriefing() {
-            const ai = DATA.ai_output;
-            document.getElementById('briefingTitle').innerText = ai.regime_title || "Secular Uptrend";
-            document.getElementById('briefingDetail').innerText = ai.regime_detail || "";
-            document.getElementById('briefingRiskPill').innerText = ai.risk_level || "Moderate";
-            document.getElementById('aiSourceBadge').innerText = ai.source || "Quantitative Desk";
+        function renderBriefingBaskets() {
+            const md = DATA.market_data || {};
+            document.getElementById('briefingTitle').innerText = md.narrative_title || "Secular Uptrend";
+            document.getElementById('briefingDetail').innerText = md.narrative_detail || "";
+            document.getElementById('briefingRiskPill').innerText = md.risk_level || "Moderate";
 
-            const b = ai.baskets || {};
+            const b = md.baskets_5d || {};
             const keys = [
                 { k: 'Growth', alt: 'Growth (XLK, SMH, XLC, XLY)', n: 'Growth' },
                 { k: 'Cyclical', alt: 'Cyclicals (XLF, XLI, XLB)', n: 'Cyclical' },
@@ -1049,37 +1084,81 @@ HTML_CONTENT = """<!DOCTYPE html>
                 `;
             });
             document.getElementById('basketsGrid').innerHTML = bHtml;
+        }
 
-            const summary = ai.llm_summary || "";
+        async function loadAiBriefingAsync() {
+            const synthBox = document.getElementById('synthesisText');
+            if (synthBox) {
+                synthBox.innerHTML = `
+                    <div class="flex items-center gap-2 text-slate-400 py-3 text-xs">
+                        <span class="inline-block animate-spin text-amber-400">⚡</span>
+                        <span>AI Quant Strategist synthesizing live market regimes & setups...</span>
+                    </div>
+                `;
+            }
+
+            try {
+                const url = USER_API_KEY ? `/api/ai-briefing?api_key=${encodeURIComponent(USER_API_KEY)}` : '/api/ai-briefing';
+                const res = await fetch(url);
+                AI_DATA = await res.json();
+                renderAiBriefingSynthesis();
+                if (LOADED_TABS.has('tab2')) {
+                    renderTradeCards();
+                }
+            } catch (err) {
+                if (synthBox) {
+                    synthBox.innerHTML = `<div class="text-xs text-red-400 py-2">AI Briefing unavailable: ${err.message}</div>`;
+                }
+            }
+        }
+
+        function renderAiBriefingSynthesis() {
+            if (!AI_DATA) return;
+            const summary = AI_DATA.llm_summary || "";
+            const synthBox = document.getElementById('synthesisText');
+            const sourceBadge = document.getElementById('aiSourceBadge');
+
             if (summary && window.marked) {
-                document.getElementById('synthesisText').innerHTML = marked.parse(summary);
-                document.getElementById('aiSourceBadge').innerText = ai.source || "Google Gemini";
+                synthBox.innerHTML = marked.parse(summary);
+                if (sourceBadge) sourceBadge.innerText = AI_DATA.source || "Google Gemini";
             } else if (summary) {
                 let lines = summary.split('\n').filter(l => l.trim().length > 0);
                 let sHtml = '';
                 lines.forEach(l => {
                     sHtml += `<div class="mb-1.5">${l.replace(/\\*\\*(.*?)\\*\\*/g, '<b class="text-white">$1</b>')}</div>`;
                 });
-                document.getElementById('synthesisText').innerHTML = sHtml;
-                document.getElementById('aiSourceBadge').innerText = ai.source || "Google Gemini";
+                synthBox.innerHTML = sHtml;
+                if (sourceBadge) sourceBadge.innerText = AI_DATA.source || "Google Gemini";
             } else {
-                document.getElementById('synthesisText').innerHTML = `
-                    <div>• <b>Regime Mechanics:</b> ${ai.regime_detail || ""}</div>
+                synthBox.innerHTML = `
+                    <div>• <b>Regime Mechanics:</b> ${AI_DATA.regime_detail || ""}</div>
                     <div>• <b>Cross-Asset Flow:</b> ${DATA.market_data.macro_context || ""}</div>
                     <div>• <b class="text-red-400">Desk Risk Warning:</b> Monitor mega-cap breadth concentration (SPY/RSP at 5-year highs). Avoid front-running unconfirmed dip buys on broken distribution names.</div>
-                    <div class="mt-2 pt-2 text-xs text-slate-500 border-t border-white/5"><i>💡 Tip: Set your Gemini API key in the top bar to enable the full daily AI briefing.</i></div>
+                    <div class="mt-2 pt-2 text-xs text-slate-500 border-t border-white/5"><i>💡 Tip: Set your Gemini API key in the sidebar to enable the full daily AI briefing.</i></div>
                 `;
-                document.getElementById('aiSourceBadge').innerText = "Quantitative Desk";
+                if (sourceBadge) sourceBadge.innerText = "Quantitative Desk";
             }
         }
 
         function renderTradeCards() {
-            const cards = DATA.ai_output.trade_cards || [];
-            let html = '';
+            const container = document.getElementById('tradeCardsContainer');
+            if (!container) return;
+            const cards = (AI_DATA && AI_DATA.trade_cards) ? AI_DATA.trade_cards : [];
+            if (!AI_DATA) {
+                container.innerHTML = `
+                    <div class="flex items-center gap-2 text-slate-400 py-4 text-xs">
+                        <span class="inline-block animate-spin text-amber-400">⚡</span>
+                        <span>Filtering algorithmic high-probability trade setups...</span>
+                    </div>
+                `;
+                return;
+            }
             if (cards.length === 0) {
-                html = '<div class="text-xs text-slate-400">No high-confluence setups detected in current market conditions.</div>';
-            } else {
-                cards.forEach(t => {
+                container.innerHTML = '<div class="text-xs text-slate-400">No high-confluence setups detected in current market conditions.</div>';
+                return;
+            }
+            let html = '';
+            cards.forEach(t => {
                     const dir = t.direction || "LONG";
                     const pill = dir.includes("LONG") ? 'pill-green' : (dir.includes("SHORT") || dir.includes("FADE") ? 'pill-red' : 'pill-amber');
                     html += `
