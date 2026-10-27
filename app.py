@@ -299,20 +299,13 @@ st.sidebar.subheader("Data Feeds (yfinance)")
 sync_scope = st.sidebar.radio("Sync Scope", ["Core Universe (Mag 7 + Indexes + Sectors + Macro)", "All 79 Tickers in raw_csv"], index=0)
 
 if st.sidebar.button("Sync Daily Closes Now", use_container_width=True):
-    progress_bar = st.sidebar.progress(0.0)
-    status_text = st.sidebar.empty()
-
-    def on_progress(curr, total, ticker, res):
-        pct = curr / total
-        progress_bar.progress(pct)
-        status_text.text(f"Updating {ticker} ({curr}/{total}): {res.get('status')}")
-
-    target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS if "Core" in sync_scope else None
-    results = update_all_tickers(tickers=target_tickers, progress_callback=on_progress)
-    progress_bar.progress(1.0)
-    updated_count = sum(1 for r in results if r.get("status") in ["updated", "created"])
-    status_text.success(f"Sync complete! {updated_count} tickers updated.")
-    st.rerun()
+    with st.sidebar.spinner("Syncing latest market bars from yfinance..."):
+        from data_manager import sync_tickers_batch
+        target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS if "Core" in sync_scope else None
+        results = sync_tickers_batch(tickers=target_tickers, force=True)
+        st.cache_data.clear()
+        st.sidebar.success(f"Sync complete! {len(results)} tickers checked.")
+        st.rerun()
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("AI Strategist Engine")

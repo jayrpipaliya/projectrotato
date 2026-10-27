@@ -112,9 +112,9 @@ async def api_agent_chat(payload: dict):
 @app.post("/api/sync-data")
 def api_sync_data(payload: dict = None):
     scope = (payload or {}).get("scope", "core")
-    target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS if scope == "core" else None
-    from data_manager import update_all_tickers
-    results = update_all_tickers(tickers=target_tickers, force=True)
+    from data_manager import sync_tickers_batch, get_available_tickers
+    target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS if scope == "core" else get_available_tickers()
+    results = sync_tickers_batch(tickers=target_tickers, force=True)
     updated_count = sum(1 for r in results if r.get("status") in ["updated", "created"])
     _CACHE.clear()
     return {"status": "success", "updated_count": updated_count, "total": len(results)}

@@ -21,6 +21,9 @@ INDEXES = ["SPY", "QQQ", "DIA", "IWM", "RSP"]
 SECTORS = ["XLK", "XLF", "XLV", "XLE", "XLI", "XLY", "XLP", "XLU", "XLB", "XLC", "XBI", "SMH"]
 MACRO_ASSETS = ["GLD", "USO", "TLT", "IBIT"]
 
+# Fast in-memory cache for serverless environments (e.g. Vercel read-only containers)
+_IN_MEMORY_TICKER_DATA: dict[str, pd.DataFrame] = {}
+
 # Map ticker to filename pattern in raw_csv: <ticker_lower>_us_d.csv
 def ticker_to_filename(ticker: str) -> str:
     return os.path.join(RAW_CSV_DIR, f"{ticker.lower()}_us_d.csv")
@@ -31,10 +34,30 @@ def filename_to_ticker(filepath: str) -> str:
 
 def get_available_tickers() -> list[str]:
     files = glob.glob(os.path.join(RAW_CSV_DIR, "*_us_d.csv"))
-    return sorted([filename_to_ticker(f) for f in files])
+    disk_tickers = [filename_to_ticker(f) for f in files]
+    all_tickers = set(disk_tickers) | set(_IN_MEMORY_TICKER_DATA.keys())
+    return sorted(list(all_tickers))
 
 def load_ticker_data(ticker: str) -> pd.DataFrame:
-    """Load daily OHLCV dataframe for a given ticker from raw_csv."""
+    """Load daily OHLCV dataframe for a given ticker from in-memory cache, /tmp, or raw_csv."""
+    ticker_up = ticker.upper()
+    ticker_clean = ticker_up.replace('/', '_')
+    if ticker_up in _IN_MEMORY_TICKER_DATA:
+        return _IN_MEMORY_TICKER_DATA[ticker_up].copy()
+    if ticker_clean in _IN_MEMORY_TICKER_DATA:
+        return _IN_MEMORY_TICKER_DATA[ticker_clean].copy()
+
+    # Check /tmp first if it exists
+    tmp_path = os.path.join("/tmp", "raw_csv", f"{ticker.lower()}_us_d.csv")
+    if os.path.exists(tmp_path):
+        df = pd.read_csv(tmp_path)
+        df["Date"] = pd.to_datetime(df["Date"])
+        df = df.sort_values("Date").reset_index(drop=True)
+        for col in ["Open", "High", "Low", "Close", "Volume"]:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+        return df
+
     filepath = ticker_to_filename(ticker)
     if not os.path.exists(filepath):
         # Check if it's a synthetic pair
@@ -57,6 +80,80 @@ def load_ticker_data(ticker: str) -> pd.DataFrame:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
+
+def sync_tickers_batch(tickers: list[str] = None, force: bool = True) -> list[dict]:
+    """
+    Downloads incremental updates for all requested tickers in ONE single fast batch request (< 2 seconds).
+    Updates in-memory DataFrames and writes to disk (or /tmp on serverless read-only platforms).
+    """
+    if tickers is None:
+        tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS
+
+    results = []
+    try:
+        batch_df = yf.download(tickers, period="5d", progress=False)
+        if batch_df.empty:
+            return [{"ticker": t, "status": "empty"} for t in tickers]
+
+        writable_dir = RAW_CSV_DIR
+        try:
+            test_path = os.path.join(RAW_CSV_DIR, ".write_test")
+            with open(test_path, "w") as f:
+                f.write("1")
+            os.remove(test_path)
+        except Exception:
+            writable_dir = os.path.join("/tmp", "raw_csv")
+            try:
+                os.makedirs(writable_dir, exist_ok=True)
+            except Exception:
+                pass
+
+        for t in tickers:
+            sub = pd.DataFrame()
+            for col in ["Open", "High", "Low", "Close", "Volume"]:
+                if (col, t) in batch_df.columns:
+                    sub[col] = batch_df[(col, t)]
+                elif col in batch_df.columns and not isinstance(batch_df.columns, pd.MultiIndex):
+                    sub[col] = batch_df[col]
+
+            sub = sub.dropna(subset=["Close"]).reset_index()
+            if sub.empty:
+                results.append({"ticker": t, "status": "up_to_date", "added_rows": 0})
+                continue
+
+            sub["Date"] = pd.to_datetime(sub["Date"]).dt.strftime("%Y-%m-%d")
+            for col in ["Open", "High", "Low", "Close", "Volume"]:
+                if col in sub.columns:
+                    sub[col] = pd.to_numeric(sub[col], errors="coerce")
+
+            existing = load_ticker_data(t)
+            if existing.empty:
+                combined = sub
+            else:
+                existing["Date"] = pd.to_datetime(existing["Date"]).dt.strftime("%Y-%m-%d")
+                combined = pd.concat([existing[~existing["Date"].isin(sub["Date"])], sub], ignore_index=True)
+
+            combined = combined.drop_duplicates(subset=["Date"]).sort_values("Date").reset_index(drop=True)
+            _IN_MEMORY_TICKER_DATA[t.upper()] = combined
+
+            try:
+                target_file = os.path.join(writable_dir, f"{t.lower()}_us_d.csv")
+                combined.to_csv(target_file, index=False)
+            except Exception:
+                pass
+
+            results.append({
+                "ticker": t,
+                "status": "updated",
+                "added_rows": len(sub),
+                "last_date": str(combined["Date"].iloc[-1])
+            })
+    except Exception as e:
+        results.append({"error": str(e)})
+
+    # Recalculate synthetic ratios in-memory and on disk
+    generate_synthetic_ratios()
+    return results
 
 def update_single_ticker(ticker: str, force: bool = False) -> dict:
     """Fetch incremental daily updates from yfinance and append to CSV."""
@@ -194,8 +291,18 @@ def generate_synthetic_ratios():
         merged["Low"] = merged["Close"]
         merged["Volume"] = (merged[f"Volume_{num}"] + merged[f"Volume_{den}"]) / 2
 
+        ratio_df = merged[["Date", "Open", "High", "Low", "Close", "Volume"]]
+        _IN_MEMORY_TICKER_DATA[ratio_name] = ratio_df
+        _IN_MEMORY_TICKER_DATA[ratio_name.lower()] = ratio_df
+        _IN_MEMORY_TICKER_DATA[ratio_name.replace("_", "/")] = ratio_df
+
         out_path = os.path.join(PROCESSED_DIR, f"{ratio_name.lower()}.csv")
         try:
-            merged[["Date", "Open", "High", "Low", "Close", "Volume"]].to_csv(out_path, index=False)
+            ratio_df.to_csv(out_path, index=False)
         except Exception:
-            pass
+            try:
+                tmp_out = os.path.join("/tmp", "processed_data", f"{ratio_name.lower()}.csv")
+                os.makedirs(os.path.dirname(tmp_out), exist_ok=True)
+                ratio_df.to_csv(tmp_out, index=False)
+            except Exception:
+                pass
