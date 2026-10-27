@@ -7,7 +7,14 @@ from datetime import datetime
 
 RAW_CSV_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "raw_csv")
 PROCESSED_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "processed_data")
-os.makedirs(PROCESSED_DIR, exist_ok=True)
+try:
+    os.makedirs(PROCESSED_DIR, exist_ok=True)
+except Exception:
+    PROCESSED_DIR = os.path.join("/tmp", "processed_data")
+    try:
+        os.makedirs(PROCESSED_DIR, exist_ok=True)
+    except Exception:
+        pass
 
 MAG_7 = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA"]
 INDEXES = ["SPY", "QQQ", "DIA", "IWM", "RSP"]
@@ -32,6 +39,10 @@ def load_ticker_data(ticker: str) -> pd.DataFrame:
     if not os.path.exists(filepath):
         # Check if it's a synthetic pair
         synthetic_path = os.path.join(PROCESSED_DIR, f"{ticker.lower().replace('/', '_')}.csv")
+        if not os.path.exists(synthetic_path):
+            bundle_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "processed_data", f"{ticker.lower().replace('/', '_')}.csv")
+            if os.path.exists(bundle_path):
+                synthetic_path = bundle_path
         if os.path.exists(synthetic_path):
             df = pd.read_csv(synthetic_path)
             df["Date"] = pd.to_datetime(df["Date"])
@@ -159,4 +170,7 @@ def generate_synthetic_ratios():
         merged["Volume"] = (merged[f"Volume_{num}"] + merged[f"Volume_{den}"]) / 2
 
         out_path = os.path.join(PROCESSED_DIR, f"{ratio_name.lower()}.csv")
-        merged[["Date", "Open", "High", "Low", "Close", "Volume"]].to_csv(out_path, index=False)
+        try:
+            merged[["Date", "Open", "High", "Low", "Close", "Volume"]].to_csv(out_path, index=False)
+        except Exception:
+            pass
