@@ -576,10 +576,10 @@ with tab1:
 
     with col_flow:
         baskets = ai_output.get("baskets", {})
-        g_val = baskets.get("Growth (XLK, XLC, XLY)", 0)
-        c_val = baskets.get("Cyclicals (XLI, XLF, XME)", 0)
-        d_val = baskets.get("Defensives (XLU, XLP, XLV)", 0)
-        e_val = baskets.get("Energy (XLE)", 0)
+        g_val = baskets.get("Growth", baskets.get("Growth (XLK, SMH, XLC, XLY)", baskets.get("Growth (XLK, XLC, XLY)", 0.0)))
+        c_val = baskets.get("Cyclical", baskets.get("Cyclicals (XLF, XLI, XLB)", baskets.get("Cyclicals (XLI, XLF, XME)", 0.0)))
+        d_val = baskets.get("Defensive", baskets.get("Defensives (XLU, XLP, XLV)", 0.0))
+        e_val = baskets.get("Energy", baskets.get("Energy (XLE)", 0.0))
 
         def fmt_b(val):
             col_b = "#10b981" if val >= 0 else "#ef4444"
@@ -1013,7 +1013,14 @@ with tab5:
     col_b1, col_b2 = st.columns([3, 2])
     with col_b1:
         baskets = market_data.get("baskets_5d", {})
-        basket_df = pd.DataFrame(list(baskets.items()), columns=["Basket", "5D Return (%)"])
+        display_keys = [
+            "Growth (XLK, SMH, XLC, XLY)",
+            "Cyclicals (XLF, XLI, XLB)",
+            "Defensives (XLU, XLP, XLV)",
+            "Energy (XLE)"
+        ]
+        display_dict = {k: baskets[k] for k in display_keys if k in baskets}
+        basket_df = pd.DataFrame(list(display_dict.items()), columns=["Basket", "5D Return (%)"])
         fig_b = px.bar(basket_df, x="5D Return (%)", y="Basket", orientation="h", color="5D Return (%)",
                        color_continuous_scale="RdYlGn")
         apply_dark_theme(fig_b, height=280)
@@ -1025,8 +1032,8 @@ with tab5:
             '<div class="metric-card-lux" style="height:100%;">'
             '<div style="font-size:12px; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Basket Composition & Velocity</div>'
             '<div style="font-size:12.5px; color:#cbd5e1; line-height:1.55;">'
-            '<div style="margin-bottom:6px;"><b style="color:#ffffff;">• Growth:</b> XLK (Tech), XLC (Comms), XLY (Cons Disc)</div>'
-            '<div style="margin-bottom:6px;"><b style="color:#ffffff;">• Cyclicals:</b> XLI (Industrials), XLF (Financials), XME (Metals)</div>'
+            '<div style="margin-bottom:6px;"><b style="color:#ffffff;">• Growth:</b> XLK (Tech), SMH (Semis), XLC (Comms), XLY (Cons Disc)</div>'
+            '<div style="margin-bottom:6px;"><b style="color:#ffffff;">• Cyclicals:</b> XLF (Financials), XLI (Industrials), XLB (Materials)</div>'
             '<div style="margin-bottom:6px;"><b style="color:#ffffff;">• Defensives:</b> XLU (Utilities), XLP (Staples), XLV (Health)</div>'
             '<div style="margin-bottom:6px;"><b style="color:#ffffff;">• Energy:</b> XLE (Crude & Natural Gas)</div>'
             '</div>'

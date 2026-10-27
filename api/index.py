@@ -309,11 +309,11 @@ HTML_CONTENT = """<!DOCTYPE html>
         <!-- Tab 3: Confirmation & Confluence Radar -->
         <div id="tab3" class="tab-pane hidden">
             <div class="flex flex-wrap gap-2 mb-4">
-                <button onclick="loadConfluence('core')" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-white">Core Universe</button>
-                <button onclick="loadConfluence('mag7')" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-[#111319] text-slate-400">Mag 7 Only</button>
-                <button onclick="loadConfluence('indexes')" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-[#111319] text-slate-400">Major Indexes</button>
-                <button onclick="loadConfluence('sectors')" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-[#111319] text-slate-400">Sector ETFs</button>
-                <button onclick="loadConfluence('macro')" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-[#111319] text-slate-400">Macro Assets</button>
+                <button onclick="loadConfluence('core', this)" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-white">Core Universe</button>
+                <button onclick="loadConfluence('mag7', this)" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-[#111319] text-slate-400">Mag 7 Only</button>
+                <button onclick="loadConfluence('indexes', this)" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-[#111319] text-slate-400">Major Indexes</button>
+                <button onclick="loadConfluence('sectors', this)" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-[#111319] text-slate-400">Sector ETFs</button>
+                <button onclick="loadConfluence('macro', this)" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-[#111319] text-slate-400">Macro Assets</button>
             </div>
             <div id="confluenceChart" class="lux-card p-4 mb-5" style="min-height: 400px;"></div>
             
@@ -576,19 +576,19 @@ HTML_CONTENT = """<!DOCTYPE html>
 
             const b = ai.baskets || {};
             const keys = [
-                { k: 'Growth (XLK, XLC, XLY)', n: 'Growth' },
-                { k: 'Cyclicals (XLI, XLF, XME)', n: 'Cyclical' },
-                { k: 'Defensives (XLU, XLP, XLV)', n: 'Defensive' },
-                { k: 'Energy (XLE)', n: 'Energy' }
+                { k: 'Growth', alt: 'Growth (XLK, SMH, XLC, XLY)', n: 'Growth' },
+                { k: 'Cyclical', alt: 'Cyclicals (XLF, XLI, XLB)', n: 'Cyclical' },
+                { k: 'Defensive', alt: 'Defensives (XLU, XLP, XLV)', n: 'Defensive' },
+                { k: 'Energy', alt: 'Energy (XLE)', n: 'Energy' }
             ];
             let bHtml = '';
             keys.forEach(it => {
-                const val = b[it.k] || 0;
+                const val = (b[it.k] !== undefined) ? b[it.k] : (b[it.alt] !== undefined ? b[it.alt] : 0);
                 const col = val >= 0 ? 'text-emerald-400' : 'text-red-400';
                 bHtml += `
                     <div>
                         <div class="text-[11px] text-slate-500">${it.n}</div>
-                        <div class="text-base font-extrabold ${col}">${val >= 0 ? '+' : ''}${val.toFixed(2)}%</div>
+                        <div class="text-base font-extrabold ${col}">${val >= 0 ? '+' : ''}${Number(val).toFixed(2)}%</div>
                     </div>
                 `;
             });
@@ -666,13 +666,15 @@ HTML_CONTENT = """<!DOCTYPE html>
             document.getElementById('tradeCardsContainer').innerHTML = html;
         }
 
-        async function loadConfluence(scope) {
+        async function loadConfluence(scope, btn) {
             document.querySelectorAll('.conf-pill').forEach(p => {
                 p.classList.remove('bg-white/10', 'text-white');
                 p.classList.add('bg-[#111319]', 'text-slate-400');
             });
-            event.target.classList.add('bg-white/10', 'text-white');
-            event.target.classList.remove('bg-[#111319]', 'text-slate-400');
+            if (btn) {
+                btn.classList.add('bg-white/10', 'text-white');
+                btn.classList.remove('bg-[#111319]', 'text-slate-400');
+            }
 
             const res = await fetch(`/api/confluence?scope=${scope}`);
             const items = await res.json();
@@ -803,31 +805,29 @@ HTML_CONTENT = """<!DOCTYPE html>
         }
 
         async function loadMag7NormChart() {
-            const traces = [];
             const palette = ["#f59e0b", "#10b981", "#3b82f6", "#ec4899", "#8b5cf6", "#06b6d4", "#f97316"];
             const tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA'];
             
-            for (let i = 0; i < tickers.length; i++) {
-                const t = tickers[i];
-                try {
-                    const res = await fetch(`/api/ticker/${t}?horizon=1 Year`);
-                    const data = await res.json();
-                    if (data.close && data.close.length >= 60) {
-                        const subDates = data.dates.slice(-60);
-                        const subClose = data.close.slice(-60);
-                        const base = subClose[0];
-                        const norm = subClose.map(c => ((c / base) - 1) * 100);
-                        traces.push({
-                            x: subDates,
-                            y: norm,
-                            name: t,
-                            type: 'scatter',
-                            mode: 'lines',
-                            line: { color: palette[i % palette.length], width: 2 }
-                        });
-                    }
-                } catch(e) {}
-            }
+            const promises = tickers.map(t => fetch(`/api/ticker/${t}?horizon=1 Year`).then(r => r.json()).catch(() => null));
+            const results = await Promise.all(promises);
+            const traces = [];
+
+            results.forEach((data, i) => {
+                if (data && data.close && data.close.length >= 60) {
+                    const subDates = data.dates.slice(-60);
+                    const subClose = data.close.slice(-60);
+                    const base = subClose[0];
+                    const norm = subClose.map(c => ((c / base) - 1) * 100);
+                    traces.push({
+                        x: subDates,
+                        y: norm,
+                        name: tickers[i],
+                        type: 'scatter',
+                        mode: 'lines',
+                        line: { color: palette[i % palette.length], width: 2 }
+                    });
+                }
+            });
             const layout = {
                 plot_bgcolor: "#111319",
                 paper_bgcolor: "#111319",
@@ -864,8 +864,14 @@ HTML_CONTENT = """<!DOCTYPE html>
 
             // Basket velocity bar chart
             const baskets = DATA.market_data.baskets_5d || {};
-            const bNames = Object.keys(baskets);
-            const bVals = Object.values(baskets);
+            const displayKeys = [
+                "Growth (XLK, SMH, XLC, XLY)",
+                "Cyclicals (XLF, XLI, XLB)",
+                "Defensives (XLU, XLP, XLV)",
+                "Energy (XLE)"
+            ];
+            const bNames = displayKeys.filter(k => k in baskets);
+            const bVals = bNames.map(k => baskets[k]);
             const bColors = bVals.map(v => v >= 0 ? '#10b981' : '#ef4444');
             const trace = {
                 x: bVals,

@@ -57,14 +57,20 @@ def analyze_market_narrative() -> dict:
             sector_results[sec] = metrics
 
     # 3. Defensive vs Cyclical vs Growth baskets
-    # Defensives: XLU, XLP, XLV
-    # Cyclicals / Real Economy: XLF, XLI, XLB
-    # Growth / Tech: XLK, SMH, XLC
-    # Energy: XLE
-    defensive_avg_5d = np.mean([sector_results[s]["pct_5d"] for s in ["XLU", "XLP", "XLV"] if s in sector_results]) if sector_results else 0.0
-    cyclical_avg_5d = np.mean([sector_results[s]["pct_5d"] for s in ["XLF", "XLI", "XLB"] if s in sector_results]) if sector_results else 0.0
-    growth_avg_5d = np.mean([sector_results[s]["pct_5d"] for s in ["XLK", "SMH", "XLC"] if s in sector_results]) if sector_results else 0.0
-    energy_5d = sector_results.get("XLE", {}).get("pct_5d", 0.0)
+    growth_constituents = ["XLK", "SMH", "XLC", "XLY"]
+    cyclical_constituents = ["XLF", "XLI", "XLB"]
+    defensive_constituents = ["XLU", "XLP", "XLV"]
+    energy_constituents = ["XLE"]
+
+    growth_vals = [sector_results[s]["pct_5d"] for s in growth_constituents if s in sector_results]
+    cyclical_vals = [sector_results[s]["pct_5d"] for s in cyclical_constituents if s in sector_results]
+    defensive_vals = [sector_results[s]["pct_5d"] for s in defensive_constituents if s in sector_results]
+    energy_vals = [sector_results[s]["pct_5d"] for s in energy_constituents if s in sector_results]
+
+    growth_avg_5d = float(np.mean(growth_vals)) if growth_vals else 0.0
+    cyclical_avg_5d = float(np.mean(cyclical_vals)) if cyclical_vals else 0.0
+    defensive_avg_5d = float(np.mean(defensive_vals)) if defensive_vals else 0.0
+    energy_5d = float(np.mean(energy_vals)) if energy_vals else 0.0
 
     # 4. Mag 7 Dispersion
     mag7_results = {}
@@ -161,10 +167,17 @@ def analyze_market_narrative() -> dict:
             "IWM_QQQ": iwm_qqq
         },
         "baskets_5d": {
-            "Growth (XLK, SMH, XLC)": round(growth_avg_5d, 2),
+            "Growth (XLK, SMH, XLC, XLY)": round(growth_avg_5d, 2),
             "Cyclicals (XLF, XLI, XLB)": round(cyclical_avg_5d, 2),
             "Defensives (XLU, XLP, XLV)": round(defensive_avg_5d, 2),
-            "Energy (XLE)": round(energy_5d, 2)
+            "Energy (XLE)": round(energy_5d, 2),
+            "Growth": round(growth_avg_5d, 2),
+            "Cyclical": round(cyclical_avg_5d, 2),
+            "Defensive": round(defensive_avg_5d, 2),
+            "Energy": round(energy_5d, 2),
+            "Growth (XLK, XLC, XLY)": round(growth_avg_5d, 2),
+            "Growth (XLK, SMH, XLC)": round(growth_avg_5d, 2),
+            "Cyclicals (XLI, XLF, XME)": round(cyclical_avg_5d, 2)
         },
         "macro_assets": macro_results,
         "sectors": sector_results,
