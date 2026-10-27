@@ -111,29 +111,45 @@ def generate_ai_ideas(market_data: dict, gemini_api_key: str = None) -> dict:
 
             prompt = f"""
 You are the Chief Quantitative Strategist and Senior Portfolio Risk Officer at a multi-billion dollar quantitative macro fund.
-Conduct an exhaustive, high-conviction **DAILY INSTITUTIONAL MARKET INTELLIGENCE BRIEFING** based strictly on the following quantitative desk snapshot for {datetime.now().strftime('%A, %B %d, %Y')}:
+Conduct a high-conviction, executive **DAILY INSTITUTIONAL MARKET INTELLIGENCE BRIEFING** based strictly on the following quantitative desk snapshot for {datetime.now().strftime('%A, %B %d, %Y')}:
 
 ```json
 {json.dumps(analysis_payload, indent=2, default=str)}
 ```
 
-Structure your analysis into 4 clear, professional institutional sections:
+CRITICAL FORMATTING INSTRUCTIONS FOR EXECUTIVE READABILITY:
+- Structure the briefing strictly into the 4 numbered institutional sections below.
+- Do NOT write massive run-on paragraphs or a monotonous bullet list.
+- Format each bullet as a concise, structured card with bold tickers, exact numbers, and explicit signals.
 
 ### 1. Macro Regime & Cross-Asset Liquidity Assessment
-- Detail the prevailing regime ({market_data.get('narrative_title')}).
-- Unpack what the 4 macro pillars are signaling: Treasuries (**TLT** - yield pressure/easing), Gold (**GLD** - debasement hedge), Oil (**USO** - inflation/supply shock), and Bitcoin (**IBIT** - liquidity & speculative risk appetite).
-- Explain whether current institutional capital flows are Risk-On, Risk-Off, or Selective Dispersion.
+Provide a 1-sentence executive summary of the prevailing regime: **{market_data.get('narrative_title')}**.
+Then break down the 4 macro liquidity pillars with distinct bullets:
+* **TLT (Treasuries):** Detail yield pressure vs easing, duration impact, and relationship to 50 EMA.
+* **GLD (Gold):** Detail real yields, debasement hedging demand, and key price levels.
+* **USO (Crude Oil):** Detail energy/inflation impulse and supply/demand signals.
+* **IBIT (Bitcoin):** Detail high-beta liquidity appetite and institutional risk willingness.
+Conclude with a clear statement: Current institutional regime is **[Risk-On / Risk-Off / Selective Dispersion]**.
 
 ### 2. Sector Velocity & Breadth Concentration Dynamics
-- Evaluate the 5-day velocity across Growth vs Cyclical vs Defensive vs Energy. Where is smart money rotating?
-- Assess market breadth using **SPY/RSP** (mega-cap concentration) and **IWM/QQQ** (small-cap vs large-cap tech divergence). Is rally participation healthy or dangerously concentrated?
+#### **5-Day Sector Capital Rotation**
+* **Leading Sectors (Smart Money Bids):** Name top leading sectors with 5-day velocity and institutional accumulation evidence.
+* **Lagging/Defensive Sectors:** Name sectors seeing net capital outflows or distribution.
+#### **Market Breadth & Concentration Metrics**
+* **SPY vs RSP (Mega-Cap Concentration):** Analyze equal-weight vs cap-weight divergence. Is the rally broad-based or dangerously concentrated?
+* **IWM vs QQQ (Risk Dispersion):** Analyze small-cap participation vs mega-cap tech dominance.
 
 ### 3. Actionable Setups & Trade Confluence
-- Highlight the strongest long setups from the top green confluence assets. Detail technical alignment (EMAs, RVOL, stretch).
-- Detail the distribution warnings and fade setups from red confluence assets. Point out traps where retail traders might mistakenly buy failing dips.
+#### 🟢 High-Conviction Long Setups (Green Confluence)
+* Detail top green confluence assets: Exact technical alignment (Price above 20/50 EMAs, RSI, RVOL, stretch) and trade rationale.
+#### 🔴 Distribution Warnings & Retail Traps (Red Confluence)
+* Detail top red confluence assets: Specific structural breakdowns and explicitly warn why retail traders must avoid buying the dip on these failing names.
 
 ### 4. Desk Game Plan & Tactical Risk Boundaries
-- Provide 3 explicit risk parameters for today: what to add risk to, what to hedge/trim, and exact price or ratio invalidation levels to respect.
+#### 🛡️ Tactical Risk Execution Rules
+* **Capital Deployment (Add Risk):** Where to allocate capital and optimal entry zones.
+* **Portfolio Defense (Hedge / Trim):** Names or sectors to de-risk, trim profits, or hedge.
+* **Hard Invalidation Trigger Levels:** 2-3 specific index or ratio thresholds that will immediately invalidate the current bullish or bearish bias.
 
 Write in a crisp, Wall Street institutional tone. Bold all key tickers, percentages, and metrics.
 """

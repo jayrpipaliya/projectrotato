@@ -245,6 +245,75 @@ HTML_CONTENT = """<!DOCTYPE html>
         .pill-amber { background: rgba(245, 158, 11, 0.14); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.28); }
         .pill-cyan { background: rgba(6, 182, 212, 0.14); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.28); }
         table td, table th { padding: 10px 12px; }
+
+        /* Executive Synthesis Styling */
+        .synth-body ul {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin: 10px 0;
+            padding-left: 0;
+            list-style: none;
+        }
+        .synth-body li {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 10px;
+            padding: 10px 14px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #cbd5e1;
+            list-style: none;
+            transition: all 0.2s ease;
+        }
+        .synth-body li:hover {
+            background: rgba(255, 255, 255, 0.035);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+        .synth-body li.card-long {
+            border-color: rgba(16, 185, 129, 0.25);
+            border-left: 4px solid #10b981;
+            background: rgba(16, 185, 129, 0.04);
+        }
+        .synth-body li.card-warn {
+            border-color: rgba(239, 68, 68, 0.25);
+            border-left: 4px solid #ef4444;
+            background: rgba(239, 68, 68, 0.04);
+        }
+        .synth-body li.card-risk {
+            border-color: rgba(245, 158, 11, 0.25);
+            border-left: 4px solid #f59e0b;
+            background: rgba(245, 158, 11, 0.04);
+        }
+        .synth-body li.card-macro {
+            border-color: rgba(14, 165, 233, 0.25);
+            border-left: 4px solid #0ea5e9;
+            background: rgba(14, 165, 233, 0.04);
+        }
+        .synth-body h4 {
+            font-size: 12.5px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #e2e8f0;
+            margin-top: 14px;
+            margin-bottom: 6px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .synth-body strong, .synth-body b {
+            color: #ffffff;
+            font-weight: 700;
+        }
+        .synth-body p {
+            margin-bottom: 8px;
+            font-size: 13px;
+            line-height: 1.65;
+            color: #cbd5e1;
+        }
     </style>
 </head>
 <body class="min-h-screen bg-[#08090d] text-[#f8fafc] flex flex-col antialiased">
@@ -466,12 +535,37 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </div>
             </div>
             <div id="synthesisCard" class="lux-card p-5 border border-amber-500/30 bg-gradient-to-b from-[#13161f] to-[#0d0e13]">
-                <div class="flex justify-between items-center mb-3">
-                    <span class="text-xs font-bold text-amber-500 uppercase tracking-wider">Institutional Executive Synthesis</span>
-                    <span id="aiSourceBadge" class="pill-amber px-2.5 py-0.5 rounded text-[11px]">Quantitative Desk</span>
+                <!-- Top Executive Header -->
+                <div class="flex flex-wrap justify-between items-center gap-3 pb-3 mb-4 border-b border-white/5">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-amber-400 text-lg">🏛️</span>
+                        <div>
+                            <span class="text-xs font-extrabold text-amber-400 uppercase tracking-wider block">Institutional Executive Synthesis</span>
+                            <span class="text-[11px] text-slate-400">Chief Quantitative Strategist & Portfolio Risk Intelligence</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span id="aiBriefingTimestamp" class="text-[11px] font-mono text-slate-400 bg-white/5 px-2.5 py-1 rounded border border-white/10">Daily Session</span>
+                        <span id="aiSourceBadge" class="pill-amber px-2.5 py-1 rounded text-[11px] font-bold">Quantitative Desk</span>
+                    </div>
                 </div>
-                <div id="synthesisText" class="text-sm text-slate-300 leading-relaxed space-y-2">
-                    Generating institutional synthesis...
+
+                <!-- Navigation View Filter Pills -->
+                <div class="flex flex-wrap items-center gap-1.5 mb-4 p-1.5 rounded-xl bg-white/[0.02] border border-white/5">
+                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">Focus Pillar:</span>
+                    <button onclick="filterSynthesisSection('all')" id="synthPill-all" class="synth-nav-pill px-3 py-1 rounded-lg text-xs font-bold bg-amber-500 text-black shadow-sm transition">All 4 Pillars</button>
+                    <button onclick="filterSynthesisSection('macro')" id="synthPill-macro" class="synth-nav-pill px-3 py-1 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition">🌐 1. Macro Liquidity</button>
+                    <button onclick="filterSynthesisSection('sectors')" id="synthPill-sectors" class="synth-nav-pill px-3 py-1 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition">⚡ 2. Sector Velocity</button>
+                    <button onclick="filterSynthesisSection('setups')" id="synthPill-setups" class="synth-nav-pill px-3 py-1 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition">🎯 3. Setups & Traps</button>
+                    <button onclick="filterSynthesisSection('risk')" id="synthPill-risk" class="synth-nav-pill px-3 py-1 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition">🛡️ 4. Desk Game Plan</button>
+                </div>
+
+                <!-- Structured Synthesis Section Cards Container -->
+                <div id="synthesisText" class="space-y-4">
+                    <div class="flex items-center gap-2 text-slate-400 py-6 text-xs">
+                        <span class="inline-block animate-spin text-amber-400">⚡</span>
+                        <span>Synthesizing multi-factor institutional market intelligence...</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1113,32 +1207,136 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
         }
 
+        let CURRENT_SYNTH_FILTER = 'all';
+
+        function filterSynthesisSection(key) {
+            CURRENT_SYNTH_FILTER = key;
+            const buttons = document.querySelectorAll('.synth-nav-pill');
+            for (let i = 0; i < buttons.length; i++) {
+                const btn = buttons[i];
+                if (btn.id === 'synthPill-' + key) {
+                    btn.className = 'synth-nav-pill px-3 py-1 rounded-lg text-xs font-bold bg-amber-500 text-black shadow-sm transition';
+                } else {
+                    btn.className = 'synth-nav-pill px-3 py-1 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition';
+                }
+            }
+            const cards = document.querySelectorAll('.synth-section-card');
+            for (let i = 0; i < cards.length; i++) {
+                const card = cards[i];
+                if (key === 'all' || card.getAttribute('data-section') === key) {
+                    card.classList.remove('hidden');
+                } else {
+                    card.classList.add('hidden');
+                }
+            }
+        }
+
+        function buildStructuredSynthesisCards(summary) {
+            if (!summary) return '';
+            const splitRegex = new RegExp('[' + String.fromCharCode(10) + String.fromCharCode(13) + ']+(?=###?\\\\s+[0-9IVX]+\\\\.|###?\\\\s+[A-Z])');
+            const chunks = summary.split(splitRegex);
+            
+            let cardsHtml = '';
+            let metaHtml = '';
+            
+            const configs = [
+                { key: 'macro', icon: '🌐', title: 'Macro Regime & Cross-Asset Liquidity', badge: 'Cross-Asset Macro', border: 'border-sky-500/30', bg: 'from-[#0b1322] to-[#080d17]', titleColor: 'text-sky-400' },
+                { key: 'sectors', icon: '⚡', title: 'Sector Velocity & Breadth Concentration Dynamics', badge: 'Capital Rotation', border: 'border-purple-500/30', bg: 'from-[#140e24] to-[#0b0814]', titleColor: 'text-purple-400' },
+                { key: 'setups', icon: '🎯', title: 'Actionable Setups & Trade Confluence', badge: 'Confluence Radar', border: 'border-emerald-500/30', bg: 'from-[#091a14] to-[#06100d]', titleColor: 'text-emerald-400' },
+                { key: 'risk', icon: '🛡️', title: 'Desk Game Plan & Tactical Risk Boundaries', badge: 'Risk Parameters', border: 'border-amber-500/30', bg: 'from-[#1a140a] to-[#100d07]', titleColor: 'text-amber-400' }
+            ];
+            
+            let secIdx = 0;
+            
+            for (let i = 0; i < chunks.length; i++) {
+                const chunk = chunks[i].trim();
+                if (!chunk) continue;
+                
+                const lines = chunk.split(String.fromCharCode(10));
+                const firstLine = lines[0].replace(/^[#\\s*]+/, '').trim();
+                
+                if (firstLine.indexOf('DAILY INSTITUTIONAL') >= 0 || firstLine.indexOf('Classification') >= 0 || firstLine.indexOf('Author:') >= 0) {
+                    const dateMatch = chunk.match(/\\*\\*Date:\\*\\*\\s*([^\\n*]+)/);
+                    const dateStr = dateMatch ? dateMatch[1].trim() : '';
+                    metaHtml = '<div class="p-3 mb-3 rounded-xl bg-white/[0.02] border border-white/5 flex flex-wrap justify-between items-center gap-2 text-xs">' +
+                               '<div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span class="font-bold text-slate-200">Daily Institutional Macro Intelligence</span>' +
+                               (dateStr ? '<span class="text-slate-500">•</span><span class="text-amber-400 font-mono">' + dateStr + '</span>' : '') +
+                               '</div><span class="text-[11px] text-slate-400 uppercase tracking-wider">Multi-Asset Desk Analysis</span></div>';
+                    continue;
+                }
+                
+                let cfg = configs[secIdx % configs.length];
+                if (firstLine.indexOf('Macro Regime') >= 0 || firstLine.indexOf('Liquidity') >= 0) cfg = configs[0];
+                else if (firstLine.indexOf('Sector Velocity') >= 0 || firstLine.indexOf('Breadth') >= 0) cfg = configs[1];
+                else if (firstLine.indexOf('Actionable Setups') >= 0 || firstLine.indexOf('Trade Confluence') >= 0) cfg = configs[2];
+                else if (firstLine.indexOf('Desk Game Plan') >= 0 || firstLine.indexOf('Risk Boundaries') >= 0) cfg = configs[3];
+                secIdx++;
+                
+                const bodyText = lines.slice(1).join(String.fromCharCode(10)).trim();
+                let parsed = window.marked ? marked.parse(bodyText) : bodyText;
+                
+                parsed = parsed.replace(/<li>([\\s\\S]*?)<\\/li>/g, function(m, inner) {
+                    const low = inner.toLowerCase();
+                    let cls = '';
+                    if (low.indexOf('long') >= 0 || low.indexOf('bid') >= 0 || low.indexOf('continuation') >= 0 || low.indexOf('leading') >= 0 || low.indexOf('growth') >= 0) {
+                        cls = 'card-long';
+                    } else if (low.indexOf('distribution') >= 0 || low.indexOf('trap') >= 0 || low.indexOf('fade') >= 0 || low.indexOf('warning') >= 0 || low.indexOf('avoid') >= 0 || low.indexOf('lagging') >= 0) {
+                        cls = 'card-warn';
+                    } else if (low.indexOf('invalidation') >= 0 || low.indexOf('add risk') >= 0 || low.indexOf('hedge') >= 0 || low.indexOf('trim') >= 0 || low.indexOf('parameter') >= 0) {
+                        cls = 'card-risk';
+                    } else if (low.indexOf('tlt') >= 0 || low.indexOf('gld') >= 0 || low.indexOf('uso') >= 0 || low.indexOf('ibit') >= 0 || low.indexOf('treasur') >= 0 || low.indexOf('gold') >= 0 || low.indexOf('crude') >= 0) {
+                        cls = 'card-macro';
+                    }
+                    return '<li class="' + cls + '">' + inner + '</li>';
+                });
+                
+                cardsHtml += '<div class="synth-section-card lux-card p-4 sm:p-5 mb-4 border ' + cfg.border + ' bg-gradient-to-b ' + cfg.bg + '" data-section="' + cfg.key + '">' +
+                             '<div class="flex flex-wrap justify-between items-center gap-2 pb-3 mb-3 border-b border-white/5">' +
+                             '<div class="flex items-center gap-2.5"><span class="text-lg">' + cfg.icon + '</span><span class="text-sm font-extrabold ' + cfg.titleColor + ' uppercase tracking-wider">' + firstLine + '</span></div>' +
+                             '<span class="px-2 py-0.5 rounded text-[10.5px] font-bold bg-white/5 border border-white/10 text-slate-300 uppercase">' + cfg.badge + '</span></div>' +
+                             '<div class="synth-body space-y-2 text-xs sm:text-sm text-slate-300 leading-relaxed">' + parsed + '</div></div>';
+            }
+            return metaHtml + cardsHtml;
+        }
+
         function renderAiBriefingSynthesis() {
             if (!AI_DATA) return;
             const summary = AI_DATA.llm_summary || "";
             const synthBox = document.getElementById('synthesisText');
             const sourceBadge = document.getElementById('aiSourceBadge');
 
-            if (summary && window.marked) {
-                synthBox.innerHTML = marked.parse(summary);
-                if (sourceBadge) sourceBadge.innerText = AI_DATA.source || "Google Gemini";
-            } else if (summary) {
-                let lines = summary.split(String.fromCharCode(10)).filter(l => l.trim().length > 0);
-                let sHtml = '';
-                lines.forEach(l => {
-                    sHtml += `<div class="mb-1.5">${l.replace(/\\*\\*(.*?)\\*\\*/g, '<b class="text-white">$1</b>')}</div>`;
-                });
-                synthBox.innerHTML = sHtml;
-                if (sourceBadge) sourceBadge.innerText = AI_DATA.source || "Google Gemini";
-            } else {
+            if (sourceBadge) sourceBadge.innerText = AI_DATA.source || "Google Gemini";
+
+            if (!summary) {
                 synthBox.innerHTML = `
-                    <div>• <b>Regime Mechanics:</b> ${AI_DATA.regime_detail || ""}</div>
-                    <div>• <b>Cross-Asset Flow:</b> ${DATA.market_data.macro_context || ""}</div>
-                    <div>• <b class="text-red-400">Desk Risk Warning:</b> Monitor mega-cap breadth concentration (SPY/RSP at 5-year highs). Avoid front-running unconfirmed dip buys on broken distribution names.</div>
-                    <div class="mt-2 pt-2 text-xs text-slate-500 border-t border-white/5"><i>💡 Tip: Set your Gemini API key in the sidebar to enable the full daily AI briefing.</i></div>
+                    <div class="synth-section-card lux-card p-4 border border-amber-500/20 bg-amber-950/10 space-y-3">
+                        <div class="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-wider">
+                            <span>⚡ Quantitative Desk Quick Read</span>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
+                            <div class="p-3 rounded-lg bg-black/20 border border-white/5">
+                                <b class="text-white block mb-1">Regime Mechanics</b>
+                                <span class="text-slate-400">${AI_DATA.regime_detail || ""}</span>
+                            </div>
+                            <div class="p-3 rounded-lg bg-black/20 border border-white/5">
+                                <b class="text-white block mb-1">Cross-Asset Flow</b>
+                                <span class="text-slate-400">${DATA.market_data.macro_context || ""}</span>
+                            </div>
+                            <div class="p-3 rounded-lg bg-black/20 border border-red-500/20">
+                                <b class="text-red-400 block mb-1">Desk Risk Warning</b>
+                                <span class="text-slate-400">Monitor mega-cap breadth concentration (SPY/RSP at 5-year highs). Avoid front-running unconfirmed dip buys on broken distribution names.</span>
+                            </div>
+                        </div>
+                        <div class="text-[11px] text-slate-500 pt-2 border-t border-white/5">
+                            <i>💡 Tip: Set your Gemini API key in the sidebar to generate the comprehensive daily multi-pillar intelligence briefing.</i>
+                        </div>
+                    </div>
                 `;
-                if (sourceBadge) sourceBadge.innerText = "Quantitative Desk";
+                return;
             }
+
+            synthBox.innerHTML = buildStructuredSynthesisCards(summary);
+            filterSynthesisSection(CURRENT_SYNTH_FILTER);
         }
 
         function renderTradeCards() {
