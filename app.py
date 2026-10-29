@@ -662,11 +662,11 @@ with tab1:
             unsafe_allow_html=True
         )
         import re
-        chunks = re.split(r'\n(?=###?\s+[0-9IVX]+\.|\n###?\s+[A-Z])', '\n' + llm_summary)
+        chunks = re.split(r'(?:\n\s*---\s*\n|\n+)(?=###?\s+[0-9IVX]+\.)', '\n' + llm_summary)
         sections = [c.strip() for c in chunks if c.strip() and not c.strip().startswith('# DAILY') and not c.strip().startswith('**Date')]
         
         if len(sections) >= 4:
-            p_tabs = st.tabs(["🌐 1. Macro Liquidity", "⚡ 2. Sector Velocity", "🎯 3. Setups & Traps", "🛡️ 4. Desk Game Plan"])
+            p_tabs = st.tabs(["🌐 1. Macro Liquidity (AI)", "⚡ 2. Sector Velocity (AI)", "🎯 3. Setups & Traps (AI)", "🛡️ 4. Desk Game Plan (AI)"])
             for idx, tab_obj in enumerate(p_tabs):
                 with tab_obj:
                     st.markdown(sections[idx])

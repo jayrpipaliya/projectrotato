@@ -1274,17 +1274,17 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         function buildStructuredSynthesisCards(summary) {
             if (!summary) return '';
-            const splitRegex = new RegExp('[' + String.fromCharCode(10) + String.fromCharCode(13) + ']+(?=###?\\\\s+[0-9IVX]+\\\\.|###?\\\\s+[A-Z])');
+            const splitRegex = /(?:\\r?\\n\\s*---\\s*\\r?\\n|\\r?\\n+)(?=###?\\s+[0-9IVX]+\\.)/;
             const chunks = summary.split(splitRegex);
             
             let cardsHtml = '';
             let metaHtml = '';
             
             const configs = [
-                { key: 'macro', icon: '🌐', title: 'Macro Regime & Cross-Asset Liquidity', badge: 'Cross-Asset Macro', border: 'border-sky-500/30', bg: 'from-[#0b1322] to-[#080d17]', titleColor: 'text-sky-400' },
-                { key: 'sectors', icon: '⚡', title: 'Sector Velocity & Breadth Concentration Dynamics', badge: 'Capital Rotation', border: 'border-purple-500/30', bg: 'from-[#140e24] to-[#0b0814]', titleColor: 'text-purple-400' },
-                { key: 'setups', icon: '🎯', title: 'Actionable Setups & Trade Confluence', badge: 'Confluence Radar', border: 'border-emerald-500/30', bg: 'from-[#091a14] to-[#06100d]', titleColor: 'text-emerald-400' },
-                { key: 'risk', icon: '🛡️', title: 'Desk Game Plan & Tactical Risk Boundaries', badge: 'Risk Parameters', border: 'border-amber-500/30', bg: 'from-[#1a140a] to-[#100d07]', titleColor: 'text-amber-400' }
+                { key: 'macro', icon: '🌐', title: 'Macro Regime & Cross-Asset Liquidity', badge: 'AI Macro Liquidity', border: 'border-sky-500/30', bg: 'from-[#0b1322] to-[#080d17]', titleColor: 'text-sky-400' },
+                { key: 'sectors', icon: '⚡', title: 'Sector Velocity & Breadth Concentration Dynamics', badge: 'AI Sector Dynamics', border: 'border-purple-500/30', bg: 'from-[#140e24] to-[#0b0814]', titleColor: 'text-purple-400' },
+                { key: 'setups', icon: '🎯', title: 'Actionable Setups & Trade Confluence', badge: 'AI Confluence Setups', border: 'border-emerald-500/30', bg: 'from-[#091a14] to-[#06100d]', titleColor: 'text-emerald-400' },
+                { key: 'risk', icon: '🛡️', title: 'Desk Game Plan & Tactical Risk Boundaries', badge: 'AI Tactical Boundaries', border: 'border-amber-500/30', bg: 'from-[#1a140a] to-[#100d07]', titleColor: 'text-amber-400' }
             ];
             
             let secIdx = 0;
@@ -1302,15 +1302,15 @@ HTML_CONTENT = """<!DOCTYPE html>
                     metaHtml = '<div class="p-3 mb-3 rounded-xl bg-white/[0.02] border border-white/5 flex flex-wrap justify-between items-center gap-2 text-xs">' +
                                '<div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span class="font-bold text-slate-200">Daily Institutional Macro Intelligence</span>' +
                                (dateStr ? '<span class="text-slate-500">•</span><span class="text-amber-400 font-mono">' + dateStr + '</span>' : '') +
-                               '</div><span class="text-[11px] text-slate-400 uppercase tracking-wider">Multi-Asset Desk Analysis</span></div>';
+                               '</div><span class="text-[11px] text-amber-400 font-bold uppercase tracking-wider bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">100% AI Synthesized</span></div>';
                     continue;
                 }
                 
                 let cfg = configs[secIdx % configs.length];
-                if (firstLine.indexOf('Macro Regime') >= 0 || firstLine.indexOf('Liquidity') >= 0) cfg = configs[0];
-                else if (firstLine.indexOf('Sector Velocity') >= 0 || firstLine.indexOf('Breadth') >= 0) cfg = configs[1];
-                else if (firstLine.indexOf('Actionable Setups') >= 0 || firstLine.indexOf('Trade Confluence') >= 0) cfg = configs[2];
-                else if (firstLine.indexOf('Desk Game Plan') >= 0 || firstLine.indexOf('Risk Boundaries') >= 0) cfg = configs[3];
+                if (firstLine.indexOf('1') === 0 || firstLine.indexOf('Macro Regime') >= 0 || firstLine.indexOf('Liquidity') >= 0) cfg = configs[0];
+                else if (firstLine.indexOf('2') === 0 || firstLine.indexOf('Sector Velocity') >= 0 || firstLine.indexOf('Breadth') >= 0) cfg = configs[1];
+                else if (firstLine.indexOf('3') === 0 || firstLine.indexOf('Actionable Setups') >= 0 || firstLine.indexOf('Trade Confluence') >= 0) cfg = configs[2];
+                else if (firstLine.indexOf('4') === 0 || firstLine.indexOf('Desk Game Plan') >= 0 || firstLine.indexOf('Risk Boundaries') >= 0) cfg = configs[3];
                 secIdx++;
                 
                 const bodyText = lines.slice(1).join(String.fromCharCode(10)).trim();
@@ -1334,7 +1334,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 cardsHtml += '<div class="synth-section-card lux-card p-4 sm:p-5 mb-4 border ' + cfg.border + ' bg-gradient-to-b ' + cfg.bg + '" data-section="' + cfg.key + '">' +
                              '<div class="flex flex-wrap justify-between items-center gap-2 pb-3 mb-3 border-b border-white/5">' +
                              '<div class="flex items-center gap-2.5"><span class="text-lg">' + cfg.icon + '</span><span class="text-sm font-extrabold ' + cfg.titleColor + ' uppercase tracking-wider">' + firstLine + '</span></div>' +
-                             '<span class="px-2 py-0.5 rounded text-[10.5px] font-bold bg-white/5 border border-white/10 text-slate-300 uppercase">' + cfg.badge + '</span></div>' +
+                             '<div class="flex items-center gap-1.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 border border-amber-500/20 text-amber-400 uppercase">AI Synthesized</span><span class="px-2 py-0.5 rounded text-[10.5px] font-bold bg-white/5 border border-white/10 text-slate-300 uppercase">' + cfg.badge + '</span></div></div>' +
                              '<div class="synth-body space-y-2 text-xs sm:text-sm text-slate-300 leading-relaxed">' + parsed + '</div></div>';
             }
             return metaHtml + cardsHtml;
@@ -1380,26 +1380,31 @@ HTML_CONTENT = """<!DOCTYPE html>
 
             if (!summary) {
                 synthBox.innerHTML = `
-                    <div class="synth-section-card lux-card p-4 border border-amber-500/20 bg-amber-950/10 space-y-3">
-                        <div class="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-wider">
-                            <span>⚡ Quantitative Desk Quick Read</span>
+                    <div class="synth-section-card lux-card p-5 border border-amber-500/20 bg-amber-950/10 space-y-4">
+                        <div class="flex items-center justify-between pb-3 border-b border-white/5">
+                            <div class="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-wider">
+                                <span class="animate-pulse">⚡</span>
+                                <span>AI Institutional Synthesis Engine (Pillars 1 to 4)</span>
+                            </div>
+                            <span class="pill-amber text-[10.5px] font-bold">Awaiting AI Briefing</span>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-slate-300">
-                            <div class="p-3 rounded-lg bg-black/20 border border-white/5">
-                                <b class="text-white block mb-1">Regime Mechanics</b>
-                                <span class="text-slate-400">${AI_DATA.regime_detail || ""}</span>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                            <div class="p-3.5 rounded-xl bg-black/20 border border-sky-500/20 space-y-1.5">
+                                <div class="text-sky-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5"><span>🌐</span> Pillar 1: Macro Liquidity</div>
+                                <div class="text-slate-300">${AI_DATA.regime_title || "Synthesizing yields, gold, oil & crypto liquidity..."}</div>
                             </div>
-                            <div class="p-3 rounded-lg bg-black/20 border border-white/5">
-                                <b class="text-white block mb-1">Cross-Asset Flow</b>
-                                <span class="text-slate-400">${DATA.market_data.macro_context || ""}</span>
+                            <div class="p-3.5 rounded-xl bg-black/20 border border-purple-500/20 space-y-1.5">
+                                <div class="text-purple-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5"><span>⚡</span> Pillar 2: Sector Velocity</div>
+                                <div class="text-slate-300">Tracking 5D capital rotation across Growth, Cyclicals, Defensives & Breadth...</div>
                             </div>
-                            <div class="p-3 rounded-lg bg-black/20 border border-red-500/20">
-                                <b class="text-red-400 block mb-1">Desk Risk Warning</b>
-                                <span class="text-slate-400">Monitor mega-cap breadth concentration (SPY/RSP at 5-year highs). Avoid front-running unconfirmed dip buys on broken distribution names.</span>
+                            <div class="p-3.5 rounded-xl bg-black/20 border border-emerald-500/20 space-y-1.5">
+                                <div class="text-emerald-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5"><span>🎯</span> Pillar 3: Actionable Setups</div>
+                                <div class="text-slate-300">Filtering algorithmic high-conviction long bids & distribution traps...</div>
                             </div>
-                        </div>
-                        <div class="text-[11px] text-slate-500 pt-2 border-t border-white/5">
-                            <i>💡 Tip: Set your Gemini API key in the sidebar to generate the comprehensive daily multi-pillar intelligence briefing.</i>
+                            <div class="p-3.5 rounded-xl bg-black/20 border border-amber-500/20 space-y-1.5">
+                                <div class="text-amber-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5"><span>🛡️</span> Pillar 4: Tactical Game Plan</div>
+                                <div class="text-slate-300">Formulating allocation zones, portfolio hedges & hard invalidation triggers...</div>
+                            </div>
                         </div>
                     </div>
                 `;
