@@ -8,14 +8,12 @@ from data_manager import MAG_7, INDEXES, SECTORS, MACRO_ASSETS
 
 load_dotenv()
 
-# Validated working model cascade (leading with supported fast models)
+# Validated working model cascade (leading with fastest supported models)
 GEMINI_MODELS = [
-    "gemini-3.5-flash",
     "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
     "gemini-3-flash-preview",
-    "gemini-3.8-flash",
     "gemini-flash-latest",
-    "gemini-2.5-pro",
 ]
 
 def get_gemini_client(api_key: str = None):
@@ -24,7 +22,7 @@ def get_gemini_client(api_key: str = None):
         return None, None
     try:
         from google import genai
-        client = genai.Client(api_key=key.strip())
+        client = genai.Client(api_key=key.strip(), http_options={"timeout": 15000})
         return client, key.strip()
     except Exception as e:
         return None, str(e)
@@ -207,6 +205,7 @@ Conclude with a clear statement: Current institutional regime is **[Risk-On / Ri
 * **Hard Invalidation Trigger Levels:** 2-3 specific index or ratio thresholds that will immediately invalidate the current bullish or bearish bias.
 
 Write in a crisp, Wall Street institutional tone. Bold all key tickers, percentages, and metrics.
+Keep each bullet point to 1-2 dense, high-signal analytical sentences (target 1,800 - 2,500 total characters) to ensure immediate execution speed.
 """
 
             for m in GEMINI_MODELS:

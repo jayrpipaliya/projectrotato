@@ -1236,6 +1236,10 @@ HTML_CONTENT = """<!DOCTYPE html>
             try {
                 const url = USER_API_KEY ? `/api/ai-briefing?api_key=${encodeURIComponent(USER_API_KEY)}` : '/api/ai-briefing';
                 const res = await fetch(url);
+                if (!res.ok) {
+                    const errBody = await res.text();
+                    throw new Error(`Server returned HTTP ${res.status}: ${errBody.slice(0, 80)}`);
+                }
                 AI_DATA = await res.json();
                 renderAiBriefingSynthesis();
                 if (LOADED_TABS.has('tab2')) {
@@ -1243,7 +1247,12 @@ HTML_CONTENT = """<!DOCTYPE html>
                 }
             } catch (err) {
                 if (synthBox) {
-                    synthBox.innerHTML = `<div class="text-xs text-red-400 py-2">AI Briefing unavailable: ${err.message}</div>`;
+                    synthBox.innerHTML = `
+                        <div class="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-300 flex items-center justify-between">
+                            <span>AI Briefing unavailable: ${err.message}</span>
+                            <button onclick="loadAiBriefingAsync()" class="px-2.5 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-200 rounded border border-red-500/30 transition text-[11px] font-medium">Retry</button>
+                        </div>
+                    `;
                 }
             }
         }
