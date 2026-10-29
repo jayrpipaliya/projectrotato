@@ -114,25 +114,58 @@ async def api_agent_chat(payload: dict):
 
 @app.post("/api/sync-data")
 def api_sync_data(payload: dict = None):
-    t0 = time.time()
-    scope = (payload or {}).get("scope", "core")
-    from data_manager import sync_tickers_batch, get_available_tickers
-    target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS if scope == "core" else get_available_tickers()
-    results = sync_tickers_batch(tickers=target_tickers, force=True)
-    updated_count = sum(1 for r in results if r.get("status") in ["updated", "created"])
-    sample_tickers = [r["ticker"] for r in results if "ticker" in r][:8]
-    last_date = results[0].get("last_date", datetime.now().strftime("%Y-%m-%d")) if results else "N/A"
-    duration = round(time.time() - t0, 2)
-    _CACHE.clear()
-    return {
-        "status": "success",
-        "updated_count": updated_count,
-        "total": len(results),
-        "last_date": last_date,
-        "sample_tickers": sample_tickers,
-        "duration": duration,
-        "timestamp": datetime.now().strftime("%I:%M:%S %p")
-    }
+    try:
+        t0 = time.time()
+        scope = (payload or {}).get("scope", "core")
+        from data_manager import sync_tickers_batch, get_available_tickers
+        target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS if scope == "core" else get_available_tickers()
+        results = sync_tickers_batch(tickers=target_tickers, force=True)
+        
+        errors = [r["error"] for r in results if "error" in r]
+        updated_count = sum(1 for r in results if r.get("status") in ["updated", "created"])
+        sample_tickers = [r["ticker"] for r in results if "ticker" in r][:8]
+        
+        last_date = "N/A"
+        for r in results:
+            if r.get("last_date"):
+                last_date = str(r["last_date"])
+                break
+        if last_date == "N/A":
+            last_date = datetime.now().strftime("%Y-%m-%d")
+
+        duration = round(time.time() - t0, 2)
+        _CACHE.clear()
+
+        if not sample_tickers and errors:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": f"Data provider error: {errors[0]}",
+                    "details": errors
+                }
+            )
+
+        return {
+            "status": "success",
+            "updated_count": updated_count,
+            "total": len(results) if results else len(target_tickers),
+            "last_date": last_date,
+            "sample_tickers": sample_tickers,
+            "duration": duration,
+            "timestamp": datetime.now().strftime("%I:%M:%S %p"),
+            "warnings": errors if errors else []
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"Sync failed: {str(e)}"
+            }
+        )
 
 @app.get("/api/confluence")
 def api_confluence(scope: str = Query("core")):
@@ -438,7 +471,10 @@ HTML_CONTENT = """<!DOCTYPE html>
         <!-- Regime Ribbon Card -->
         <div id="regimeCard" class="lux-card p-4 mb-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-                <div class="text-[11px] font-bold text-amber-500 uppercase tracking-wider">Current Market Regime</div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[11px] font-bold text-amber-500 uppercase tracking-wider">Current Market Regime</span>
+                    <span id="regimeAiBadge" class="hidden text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">AI Synthesized</span>
+                </div>
                 <div id="regimeTitle" class="text-lg font-extrabold text-white mt-0.5">Analyzing Market Narrative...</div>
                 <div id="regimeDetail" class="text-xs text-slate-400 mt-1 max-w-4xl">Decoding multi-factor sector flows and breadth concentration...</div>
             </div>
@@ -518,7 +554,10 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div class="lux-card p-5 border-t-4 border-amber-500">
                     <div class="flex justify-between items-center mb-2">
-                        <span class="text-[11px] font-bold text-amber-500 uppercase tracking-wider">Market Regime</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[11px] font-bold text-amber-500 uppercase tracking-wider">Market Regime</span>
+                            <span id="briefingAiBadge" class="hidden text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">AI Synthesized</span>
+                        </div>
                         <span id="briefingRiskPill" class="pill-amber px-2 py-0.5 rounded text-[11px] font-bold">Moderate</span>
                     </div>
                     <div id="briefingTitle" class="text-xl font-bold text-white mb-2">Secular Uptrend</div>
@@ -808,7 +847,9 @@ HTML_CONTENT = """<!DOCTYPE html>
                 });
 
                 if (!res.ok) {
-                    throw new Error(`Server returned HTTP ${res.status}`);
+                    const errData = await res.json().catch(() => null);
+                    const msg = (errData && errData.message) ? errData.message : `Server returned HTTP ${res.status}`;
+                    throw new Error(msg);
                 }
 
                 const data = await res.json();
@@ -1306,6 +1347,36 @@ HTML_CONTENT = """<!DOCTYPE html>
             const sourceBadge = document.getElementById('aiSourceBadge');
 
             if (sourceBadge) sourceBadge.innerText = AI_DATA.source || "Google Gemini";
+
+            // Dynamically update the Regime and Macro cards with AI's data understanding
+            if (AI_DATA.regime_title) {
+                const bTitle = document.getElementById('briefingTitle');
+                if (bTitle) bTitle.innerText = AI_DATA.regime_title;
+                const rTitle = document.getElementById('regimeTitle');
+                if (rTitle) rTitle.innerText = AI_DATA.regime_title;
+            }
+            if (AI_DATA.regime_detail) {
+                const bDetail = document.getElementById('briefingDetail');
+                if (bDetail) bDetail.innerText = AI_DATA.regime_detail;
+                const rDetail = document.getElementById('regimeDetail');
+                if (rDetail) rDetail.innerText = AI_DATA.regime_detail;
+            }
+            if (AI_DATA.risk_level) {
+                const bPill = document.getElementById('briefingRiskPill');
+                if (bPill) bPill.innerText = AI_DATA.risk_level;
+                const rBadge = document.getElementById('regimeRiskBadge');
+                if (rBadge) rBadge.innerText = AI_DATA.risk_level;
+            }
+            if (AI_DATA.macro_context) {
+                const mCtx = document.getElementById('macroContextText');
+                if (mCtx) mCtx.innerText = AI_DATA.macro_context;
+            }
+            if (AI_DATA.is_ai_derived) {
+                const bAi = document.getElementById('briefingAiBadge');
+                if (bAi) bAi.classList.remove('hidden');
+                const rAi = document.getElementById('regimeAiBadge');
+                if (rAi) rAi.classList.remove('hidden');
+            }
 
             if (!summary) {
                 synthBox.innerHTML = `

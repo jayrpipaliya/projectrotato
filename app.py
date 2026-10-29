@@ -598,14 +598,16 @@ with tab1:
     # 1. Regime & Capital Flow Grid (2 Compact Cards)
     col_reg, col_flow = st.columns(2)
     with col_reg:
-        regime_title = ai_output.get("regime_title", "Secular Uptrend")
-        regime_detail = ai_output.get("regime_detail", "")
-        risk_level = ai_output.get("risk_level", "Moderate")
+        regime_title = ai_output.get("regime_title") or market_data.get("narrative_title", "Secular Uptrend")
+        regime_detail = ai_output.get("regime_detail") or market_data.get("narrative_detail", "")
+        risk_level = ai_output.get("risk_level") or market_data.get("risk_level", "Moderate")
+        is_ai = ai_output.get("is_ai_derived", False)
+        ai_badge = '<span class="pill-amber" style="font-size:10px; margin-left:6px; padding:2px 6px;">AI Synthesized</span>' if is_ai else ''
 
         reg_card_html = (
             '<div class="metric-card-lux" style="height:100%; border-top:3px solid #f59e0b;">'
             '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">'
-            '<span style="font-size:11px; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px;">Market Regime</span>'
+            f'<div><span style="font-size:11px; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px;">Market Regime</span>{ai_badge}</div>'
             f'<span class="pill-amber">{risk_level}</span>'
             '</div>'
             f'<div style="font-size:20px; font-weight:800; color:#ffffff; margin-bottom:6px;">{regime_title}</div>'

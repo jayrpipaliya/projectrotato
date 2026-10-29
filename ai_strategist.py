@@ -1,4 +1,5 @@
 import os
+import re
 import json
 from datetime import datetime
 from dotenv import load_dotenv
@@ -7,13 +8,13 @@ from data_manager import MAG_7, INDEXES, SECTORS, MACRO_ASSETS
 
 load_dotenv()
 
-# Validated working model cascade
+# Validated working model cascade (leading with supported fast models)
 GEMINI_MODELS = [
-    "gemini-flash-lite-latest",
-    "gemini-2.5-flash-lite",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-flash-latest",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
     "gemini-3-flash-preview",
+    "gemini-3.8-flash",
+    "gemini-flash-latest",
     "gemini-2.5-pro",
 ]
 
@@ -31,20 +32,37 @@ def get_gemini_client(api_key: str = None):
 def generate_ai_ideas(market_data: dict, gemini_api_key: str = None) -> dict:
     """
     Generates actionable trade ideas, narrative thesis, and comprehensive daily AI market analysis.
-    Returns structured data for cards and deep daily analysis from Gemini.
+    Returns structured data for cards and deep daily analysis from Gemini derived directly from data.
     """
     api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
 
     core_universe = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS
     confluences = compute_all_confluences(core_universe)
 
-    # Generate structured quantitative cards first
+    # Generate baseline structured quantitative cards
     structured_data = build_structured_briefing_and_trades(market_data, confluences)
 
     client, err = get_gemini_client(api_key)
     if client:
         try:
-            # Build comprehensive quantitative summary payload for Gemini
+            # Benchmark indexes
+            benchmarks_summary = {}
+            for t in ["SPY", "QQQ", "IWM", "RSP", "DIA"]:
+                c_match = next((c for c in confluences if c["ticker"] == t), None)
+                if c_match:
+                    m = c_match["metrics"]
+                    benchmarks_summary[t] = {
+                        "close": m.get("close"),
+                        "pct_1d": m.get("pct_1d"),
+                        "pct_5d": m.get("pct_5d"),
+                        "pct_20d": m.get("pct_20d"),
+                        "rsi": m.get("rsi14"),
+                        "dist_ema20": m.get("dist_ema20"),
+                        "dist_ema50": m.get("dist_ema50"),
+                        "confluence_score": c_match["score"],
+                        "bias": c_match["bias_label"]
+                    }
+
             green_setups = [
                 {
                     "ticker": c["ticker"],
@@ -52,6 +70,7 @@ def generate_ai_ideas(market_data: dict, gemini_api_key: str = None) -> dict:
                     "bias": c["bias_label"],
                     "price": c["metrics"].get("close"),
                     "pct_1d": c["metrics"].get("pct_1d"),
+                    "pct_5d": c["metrics"].get("pct_5d"),
                     "rvol": c["metrics"].get("rvol"),
                     "rsi": c["metrics"].get("rsi14"),
                     "dist_ema20": c["metrics"].get("dist_ema20")
@@ -66,6 +85,7 @@ def generate_ai_ideas(market_data: dict, gemini_api_key: str = None) -> dict:
                     "bias": c["bias_label"],
                     "price": c["metrics"].get("close"),
                     "pct_1d": c["metrics"].get("pct_1d"),
+                    "pct_5d": c["metrics"].get("pct_5d"),
                     "rvol": c["metrics"].get("rvol"),
                     "rsi": c["metrics"].get("rsi14"),
                     "dist_ema20": c["metrics"].get("dist_ema20")
@@ -79,6 +99,7 @@ def generate_ai_ideas(market_data: dict, gemini_api_key: str = None) -> dict:
                     "close": v.get("close"),
                     "pct_1d": v.get("pct_1d"),
                     "pct_5d": v.get("pct_5d"),
+                    "pct_20d": v.get("pct_20d"),
                     "rsi": v.get("rsi14"),
                     "trend": "Above 50EMA" if v.get("close", 0) > v.get("ema50", 0) else "Below 50EMA"
                 }
@@ -97,33 +118,67 @@ def generate_ai_ideas(market_data: dict, gemini_api_key: str = None) -> dict:
                 for k, v in ratios.items() if k in ["SPY_RSP", "QQQ_RSP", "IWM_QQQ"]
             }
 
+            sector_summary = {}
+            for s in SECTORS:
+                c_match = next((c for c in confluences if c["ticker"] == s), None)
+                if c_match:
+                    m = c_match["metrics"]
+                    sector_summary[s] = {
+                        "pct_1d": m.get("pct_1d"),
+                        "pct_5d": m.get("pct_5d"),
+                        "rsi": m.get("rsi14"),
+                        "dist_ema20": m.get("dist_ema20"),
+                        "score": c_match["score"]
+                    }
+
+            mag7_summary = {}
+            for m7 in MAG_7:
+                c_match = next((c for c in confluences if c["ticker"] == m7), None)
+                if c_match:
+                    m = c_match["metrics"]
+                    mag7_summary[m7] = {
+                        "pct_1d": m.get("pct_1d"),
+                        "pct_5d": m.get("pct_5d"),
+                        "rsi": m.get("rsi14"),
+                        "score": c_match["score"]
+                    }
+
             analysis_payload = {
                 "date": datetime.now().strftime("%Y-%m-%d"),
-                "narrative": market_data.get("narrative_title"),
-                "narrative_detail": market_data.get("narrative_detail"),
-                "macro_reading": market_data.get("macro_context"),
+                "benchmarks": benchmarks_summary,
+                "key_breadth_ratios": ratio_summary,
                 "baskets_5d": baskets,
-                "macro_assets": macro_summary,
-                "key_ratios": ratio_summary,
-                "top_green_confluence": green_setups,
-                "top_red_confluence": red_warnings,
+                "sector_breakdown": sector_summary,
+                "macro_cross_assets": macro_summary,
+                "mag_7_dynamics": mag7_summary,
+                "top_green_confluence_accumulation": green_setups,
+                "top_red_confluence_distribution": red_warnings,
             }
 
             prompt = f"""
 You are the Chief Quantitative Strategist and Senior Portfolio Risk Officer at a multi-billion dollar quantitative macro fund.
-Conduct a high-conviction, executive **DAILY INSTITUTIONAL MARKET INTELLIGENCE BRIEFING** based strictly on the following quantitative desk snapshot for {datetime.now().strftime('%A, %B %d, %Y')}:
+Analyze the following comprehensive quantitative desk data for {datetime.now().strftime('%A, %B %d, %Y')}:
 
 ```json
 {json.dumps(analysis_payload, indent=2, default=str)}
 ```
 
-CRITICAL FORMATTING INSTRUCTIONS FOR EXECUTIVE READABILITY:
-- Structure the briefing strictly into the 4 numbered institutional sections below.
-- Do NOT write massive run-on paragraphs or a monotonous bullet list.
-- Format each bullet as a concise, structured card with bold tickers, exact numbers, and explicit signals.
+CRITICAL INSTRUCTION:
+Do NOT rely on any pre-set static narrative rules or conditions. Synthesize the raw numbers, cross-asset momentum, sector rotations, and breadth ratios from first principles.
+
+Your response MUST begin with the following structural header block:
+
+---AI_REGIME_HEADER---
+REGIME_TITLE: [Formulate a high-conviction, professional 3-7 word regime title based on your analysis of the data, e.g. "Broadening Cyclical Reflation & High-Beta Expansion", "Mega-Cap Tech Exhaustion & Narrow Breadth Squeeze", "Defensive Flight into Yield Proxies", etc.]
+REGIME_DETAIL: [2-3 sentences synthesizing the exact mechanics of capital flows across sectors and breadth based on the numbers.]
+RISK_LEVEL: [Choose exactly one: Bullish / Risk-On | Selective / Dispersion | Elevated Caution | High Fragility | Defensive / Risk-Off]
+MACRO_CONTEXT: [1-2 sentences summarizing how Treasury yields (TLT), Gold (GLD), Crude Oil (USO), and Bitcoin (IBIT) are aligning with or diverging from equities.]
+---END_AI_REGIME_HEADER---
+
+Follow immediately with the 4-Pillar Daily Institutional Intelligence Briefing:
 
 ### 1. Macro Regime & Cross-Asset Liquidity Assessment
-Provide a 1-sentence executive summary of the prevailing regime: **{market_data.get('narrative_title')}**.
+Provide a 1-sentence executive summary of the prevailing regime you identified above.
 Then break down the 4 macro liquidity pillars with distinct bullets:
 * **TLT (Treasuries):** Detail yield pressure vs easing, duration impact, and relationship to 50 EMA.
 * **GLD (Gold):** Detail real yields, debasement hedging demand, and key price levels.
@@ -158,7 +213,30 @@ Write in a crisp, Wall Street institutional tone. Bold all key tickers, percenta
                 try:
                     response = client.models.generate_content(model=m, contents=prompt)
                     if response and response.text:
-                        structured_data["llm_summary"] = response.text.strip()
+                        raw_text = response.text.strip()
+                        
+                        # Parse out the AI's synthesized regime header
+                        match = re.search(r"---AI_REGIME_HEADER---(.*?)---END_AI_REGIME_HEADER---", raw_text, re.DOTALL)
+                        if match:
+                            header = match.group(1)
+                            t_match = re.search(r"REGIME_TITLE:\s*(.*)", header)
+                            d_match = re.search(r"REGIME_DETAIL:\s*(.*)", header)
+                            r_match = re.search(r"RISK_LEVEL:\s*(.*)", header)
+                            m_match = re.search(r"MACRO_CONTEXT:\s*(.*)", header)
+                            
+                            if t_match and t_match.group(1).strip():
+                                structured_data["regime_title"] = t_match.group(1).strip().strip("[]*\"")
+                            if d_match and d_match.group(1).strip():
+                                structured_data["regime_detail"] = d_match.group(1).strip().strip("[]*\"")
+                            if r_match and r_match.group(1).strip():
+                                structured_data["risk_level"] = r_match.group(1).strip().strip("[]*\"")
+                            if m_match and m_match.group(1).strip():
+                                structured_data["macro_context"] = m_match.group(1).strip().strip("[]*\"")
+                                
+                            raw_text = raw_text.replace(match.group(0), "").strip()
+                            structured_data["is_ai_derived"] = True
+
+                        structured_data["llm_summary"] = raw_text
                         structured_data["source"] = f"Gemini ({m})"
                         structured_data["agent_status"] = "Active"
                         break

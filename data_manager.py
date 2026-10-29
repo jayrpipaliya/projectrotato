@@ -4,7 +4,15 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 try:
-    yf.set_tz_cache_location("/tmp")
+    cache_dir = "/tmp" if (os.path.exists("/tmp") or os.name != "nt") else os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+    except Exception:
+        pass
+    if hasattr(yf, "cache") and hasattr(yf.cache, "set_cache_location"):
+        yf.cache.set_cache_location(cache_dir)
+    if hasattr(yf, "set_tz_cache_location"):
+        yf.set_tz_cache_location(cache_dir)
 except Exception:
     pass
 from datetime import datetime
@@ -47,20 +55,30 @@ def load_ticker_data(ticker: str) -> pd.DataFrame:
     ticker_up = ticker.upper()
     ticker_clean = ticker_up.replace('/', '_')
     if ticker_up in _IN_MEMORY_TICKER_DATA:
-        return _IN_MEMORY_TICKER_DATA[ticker_up].copy()
+        df = _IN_MEMORY_TICKER_DATA[ticker_up].copy()
+        if "Date" in df.columns:
+            df["Date"] = pd.to_datetime(df["Date"])
+        return df
     if ticker_clean in _IN_MEMORY_TICKER_DATA:
-        return _IN_MEMORY_TICKER_DATA[ticker_clean].copy()
+        df = _IN_MEMORY_TICKER_DATA[ticker_clean].copy()
+        if "Date" in df.columns:
+            df["Date"] = pd.to_datetime(df["Date"])
+        return df
 
     # Check /tmp first if it exists
     tmp_path = os.path.join("/tmp", "raw_csv", f"{ticker.lower()}_us_d.csv")
     if os.path.exists(tmp_path):
-        df = pd.read_csv(tmp_path)
-        df["Date"] = pd.to_datetime(df["Date"])
-        df = df.sort_values("Date").reset_index(drop=True)
-        for col in ["Open", "High", "Low", "Close", "Volume"]:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-        return df
+        try:
+            df = pd.read_csv(tmp_path)
+            if "Date" in df.columns:
+                df["Date"] = pd.to_datetime(df["Date"])
+                df = df.sort_values("Date").reset_index(drop=True)
+                for col in ["Open", "High", "Low", "Close", "Volume"]:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors="coerce")
+                return df
+        except Exception:
+            pass
 
     filepath = ticker_to_filename(ticker)
     if not os.path.exists(filepath):
@@ -71,19 +89,28 @@ def load_ticker_data(ticker: str) -> pd.DataFrame:
             if os.path.exists(bundle_path):
                 synthetic_path = bundle_path
         if os.path.exists(synthetic_path):
-            df = pd.read_csv(synthetic_path)
-            df["Date"] = pd.to_datetime(df["Date"])
-            return df.sort_values("Date").reset_index(drop=True)
+            try:
+                df = pd.read_csv(synthetic_path)
+                if "Date" in df.columns:
+                    df["Date"] = pd.to_datetime(df["Date"])
+                    return df.sort_values("Date").reset_index(drop=True)
+            except Exception:
+                pass
         return pd.DataFrame()
 
-    df = pd.read_csv(filepath)
-    df["Date"] = pd.to_datetime(df["Date"])
-    df = df.sort_values("Date").reset_index(drop=True)
-    # Ensure numeric types
-    for col in ["Open", "High", "Low", "Close", "Volume"]:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-    return df
+    try:
+        df = pd.read_csv(filepath)
+        if "Date" in df.columns:
+            df["Date"] = pd.to_datetime(df["Date"])
+            df = df.sort_values("Date").reset_index(drop=True)
+            # Ensure numeric types
+            for col in ["Open", "High", "Low", "Close", "Volume"]:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
+            return df
+        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
 
 def sync_tickers_batch(tickers: list[str] = None, force: bool = True) -> list[dict]:
     """
@@ -95,7 +122,7 @@ def sync_tickers_batch(tickers: list[str] = None, force: bool = True) -> list[di
 
     results = []
     try:
-        batch_df = yf.download(tickers, period="5d", progress=False)
+        batch_df = yf.download(tickers, period="5d", progress=False, timeout=15)
         if batch_df.empty:
             return [{"ticker": t, "status": "empty"} for t in tickers]
 
@@ -113,50 +140,82 @@ def sync_tickers_batch(tickers: list[str] = None, force: bool = True) -> list[di
                 pass
 
         for t in tickers:
-            sub = pd.DataFrame()
-            for col in ["Open", "High", "Low", "Close", "Volume"]:
-                if (col, t) in batch_df.columns:
-                    sub[col] = batch_df[(col, t)]
-                elif col in batch_df.columns and not isinstance(batch_df.columns, pd.MultiIndex):
-                    sub[col] = batch_df[col]
-
-            sub = sub.dropna(subset=["Close"]).reset_index()
-            if sub.empty:
-                results.append({"ticker": t, "status": "up_to_date", "added_rows": 0})
-                continue
-
-            sub["Date"] = pd.to_datetime(sub["Date"]).dt.strftime("%Y-%m-%d")
-            for col in ["Open", "High", "Low", "Close", "Volume"]:
-                if col in sub.columns:
-                    sub[col] = pd.to_numeric(sub[col], errors="coerce")
-
-            existing = load_ticker_data(t)
-            if existing.empty:
-                combined = sub
-            else:
-                existing["Date"] = pd.to_datetime(existing["Date"]).dt.strftime("%Y-%m-%d")
-                combined = pd.concat([existing[~existing["Date"].isin(sub["Date"])], sub], ignore_index=True)
-
-            combined = combined.drop_duplicates(subset=["Date"]).sort_values("Date").reset_index(drop=True)
-            _IN_MEMORY_TICKER_DATA[t.upper()] = combined
-
             try:
-                target_file = os.path.join(writable_dir, f"{t.lower()}_us_d.csv")
-                combined.to_csv(target_file, index=False)
-            except Exception:
-                pass
+                sub = pd.DataFrame()
+                for col in ["Open", "High", "Low", "Close", "Volume"]:
+                    if (col, t) in batch_df.columns:
+                        sub[col] = batch_df[(col, t)]
+                    elif (t, col) in batch_df.columns:
+                        sub[col] = batch_df[(t, col)]
+                    elif col in batch_df.columns and not isinstance(batch_df.columns, pd.MultiIndex):
+                        sub[col] = batch_df[col]
 
-            results.append({
-                "ticker": t,
-                "status": "updated",
-                "added_rows": len(sub),
-                "last_date": str(combined["Date"].iloc[-1])
-            })
+                if sub.empty or "Close" not in sub.columns:
+                    results.append({"ticker": t, "status": "up_to_date", "added_rows": 0})
+                    continue
+
+                sub = sub.dropna(subset=["Close"]).reset_index()
+                if sub.empty:
+                    results.append({"ticker": t, "status": "up_to_date", "added_rows": 0})
+                    continue
+
+                if "Date" not in sub.columns:
+                    if "Datetime" in sub.columns:
+                        sub["Date"] = sub["Datetime"]
+                    elif "index" in sub.columns:
+                        sub["Date"] = sub["index"]
+                    elif len(sub.columns) > 0:
+                        sub["Date"] = sub.index
+
+                sub["Date"] = pd.to_datetime(sub["Date"])
+                for col in ["Open", "High", "Low", "Close", "Volume"]:
+                    if col in sub.columns:
+                        sub[col] = pd.to_numeric(sub[col], errors="coerce")
+
+                existing = load_ticker_data(t)
+                if existing.empty:
+                    combined = sub
+                else:
+                    existing = existing.copy()
+                    if "Date" in existing.columns:
+                        existing["Date"] = pd.to_datetime(existing["Date"])
+                        combined = pd.concat([existing[~existing["Date"].isin(sub["Date"])], sub], ignore_index=True)
+                    else:
+                        combined = sub
+
+                combined = combined.drop_duplicates(subset=["Date"]).sort_values("Date").reset_index(drop=True)
+                combined["Date"] = pd.to_datetime(combined["Date"])
+                _IN_MEMORY_TICKER_DATA[t.upper()] = combined
+
+                try:
+                    target_file = os.path.join(writable_dir, f"{t.lower()}_us_d.csv")
+                    csv_df = combined.copy()
+                    csv_df["Date"] = csv_df["Date"].dt.strftime("%Y-%m-%d")
+                    csv_df.to_csv(target_file, index=False)
+                except Exception:
+                    pass
+
+                last_dt = combined["Date"].iloc[-1]
+                last_dt_str = last_dt.strftime("%Y-%m-%d") if hasattr(last_dt, "strftime") else str(last_dt)[:10]
+
+                results.append({
+                    "ticker": t,
+                    "status": "updated",
+                    "added_rows": len(sub),
+                    "last_date": last_dt_str
+                })
+            except Exception as ticker_err:
+                results.append({"ticker": t, "status": "error", "error": str(ticker_err)})
+
     except Exception as e:
         results.append({"error": str(e)})
 
     # Recalculate synthetic ratios in-memory and on disk
-    generate_synthetic_ratios()
+    try:
+        generate_synthetic_ratios()
+    except Exception as e:
+        results.append({"error": f"Synthetic ratio recalculation warning: {str(e)}"})
+
     return results
 
 def update_single_ticker(ticker: str, force: bool = False) -> dict:
@@ -277,36 +336,52 @@ def generate_synthetic_ratios():
         ("IWM", "QQQ", "IWM_QQQ")
     ]
     for num, den, ratio_name in pairs:
-        df_num = load_ticker_data(num)
-        df_den = load_ticker_data(den)
-        if df_num.empty or df_den.empty:
-            continue
-
-        merged = pd.merge(
-            df_num[["Date", "Close", "Volume"]].rename(columns={"Close": f"Close_{num}", "Volume": f"Volume_{num}"}),
-            df_den[["Date", "Close", "Volume"]].rename(columns={"Close": f"Close_{den}", "Volume": f"Volume_{den}"}),
-            on="Date",
-            how="inner"
-        ).sort_values("Date")
-
-        merged["Close"] = merged[f"Close_{num}"] / merged[f"Close_{den}"]
-        merged["Open"] = merged["Close"]
-        merged["High"] = merged["Close"]
-        merged["Low"] = merged["Close"]
-        merged["Volume"] = (merged[f"Volume_{num}"] + merged[f"Volume_{den}"]) / 2
-
-        ratio_df = merged[["Date", "Open", "High", "Low", "Close", "Volume"]]
-        _IN_MEMORY_TICKER_DATA[ratio_name] = ratio_df
-        _IN_MEMORY_TICKER_DATA[ratio_name.lower()] = ratio_df
-        _IN_MEMORY_TICKER_DATA[ratio_name.replace("_", "/")] = ratio_df
-
-        out_path = os.path.join(PROCESSED_DIR, f"{ratio_name.lower()}.csv")
         try:
-            ratio_df.to_csv(out_path, index=False)
-        except Exception:
+            df_num = load_ticker_data(num)
+            df_den = load_ticker_data(den)
+            if df_num.empty or df_den.empty:
+                continue
+
+            df_num = df_num.copy()
+            df_den = df_den.copy()
+            df_num["Date"] = pd.to_datetime(df_num["Date"])
+            df_den["Date"] = pd.to_datetime(df_den["Date"])
+
+            merged = pd.merge(
+                df_num[["Date", "Close", "Volume"]].rename(columns={"Close": f"Close_{num}", "Volume": f"Volume_{num}"}),
+                df_den[["Date", "Close", "Volume"]].rename(columns={"Close": f"Close_{den}", "Volume": f"Volume_{den}"}),
+                on="Date",
+                how="inner"
+            ).sort_values("Date")
+
+            if merged.empty:
+                continue
+
+            merged["Close"] = merged[f"Close_{num}"] / merged[f"Close_{den}"]
+            merged["Open"] = merged["Close"]
+            merged["High"] = merged["Close"]
+            merged["Low"] = merged["Close"]
+            merged["Volume"] = (merged[f"Volume_{num}"] + merged[f"Volume_{den}"]) / 2
+
+            ratio_df = merged[["Date", "Open", "High", "Low", "Close", "Volume"]].copy()
+            ratio_df["Date"] = pd.to_datetime(ratio_df["Date"])
+            _IN_MEMORY_TICKER_DATA[ratio_name] = ratio_df
+            _IN_MEMORY_TICKER_DATA[ratio_name.lower()] = ratio_df
+            _IN_MEMORY_TICKER_DATA[ratio_name.replace("_", "/")] = ratio_df
+
+            out_path = os.path.join(PROCESSED_DIR, f"{ratio_name.lower()}.csv")
             try:
-                tmp_out = os.path.join("/tmp", "processed_data", f"{ratio_name.lower()}.csv")
-                os.makedirs(os.path.dirname(tmp_out), exist_ok=True)
-                ratio_df.to_csv(tmp_out, index=False)
+                save_df = ratio_df.copy()
+                save_df["Date"] = save_df["Date"].dt.strftime("%Y-%m-%d")
+                save_df.to_csv(out_path, index=False)
             except Exception:
-                pass
+                try:
+                    tmp_out = os.path.join("/tmp", "processed_data", f"{ratio_name.lower()}.csv")
+                    os.makedirs(os.path.dirname(tmp_out), exist_ok=True)
+                    save_df = ratio_df.copy()
+                    save_df["Date"] = save_df["Date"].dt.strftime("%Y-%m-%d")
+                    save_df.to_csv(tmp_out, index=False)
+                except Exception:
+                    pass
+        except Exception:
+            continue
