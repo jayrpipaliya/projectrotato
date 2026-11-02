@@ -24,3 +24,6 @@ desktop.ini
 # Scratch and test files
 scratch/
 .cache/
+
+.vercel
+.env*

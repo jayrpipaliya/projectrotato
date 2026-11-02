@@ -1,4 +1,5 @@
 import os
+import time
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -308,7 +309,7 @@ if st.sidebar.button("Sync Daily Closes Now", use_container_width=True):
         time.sleep(0.2)
         st.write(f"📥 Step 2: Downloading batch daily bars ({'Core 28 Assets' if 'Core' in sync_scope else 'All 79 Assets'})...")
         from data_manager import sync_tickers_batch
-        target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS if "Core" in sync_scope else None
+        target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS if "Core" in sync_scope else get_available_tickers()
         results = sync_tickers_batch(tickers=target_tickers, force=True)
         st.write(f"📊 Step 3: Recalculating EMAs, RSI, and ATR stretch across {len(results)} assets...")
         time.sleep(0.2)
