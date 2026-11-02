@@ -19,6 +19,10 @@ from indicators import compute_all_metrics
 from narrative_engine import analyze_market_narrative, compute_ratio_analytics
 from ai_strategist import generate_ai_ideas, query_ai_agent
 from confluence_engine import compute_confluence_score, compute_all_confluences
+import importlib
+import options_engine
+importlib.reload(options_engine)
+from options_engine import render_options_vol_page
 
 st.set_page_config(
     page_title="Rotato | Quantitative Macro & Equity Desk",
@@ -569,8 +573,8 @@ st.caption(f"**Cross-Asset Macro Barometer Reading:** {macro_reading}")
 
 st.markdown("---")
 
-# ----------------- MODERN TABS -----------------
-tab1, tab_agent, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+# ----------------- MODERN TABS (Institutional Options Desk v3.0 Full Suite) -----------------
+tab1, tab_agent, tab2, tab3, tab4, tab5, tab6, tab7, tab_options = st.tabs([
     "📊 Daily AI Macro Briefing",
     "🤖 Interactive AI Quant Agent",
     "🎯 AI Trade Ideas",
@@ -578,7 +582,8 @@ tab1, tab_agent, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "⚡ Mag 7 Deep Dive & Realized Vol",
     "🔄 Indexes & Sector Money Flow",
     "📈 Key Ratio & Breadth Radar",
-    "🔍 Single Ticker Explorer"
+    "🔍 Single Ticker Explorer",
+    "🎯 Cheap IV & Strike Selector"
 ])
 
 # ================= TAB 1: DAILY AI MACRO BRIEFING =================
@@ -1318,3 +1323,8 @@ with tab7:
         )
 
         st.plotly_chart(fig_combined, use_container_width=True)
+
+# ================= TAB 9: CHEAP IV & STRIKE SELECTOR =================
+with tab_options:
+    render_options_vol_page(get_available_tickers(), load_ticker_data)
+

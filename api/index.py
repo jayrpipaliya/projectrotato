@@ -229,6 +229,54 @@ def api_ticker(ticker: str, horizon: str = Query("All Historical Data")):
         "drawdown_ath": [round(float(v), 2) for v in sub["Drawdown_ATH"]]
     })
 
+@app.get("/api/options/{ticker}")
+def api_options(ticker: str, direction: str = Query("Bullish")):
+    try:
+        t_up = ticker.upper()
+        dir_clean = "Bullish" if "Bullish" in direction else "Bearish"
+        from options_engine import compute_realized_volatilities, fetch_term_structure, scan_cross_chain_recommendations, analyze_smile_and_skew
+        df_hist = load_ticker_data(t_up)
+        hvs = compute_realized_volatilities(df_hist, ticker_symbol=t_up)
+        term_df, spot_price, next_earnings = fetch_term_structure(t_up, hvs_dict=hvs)
+        if term_df.empty or spot_price is None:
+            return {"error": f"Live options data not available for {t_up}"}
+            
+        cheap_chains = term_df.to_dict('records')
+        picks = scan_cross_chain_recommendations(t_up, cheap_chains, spot_price, direction=dir_clean)
+        
+        top_exp = term_df.iloc[0]['Expiration']
+        smile = analyze_smile_and_skew(t_up, top_exp, spot_price, direction=dir_clean)
+        smile_payload = None
+        if smile:
+            target_df = smile['target_df']
+            k_smooth = np.linspace(target_df['Log_Moneyness'].min(), target_df['Log_Moneyness'].max(), 50)
+            y_smooth = np.polyval(smile['poly_coeffs_k'], k_smooth)
+            x_strikes_smooth = spot_price * np.exp(k_smooth)
+            smile_payload = {
+                "expiration": top_exp,
+                "dte": smile['dte'],
+                "exp_move": round(smile['exp_move'], 2),
+                "model_strikes": [round(float(s), 2) for s in x_strikes_smooth],
+                "model_iv": [round(float(iv), 2) for iv in y_smooth],
+                "market_strikes": [round(float(s), 2) for s in target_df['strike']],
+                "market_iv": [round(float(iv), 2) for iv in target_df['IV_Pct']],
+                "market_ask_iv": [round(float(iv), 2) for iv in target_df['Ask_IV_Pct']],
+                "top_strikes": [round(float(s), 2) for s in smile['top_strikes']['strike']]
+            }
+            
+        return clean_json({
+            "ticker": t_up,
+            "direction": dir_clean,
+            "spot_price": round(spot_price, 2),
+            "next_earnings": next_earnings.strftime("%b %d, %Y") if next_earnings else None,
+            "hvs": hvs,
+            "term_chains": cheap_chains[:8],
+            "picks": picks,
+            "smile": smile_payload
+        })
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/", response_class=HTMLResponse)
 def index_page():
     return HTML_CONTENT
@@ -504,6 +552,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             <button onclick="switchTab('tab5')" id="btn-tab5" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Indexes & Sector Flow</button>
             <button onclick="switchTab('tab6')" id="btn-tab6" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Key Ratio & Breadth Radar</button>
             <button onclick="switchTab('tab7')" id="btn-tab7" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Single Ticker Explorer</button>
+            <button onclick="switchTab('tab_options')" id="btn-tab_options" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5"><span>🎯</span> Cheap IV & Strikes</button>
         </div>
 
         <!-- Tab Agent: Interactive AI Quant Agent -->
@@ -735,6 +784,90 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- Tab Options: Cheap IV & Strike Selector -->
+        <div id="tab_options" class="tab-pane hidden">
+            <div class="lux-card p-5 mb-5 border border-emerald-500/20 bg-gradient-to-r from-emerald-950/20 via-[#0d1117] to-slate-900/40">
+                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xl">🎯</span>
+                            <h2 class="text-lg font-black text-white tracking-wide">Institutional Cheap IV & Strike Selection Desk</h2>
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Live Options Vol</span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-1 max-w-2xl">
+                            Institutional volatility architecture: De-jumps historical volatility to eliminate post-earnings distortions, scales calendar-to-trading annualization (sqrt(252/365)), models Asymmetric Log-Moneyness Skew, and executes Vega-based Ask-IV inversion.
+                        </p>
+                    </div>
+                    
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ticker</label>
+                            <select id="optionsTickerSelect" onchange="loadOptionsDesk()" class="bg-[#0b0d12] text-xs font-bold text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-emerald-500">
+                                <option value="QQQ">QQQ (Nasdaq 100)</option>
+                                <option value="SPY">SPY (S&P 500)</option>
+                                <option value="NVDA">NVDA (Nvidia)</option>
+                                <option value="AAPL">AAPL (Apple)</option>
+                                <option value="TSLA">TSLA (Tesla)</option>
+                                <option value="IWM">IWM (Russell 2000)</option>
+                                <option value="GLD">GLD (Gold)</option>
+                                <option value="MSFT">MSFT (Microsoft)</option>
+                                <option value="AMZN">AMZN (Amazon)</option>
+                                <option value="META">META (Meta)</option>
+                                <option value="SMH">SMH (Semiconductors)</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Direction</label>
+                            <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="optionsDirGroup">
+                                <button onclick="setOptionsDirection('Bullish')" id="btnOptBullish" class="px-3 py-1 rounded font-bold transition bg-emerald-500/20 text-emerald-400">🟢 Bullish (Calls)</button>
+                                <button onclick="setOptionsDirection('Bearish')" id="btnOptBearish" class="px-3 py-1 rounded font-bold transition text-slate-400">🔴 Bearish (Puts)</button>
+                            </div>
+                        </div>
+
+                        <div class="self-end">
+                            <button onclick="loadOptionsDesk(true)" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-900/30 transition flex items-center gap-1.5">
+                                <span>⚡</span> Scan Chains
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Options KPI Strip -->
+            <div id="optionsKpiRow" class="grid grid-cols-2 sm:grid-cols-5 gap-3.5 mb-5">
+                <!-- Populated dynamically -->
+            </div>
+
+            <!-- Cross-Chain Recommendations Header -->
+            <div class="flex justify-between items-center mb-3">
+                <div>
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <span>🏆</span> Top Recommended Cheap IV Contracts Across Different Expirations
+                    </h3>
+                    <p class="text-[11px] text-slate-400">Guaranteed multi-expiry diversity: Evaluates term cheapness ($IV/HV$), Ask-Edge (edge after crossing the bid-ask spread), delta sweet-spot (~0.38), and liquidity.</p>
+                </div>
+            </div>
+
+            <!-- Cross-Chain Cards Container -->
+            <div id="optionsRecCards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <!-- Dynamically populated -->
+            </div>
+
+            <!-- Volatility Smile & Skew Inspector Chart -->
+            <div class="lux-card p-4 mb-4">
+                <div class="flex justify-between items-center mb-3">
+                    <div>
+                        <h4 class="text-sm font-bold text-white flex items-center gap-1.5">
+                            <span>🔍</span> Volatility Smile & Fitted Asymmetric Skew Curve
+                        </h4>
+                        <p class="text-[11px] text-slate-400" id="optionsSmileSubtitle">Showing nearest active expiration chain, degree-3 log-moneyness skew, and 1σ expected move boundary</p>
+                    </div>
+                </div>
+                <div id="optionsSmileChart" style="height: 420px;"></div>
+            </div>
+        </div>
+
             </div>
         </main>
     </div>
@@ -942,6 +1075,13 @@ HTML_CONTENT = """<!DOCTYPE html>
                     loadSingleTicker();
                 } else {
                     setTimeout(() => Plotly.Plots.resize('singleTickerCombinedChart'), 50);
+                }
+            } else if (tabId === 'tab_options') {
+                if (!LOADED_TABS.has('tab_options')) {
+                    LOADED_TABS.add('tab_options');
+                    loadOptionsDesk();
+                } else {
+                    setTimeout(() => Plotly.Plots.resize('optionsSmileChart'), 50);
                 }
             }
         }
@@ -1868,6 +2008,178 @@ HTML_CONTENT = """<!DOCTYPE html>
                 legend: { orientation: "h", y: 1.05, x: 1, xanchor: "right" }
             };
             Plotly.newPlot('singleTickerCombinedChart', [tracePrice, traceEMA20, traceEMA50, traceEMA200, traceDD], layout, {responsive: true});
+        }
+
+        let CURRENT_OPTIONS_DIR = "Bullish";
+
+        function setOptionsDirection(dir) {
+            CURRENT_OPTIONS_DIR = dir;
+            const btnBull = document.getElementById('btnOptBullish');
+            const btnBear = document.getElementById('btnOptBearish');
+            if (dir === 'Bullish') {
+                btnBull.className = "px-3 py-1 rounded font-bold transition bg-emerald-500/20 text-emerald-400";
+                btnBear.className = "px-3 py-1 rounded font-bold transition text-slate-400";
+            } else {
+                btnBear.className = "px-3 py-1 rounded font-bold transition bg-rose-500/20 text-rose-400";
+                btnBull.className = "px-3 py-1 rounded font-bold transition text-slate-400";
+            }
+            loadOptionsDesk();
+        }
+
+        async function loadOptionsDesk(force = false) {
+            const ticker = document.getElementById('optionsTickerSelect').value || 'QQQ';
+            const kpiRow = document.getElementById('optionsKpiRow');
+            const cardsContainer = document.getElementById('optionsRecCards');
+            
+            kpiRow.innerHTML = `<div class="col-span-full py-4 text-center text-xs text-slate-400">Scanning live option chains, IV skew, and historical volatilities for <b>${ticker}</b>...</div>`;
+            cardsContainer.innerHTML = `<div class="col-span-full py-8 text-center text-xs text-slate-500 animate-pulse">Calculating Ask-IV inversion and log-moneyness skew curve...</div>`;
+
+            try {
+                const res = await fetch(`/api/options/${ticker}?direction=${encodeURIComponent(CURRENT_OPTIONS_DIR)}`);
+                const data = await res.json();
+                if (data.error) {
+                    kpiRow.innerHTML = `<div class="col-span-full text-xs text-amber-400 bg-amber-500/10 p-3 rounded-lg border border-amber-500/20">${data.error}</div>`;
+                    cardsContainer.innerHTML = '';
+                    return;
+                }
+
+                const h = data.hvs || {};
+                const spot = data.spot_price;
+                const earns = data.next_earnings || "Macro Index / ETF";
+
+                // Render KPI Strip
+                kpiRow.innerHTML = `
+                    <div class="lux-card p-3.5">
+                        <div class="text-[11px] font-semibold text-slate-400 uppercase">Spot Price</div>
+                        <div class="text-xl font-bold text-white mt-1">$${spot.toFixed(2)}</div>
+                        <div class="text-[11px] text-emerald-400 font-semibold mt-0.5">${ticker} Live Underlying</div>
+                    </div>
+                    <div class="lux-card p-3.5">
+                        <div class="text-[11px] font-semibold text-slate-400 uppercase">10D Realized Vol</div>
+                        <div class="text-xl font-bold text-white mt-1">${h.HV_10 || 20}%</div>
+                        <div class="text-[11px] text-slate-400 mt-0.5">Tactical Momentum</div>
+                    </div>
+                    <div class="lux-card p-3.5">
+                        <div class="text-[11px] font-semibold text-slate-400 uppercase">20D Realized Vol</div>
+                        <div class="text-xl font-bold text-white mt-1">${h.HV_20 || 20}%</div>
+                        <div class="text-[11px] text-slate-400 mt-0.5">Short-Term Baseline</div>
+                    </div>
+                    <div class="lux-card p-3.5 border-l-2 border-emerald-500">
+                        <div class="text-[11px] font-semibold text-emerald-400 uppercase">30D Clean HV</div>
+                        <div class="text-xl font-bold text-emerald-400 mt-1">${h.HV_30_clean || h.HV_30 || 20}%</div>
+                        <div class="text-[11px] text-slate-400 mt-0.5">De-Jumped (Winsorized)</div>
+                    </div>
+                    <div class="lux-card p-3.5">
+                        <div class="text-[11px] font-semibold text-slate-400 uppercase">Earnings / Event</div>
+                        <div class="text-base font-bold ${data.next_earnings ? 'text-amber-400' : 'text-slate-300'} mt-1 truncate">${earns}</div>
+                        <div class="text-[11px] text-slate-400 mt-0.5">${data.next_earnings ? 'Binary Event Risk' : 'No Single Report'}</div>
+                    </div>
+                `;
+
+                // Render Recommendations Cards
+                const picks = data.picks || [];
+                if (picks.length === 0) {
+                    cardsContainer.innerHTML = `<div class="col-span-full text-center text-xs text-slate-400 py-6">No liquid cheap contracts identified matching criteria.</div>`;
+                } else {
+                    cardsContainer.innerHTML = picks.map((p, idx) => {
+                        const isCall = CURRENT_OPTIONS_DIR === 'Bullish';
+                        const cType = isCall ? 'Call' : 'Put';
+                        const edgeColor = p.Ask_Edge >= 0 ? 'text-emerald-400' : 'text-amber-400';
+                        const edgeSign = p.Ask_Edge >= 0 ? '+' : '';
+                        const beVal = isCall ? (p.strike + p.ask) : Math.max(p.strike - p.ask, 0.01);
+                        const beDiff = ((beVal / spot) - 1) * 100;
+                        
+                        let hTag = '⚡ Tactical (10–21d)';
+                        let badgeColor = 'text-sky-400';
+                        if (p.DTE > 70) { hTag = '🛡️ Quarterly (75d+)'; badgeColor = 'text-emerald-400'; }
+                        else if (p.DTE > 45) { hTag = '🎯 Core Monthly (60d)'; badgeColor = 'text-amber-400'; }
+                        else if (p.DTE > 22) { hTag = '🚀 Fast Swing (25–45d)'; badgeColor = 'text-purple-400'; }
+
+                        const evTag = p.Spans_Earnings ? '⚡ Spans Earnings' : '📅 Inter-Earnings';
+                        const evColor = p.Spans_Earnings ? 'bg-amber-500/15 text-amber-400' : 'bg-sky-500/10 text-sky-400';
+
+                        return `
+                        <div class="lux-card p-4 border border-white/5 hover:border-emerald-500/40 transition">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-base font-extrabold text-white">$${p.strike.toFixed(0)} ${cType}</span>
+                                <span class="bg-emerald-500/15 text-emerald-400 text-[10px] px-2 py-0.5 rounded font-bold">Pick #${idx + 1}</span>
+                            </div>
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-[11px] font-semibold ${badgeColor}">${hTag}</span>
+                                <span class="text-[10px] px-1.5 py-0.5 rounded ${evColor}">${evTag}</span>
+                            </div>
+                            <div class="bg-white/[0.03] p-2 rounded-lg flex justify-between items-center text-xs mb-3">
+                                <span class="text-slate-200">📅 <b>${p.Expiration}</b> (${p.DTE}d)</span>
+                                <span class="text-[11px] ${p.Within_1_Sigma ? 'text-emerald-400' : 'text-slate-400'}">${p.Within_1_Sigma ? '🎯 In 1σ' : '🚀 Out 1σ'}</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-xs mb-3">
+                                <div><span class="text-slate-400 text-[11px]">Ask IV:</span> <b class="text-white">${p.Ask_IV_Pct.toFixed(1)}%</b></div>
+                                <div><span class="text-slate-400 text-[11px]">IV/HV:</span> <b class="text-white">${p.IV_HV_Ratio}x</b></div>
+                                <div><span class="text-slate-400 text-[11px]">Ask Edge:</span> <b class="${edgeColor}">${edgeSign}${p.Ask_Edge.toFixed(2)}%</b></div>
+                                <div><span class="text-slate-400 text-[11px]">Delta:</span> <b class="text-white">${p.Est_Delta.toFixed(2)}</b></div>
+                            </div>
+                            <div class="border-t border-white/5 pt-2 text-[11px] text-slate-400 space-y-0.5">
+                                <div>Ask (Cost): <b class="text-emerald-400">$${p.ask.toFixed(2)}</b> ($${Math.round(p.ask * 100)}/ct)</div>
+                                <div>Bid / Mid: $${p.bid.toFixed(2)} / $${p.Mid_Price.toFixed(2)}</div>
+                                <div>Breakeven: <b class="text-slate-200">$${beVal.toFixed(2)} (${beDiff >= 0 ? '+' : ''}${beDiff.toFixed(1)}%)</b></div>
+                                <div>Open Interest: <b class="text-slate-300">${(p.openInterest || 0).toLocaleString()}</b></div>
+                            </div>
+                        </div>
+                        `;
+                    }).join('');
+                }
+
+                // Render Smile Chart
+                if (data.smile) {
+                    const s = data.smile;
+                    document.getElementById('optionsSmileSubtitle').innerText = 
+                        `Showing ${s.expiration} (${s.dte}d DTE) | Market 1σ Expected Move: ±$${s.exp_move}`;
+
+                    const traceModel = {
+                        x: s.model_strikes, y: s.model_iv,
+                        name: 'Model Fair Skew (Asymmetric Cubic)',
+                        type: 'scatter', mode: 'lines',
+                        line: { color: '#94a3b8', width: 2, dash: 'dash' }
+                    };
+                    const traceMarket = {
+                        x: s.market_strikes, y: s.market_iv,
+                        name: `${data.direction} Market IV`,
+                        type: 'scatter', mode: 'markers',
+                        marker: { color: CURRENT_OPTIONS_DIR === 'Bullish' ? '#38bdf8' : '#f87171', size: 7, opacity: 0.8 }
+                    };
+                    const traceAsk = {
+                        x: s.market_strikes, y: s.market_ask_iv,
+                        name: 'Effective Ask IV (Cost)',
+                        type: 'scatter', mode: 'lines',
+                        line: { color: 'rgba(234, 179, 8, 0.4)', width: 1.5 }
+                    };
+
+                    const layout = {
+                        plot_bgcolor: "#111319",
+                        paper_bgcolor: "#111319",
+                        font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 11 },
+                        margin: { l: 45, r: 25, t: 30, b: 35 },
+                        xaxis: { title: "Strike Price ($)", gridcolor: "rgba(255, 255, 255, 0.05)" },
+                        yaxis: { title: "Implied Volatility (%)", gridcolor: "rgba(255, 255, 255, 0.05)" },
+                        legend: { orientation: "h", y: 1.12, x: 1, xanchor: "right" },
+                        shapes: [
+                            {
+                                type: 'line', x0: spot, x1: spot, y0: 0, y1: 1, yref: 'paper',
+                                line: { color: '#60a5fa', width: 1.5, dash: 'dot' }
+                            },
+                            {
+                                type: 'rect', x0: spot - s.exp_move, x1: spot + s.exp_move, y0: 0, y1: 1, yref: 'paper',
+                                fillcolor: 'rgba(96, 165, 250, 0.06)', line: { width: 0 }
+                            }
+                        ]
+                    };
+                    Plotly.newPlot('optionsSmileChart', [traceModel, traceMarket, traceAsk], layout, {responsive: true});
+                }
+
+            } catch (err) {
+                kpiRow.innerHTML = `<div class="col-span-full text-xs text-rose-400 bg-rose-500/10 p-3 rounded-lg border border-rose-500/20">Error loading options desk: ${err.message}</div>`;
+                cardsContainer.innerHTML = '';
+            }
         }
 
         window.onload = init;
