@@ -233,7 +233,7 @@ def api_ticker(ticker: str, horizon: str = Query("All Historical Data")):
 def api_options(ticker: str, direction: str = Query("Bullish")):
     try:
         t_up = ticker.upper()
-        dir_clean = "Bullish" if "Bullish" in direction else "Bearish"
+        dir_clean = "Bullish" if "Bullish" in str(direction) else "Bearish"
         from options_engine import compute_realized_volatilities, fetch_term_structure, scan_cross_chain_recommendations, analyze_smile_and_skew
         df_hist = load_ticker_data(t_up)
         hvs = compute_realized_volatilities(df_hist, ticker_symbol=t_up)
@@ -803,17 +803,91 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ticker</label>
                             <select id="optionsTickerSelect" onchange="loadOptionsDesk()" class="bg-[#0b0d12] text-xs font-bold text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-emerald-500">
-                                <option value="QQQ">QQQ (Nasdaq 100)</option>
+                                <option value="QQQ" selected>QQQ (Nasdaq 100)</option>
                                 <option value="SPY">SPY (S&P 500)</option>
                                 <option value="NVDA">NVDA (Nvidia)</option>
                                 <option value="AAPL">AAPL (Apple)</option>
+                                <option value="AMZN">AMZN (Amazon)</option>
+                                <option value="MSFT">MSFT (Microsoft)</option>
+                                <option value="META">META (Meta)</option>
                                 <option value="TSLA">TSLA (Tesla)</option>
                                 <option value="IWM">IWM (Russell 2000)</option>
                                 <option value="GLD">GLD (Gold)</option>
-                                <option value="MSFT">MSFT (Microsoft)</option>
-                                <option value="AMZN">AMZN (Amazon)</option>
-                                <option value="META">META (Meta)</option>
+                                <option value="XLF">XLF (Financials)</option>
                                 <option value="SMH">SMH (Semiconductors)</option>
+                                <option value="ADBE">ADBE</option>
+                                <option value="AMAT">AMAT</option>
+                                <option value="AMD">AMD (Advanced Micro Devices)</option>
+                                <option value="AVGO">AVGO (Broadcom)</option>
+                                <option value="BA">BA</option>
+                                <option value="BAC">BAC</option>
+                                <option value="CAT">CAT</option>
+                                <option value="CIBR">CIBR</option>
+                                <option value="CMCSA">CMCSA</option>
+                                <option value="COP">COP</option>
+                                <option value="COPX">COPX</option>
+                                <option value="COST">COST (Costco)</option>
+                                <option value="CRM">CRM</option>
+                                <option value="CRWD">CRWD (CrowdStrike)</option>
+                                <option value="CVX">CVX</option>
+                                <option value="DELL">DELL (Dell)</option>
+                                <option value="DIA">DIA</option>
+                                <option value="DIS">DIS</option>
+                                <option value="FCX">FCX</option>
+                                <option value="GOOGL">GOOGL (Alphabet)</option>
+                                <option value="GS">GS</option>
+                                <option value="HD">HD</option>
+                                <option value="IBIT">IBIT (Bitcoin ETF)</option>
+                                <option value="IGV">IGV</option>
+                                <option value="ITA">ITA</option>
+                                <option value="JPM">JPM (JPMorgan)</option>
+                                <option value="KO">KO</option>
+                                <option value="KRE">KRE</option>
+                                <option value="LLY">LLY (Eli Lilly)</option>
+                                <option value="LRCX">LRCX</option>
+                                <option value="MA">MA</option>
+                                <option value="MCD">MCD</option>
+                                <option value="MRVL">MRVL</option>
+                                <option value="MS">MS</option>
+                                <option value="MU">MU (Micron)</option>
+                                <option value="NFLX">NFLX (Netflix)</option>
+                                <option value="NKE">NKE</option>
+                                <option value="NOW">NOW</option>
+                                <option value="OIH">OIH</option>
+                                <option value="ORCL">ORCL (Oracle)</option>
+                                <option value="PANW">PANW</option>
+                                <option value="PEP">PEP</option>
+                                <option value="PFE">PFE</option>
+                                <option value="PG">PG</option>
+                                <option value="PLTR">PLTR (Palantir)</option>
+                                <option value="QCOM">QCOM</option>
+                                <option value="RSP">RSP</option>
+                                <option value="SBUX">SBUX</option>
+                                <option value="SLB">SLB</option>
+                                <option value="STX">STX</option>
+                                <option value="TGT">TGT</option>
+                                <option value="TLT">TLT (20Y Treasury Bond)</option>
+                                <option value="TSM">TSM</option>
+                                <option value="TXN">TXN</option>
+                                <option value="UNH">UNH</option>
+                                <option value="USB">USB</option>
+                                <option value="USO">USO</option>
+                                <option value="V">V</option>
+                                <option value="VRTX">VRTX</option>
+                                <option value="WDC">WDC</option>
+                                <option value="WFC">WFC</option>
+                                <option value="WMT">WMT (Walmart)</option>
+                                <option value="XBI">XBI</option>
+                                <option value="XLB">XLB</option>
+                                <option value="XLC">XLC</option>
+                                <option value="XLE">XLE</option>
+                                <option value="XLI">XLI</option>
+                                <option value="XLK">XLK</option>
+                                <option value="XLP">XLP</option>
+                                <option value="XLU">XLU</option>
+                                <option value="XLV">XLV</option>
+                                <option value="XLY">XLY</option>
+                                <option value="XOM">XOM</option>
                             </select>
                         </div>
                         
@@ -1077,6 +1151,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                     setTimeout(() => Plotly.Plots.resize('singleTickerCombinedChart'), 50);
                 }
             } else if (tabId === 'tab_options') {
+                populateOptionsTickersDropdown();
                 if (!LOADED_TABS.has('tab_options')) {
                     LOADED_TABS.add('tab_options');
                     loadOptionsDesk();
@@ -1100,6 +1175,8 @@ HTML_CONTENT = """<!DOCTYPE html>
                 renderMacroBarometers();
                 renderBriefingBaskets();
                 initAgentChat();
+                populateTickersDropdown();
+                populateOptionsTickersDropdown();
 
                 // 3. Asynchronously load AI briefing in background without blocking UI
                 loadAiBriefingAsync();
@@ -1929,6 +2006,56 @@ HTML_CONTENT = """<!DOCTYPE html>
             });
             document.getElementById('tickerSelect').innerHTML = html;
         }
+
+        function populateOptionsTickersDropdown() {
+            const select = document.getElementById('optionsTickerSelect');
+            if (!select) return;
+            const currentVal = select.value || 'QQQ';
+            const tickers = DATA.available_tickers || [];
+            const priority = ['QQQ', 'SPY', 'NVDA', 'AAPL', 'AMZN', 'MSFT', 'META', 'TSLA', 'IWM', 'GLD', 'XLF', 'SMH'];
+            const tickerLabels = {
+                'QQQ': 'QQQ (Nasdaq 100)',
+                'SPY': 'SPY (S&P 500)',
+                'NVDA': 'NVDA (Nvidia)',
+                'AAPL': 'AAPL (Apple)',
+                'TSLA': 'TSLA (Tesla)',
+                'IWM': 'IWM (Russell 2000)',
+                'GLD': 'GLD (Gold)',
+                'MSFT': 'MSFT (Microsoft)',
+                'AMZN': 'AMZN (Amazon)',
+                'META': 'META (Meta)',
+                'SMH': 'SMH (Semiconductors)',
+                'XLF': 'XLF (Financials)',
+                'GOOGL': 'GOOGL (Alphabet)',
+                'AMD': 'AMD (Advanced Micro Devices)',
+                'AVGO': 'AVGO (Broadcom)',
+                'PLTR': 'PLTR (Palantir)',
+                'NFLX': 'NFLX (Netflix)',
+                'LLY': 'LLY (Eli Lilly)',
+                'DELL': 'DELL (Dell)',
+                'CRWD': 'CRWD (CrowdStrike)',
+                'MU': 'MU (Micron)',
+                'ORCL': 'ORCL (Oracle)',
+                'JPM': 'JPM (JPMorgan)',
+                'WMT': 'WMT (Walmart)',
+                'COST': 'COST (Costco)',
+                'TLT': 'TLT (20Y Treasury Bond)',
+                'IBIT': 'IBIT (Bitcoin ETF)'
+            };
+            
+            const universe = [...priority];
+            tickers.forEach(t => {
+                if (!universe.includes(t)) universe.push(t);
+            });
+
+            let html = '';
+            universe.forEach(t => {
+                const label = tickerLabels[t] || t;
+                html += `<option value="${t}" ${t === currentVal ? 'selected' : ''}>${label}</option>`;
+            });
+            select.innerHTML = html;
+        }
+
 
         function setHorizon(h) {
             CURRENT_HORIZON = h;
