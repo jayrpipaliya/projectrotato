@@ -697,15 +697,16 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         annotation_font_color="rgba(88, 166, 255, 0.5)"
     )
     
-    # Highlight Top Cheap Strikes (Green Diamonds)
+    # Highlight Top Cheap Strikes (Green Circles with White Outline)
     fig.add_trace(go.Scatter(
         x=top_strikes['strike'], y=top_strikes['IV_Pct'],
         mode='markers+text',
-        name='🎯 Value Strikes for this Date',
-        marker=dict(size=14, color='#39d353', line=dict(color='#ffffff', width=2), symbol='diamond'),
-        text=[f"${s:.0f}" for s in top_strikes['strike']],
+        name='🟢 Recommended Buy Strikes',
+        marker=dict(size=16, color='#10b981', line=dict(color='#ffffff', width=2.5), symbol='circle'),
+        text=[f"🟢 Buy ${s:.0f}" for s in top_strikes['strike']],
         textposition="bottom center",
-        textfont=dict(color='#39d353', size=11, family="sans-serif")
+        textfont=dict(color='#10b981', size=11, family="sans-serif"),
+        hovertemplate="<b>🟢 RECOMMENDED VALUE BUY</b><br>Strike: $%{x:.2f}<br>Market IV: %{y:.2f}%<extra></extra>"
     ))
     
     fig.update_layout(

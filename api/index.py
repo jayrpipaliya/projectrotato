@@ -261,7 +261,10 @@ def api_options(ticker: str, direction: str = Query("Bullish")):
                 "market_strikes": [round(float(s), 2) for s in target_df['strike']],
                 "market_iv": [round(float(iv), 2) for iv in target_df['IV_Pct']],
                 "market_ask_iv": [round(float(iv), 2) for iv in target_df['Ask_IV_Pct']],
-                "top_strikes": [round(float(s), 2) for s in smile['top_strikes']['strike']]
+                "top_strikes": [round(float(s), 2) for s in smile['top_strikes']['strike']],
+                "top_strikes_iv": [round(float(iv), 2) for iv in smile['top_strikes']['IV_Pct']],
+                "top_strikes_delta": [round(float(d), 2) for d in smile['top_strikes'].get('Est_Delta', [0]*len(smile['top_strikes']))],
+                "top_strikes_edge": [round(float(e), 2) for e in smile['top_strikes'].get('Ask_Edge', [0]*len(smile['top_strikes']))]
             }
             
         return clean_json({
@@ -2281,6 +2284,24 @@ HTML_CONTENT = """<!DOCTYPE html>
                         line: { color: 'rgba(234, 179, 8, 0.4)', width: 1.5 }
                     };
 
+                    const traceValueStrikes = {
+                        x: s.top_strikes || [],
+                        y: s.top_strikes_iv || [],
+                        name: '🟢 Recommended Buy Strikes',
+                        type: 'scatter',
+                        mode: 'markers+text',
+                        marker: {
+                            color: '#10b981',
+                            size: 16,
+                            symbol: 'circle',
+                            line: { color: '#ffffff', width: 2.5 }
+                        },
+                        text: (s.top_strikes || []).map(st => `🟢 Buy $${st}`),
+                        textposition: 'bottom center',
+                        textfont: { color: '#10b981', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
+                        hovertemplate: '<b>🟢 RECOMMENDED VALUE BUY</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>'
+                    };
+
                     const layout = {
                         plot_bgcolor: "#111319",
                         paper_bgcolor: "#111319",
@@ -2300,7 +2321,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                             }
                         ]
                     };
-                    Plotly.newPlot('optionsSmileChart', [traceModel, traceMarket, traceAsk], layout, {responsive: true});
+                    Plotly.newPlot('optionsSmileChart', [traceModel, traceMarket, traceAsk, traceValueStrikes], layout, {responsive: true});
                 }
 
             } catch (err) {
