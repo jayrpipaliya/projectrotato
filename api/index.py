@@ -518,14 +518,26 @@ HTML_CONTENT = """<!DOCTYPE html>
 
 
 
-        <!-- Metric Cards Row 1: Equities & Ratios -->
-        <div id="benchmarksRow" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mb-3.5">
-            <!-- Dynamic Cards -->
+        <!-- Row 1: Core Equity & Macro Benchmarks (5 columns) -->
+        <div class="mb-3.5">
+            <div class="flex items-center justify-between mb-1.5 px-0.5">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Core Equity & Macro Benchmarks</span>
+                <span class="text-[10px] text-slate-500 font-medium">Session Closes & Momentum</span>
+            </div>
+            <div id="benchmarksRow" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+                <!-- Dynamic Benchmark Cards (SPY, QQQ, IWM, GLD, TLT) -->
+            </div>
         </div>
 
-        <!-- Metric Cards Row 2: Macro Cross-Asset Barometers -->
-        <div id="macroBarometersRow" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5">
-            <!-- Dynamic Macro Cards -->
+        <!-- Row 2: Liquidity, Energy & Quantitative Regime Radar (5 columns) -->
+        <div class="mb-5">
+            <div class="flex items-center justify-between mb-1.5 px-0.5">
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Liquidity, Energy & Quantitative Regime Radar</span>
+                <span class="text-[10px] text-slate-500 font-medium">50-Day Z-Score & Relative Velocity</span>
+            </div>
+            <div id="macroBarometersRow" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+                <!-- Dynamic Regime Cards (IBIT, USO, SPY/RSP, QQQ/RSP, IWM/QQQ) -->
+            </div>
         </div>
 
         <!-- Navigation Tabs -->
@@ -1305,70 +1317,59 @@ HTML_CONTENT = """<!DOCTYPE html>
                 sessionBadge.innerText = 'Prices: ' + DATA.last_market_session;
             }
             const b = DATA.benchmarks;
-            const r = DATA.market_data.ratios;
-            const spy_rsp = r.SPY_RSP || {};
-            const iwm_qqq = r.IWM_QQQ || {};
+            const macro = DATA.market_data.macro_assets || {};
 
             const cards = [
-                { name: "SPY • S&P 500", p: b.SPY?.close, c: b.SPY?.pct_1d, sub: `ATH DD: ${b.SPY?.drawdown_ath}% | 5D: ${b.SPY?.pct_5d > 0 ? '+' : ''}${b.SPY?.pct_5d}% | RSI: ${b.SPY?.rsi}` },
-                { name: "QQQ • Nasdaq 100", p: b.QQQ?.close, c: b.QQQ?.pct_1d, sub: `ATH DD: ${b.QQQ?.drawdown_ath}% | 5D: ${b.QQQ?.pct_5d > 0 ? '+' : ''}${b.QQQ?.pct_5d}% | RSI: ${b.QQQ?.rsi}` },
-                { name: "IWM • Russell 2000", p: b.IWM?.close, c: b.IWM?.pct_1d, sub: `ATH DD: ${b.IWM?.drawdown_ath}% | 5D: ${b.IWM?.pct_5d > 0 ? '+' : ''}${b.IWM?.pct_5d}% | RSI: ${b.IWM?.rsi}` },
                 { 
-                    name: "SPY / RSP (Breadth)", 
-                    p: spy_rsp.current, 
-                    sigma: spy_rsp.z_score_50d, 
-                    pct_5d: spy_rsp.pct_5d,
-                    pct_20d: spy_rsp.pct_20d,
-                    dist_ema20: spy_rsp.dist_ema20,
-                    dist_ema50: spy_rsp.dist_ema50,
-                    state: spy_rsp.actionable_state || "Concentration Peaking",
-                    action: spy_rsp.action_text || "Rotate into Equal-Weight (RSP)",
-                    color: spy_rsp.state_color || "#f59e0b"
+                    ticker: "SPY", name: "S&P 500", 
+                    price: b.SPY?.close, pct1d: b.SPY?.pct_1d, 
+                    sub1: `ATH DD: <span class="font-bold text-slate-300">${b.SPY?.drawdown_ath}%</span> • 5D: <span class="font-bold ${(b.SPY?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(b.SPY?.pct_5d || 0) >= 0 ? '+' : ''}${b.SPY?.pct_5d}%</span>`,
+                    sub2: `14D RSI: <span class="font-semibold text-slate-300">${b.SPY?.rsi}</span> • Large-Cap Core`
                 },
                 { 
-                    name: "IWM / QQQ (Rotation)", 
-                    p: iwm_qqq.current, 
-                    sigma: iwm_qqq.z_score_50d, 
-                    pct_5d: iwm_qqq.pct_5d,
-                    pct_20d: iwm_qqq.pct_20d,
-                    dist_ema20: iwm_qqq.dist_ema20,
-                    dist_ema50: iwm_qqq.dist_ema50,
-                    state: iwm_qqq.actionable_state || "Small-Cap Coiling",
-                    action: iwm_qqq.action_text || "Early Mean-Reversion Bid in IWM",
-                    color: iwm_qqq.state_color || "#10b981"
+                    ticker: "QQQ", name: "Nasdaq 100", 
+                    price: b.QQQ?.close, pct1d: b.QQQ?.pct_1d, 
+                    sub1: `ATH DD: <span class="font-bold text-slate-300">${b.QQQ?.drawdown_ath}%</span> • 5D: <span class="font-bold ${(b.QQQ?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(b.QQQ?.pct_5d || 0) >= 0 ? '+' : ''}${b.QQQ?.pct_5d}%</span>`,
+                    sub2: `14D RSI: <span class="font-semibold text-slate-300">${b.QQQ?.rsi}</span> • Tech Growth`
+                },
+                { 
+                    ticker: "IWM", name: "Russell 2000", 
+                    price: b.IWM?.close, pct1d: b.IWM?.pct_1d, 
+                    sub1: `ATH DD: <span class="font-bold text-slate-300">${b.IWM?.drawdown_ath}%</span> • 5D: <span class="font-bold ${(b.IWM?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(b.IWM?.pct_5d || 0) >= 0 ? '+' : ''}${b.IWM?.pct_5d}%</span>`,
+                    sub2: `14D RSI: <span class="font-semibold text-slate-300">${b.IWM?.rsi}</span> • Small-Cap Value`
+                },
+                { 
+                    ticker: "GLD", name: "Gold Trust", 
+                    price: macro.GLD?.close, pct1d: macro.GLD?.pct_1d, 
+                    sub1: `5D: <span class="font-bold ${(macro.GLD?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(macro.GLD?.pct_5d || 0) >= 0 ? '+' : ''}${macro.GLD?.pct_5d?.toFixed(2)}%</span> • 20D: <span class="font-semibold text-slate-300">${macro.GLD?.pct_20d?.toFixed(2)}%</span>`,
+                    sub2: `Safe Haven • Debasement Hedge`
+                },
+                { 
+                    ticker: "TLT", name: "20Y Treasuries", 
+                    price: macro.TLT?.close, pct1d: macro.TLT?.pct_1d, 
+                    sub1: `5D: <span class="font-bold ${(macro.TLT?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(macro.TLT?.pct_5d || 0) >= 0 ? '+' : ''}${macro.TLT?.pct_5d?.toFixed(2)}%</span> • 20D: <span class="font-semibold text-slate-300">${macro.TLT?.pct_20d?.toFixed(2)}%</span>`,
+                    sub2: `Duration • Real Yield Pressure`
                 }
             ];
 
             let html = '';
-            cards.forEach(card => {
-                const isRatio = card.sigma !== undefined;
-                const sign = card.c >= 0 ? '+' : '';
-                const pill = isRatio ? 'pill-amber' : (card.c >= 0 ? 'pill-green' : 'pill-red');
-                const badge = isRatio ? `${card.sigma > 0 ? '+' : ''}${card.sigma?.toFixed(2)}σ` : `${sign}${card.c?.toFixed(2)}%`;
-                
-                let subHtml = `<div class="text-[11px] text-slate-400 mt-1">${card.sub}</div>`;
-                if (isRatio) {
-                    const sign5d = (card.pct_5d || 0) >= 0 ? '+' : '';
-                    const sign20d = (card.pct_20d || 0) >= 0 ? '+' : '';
-                    const signEma20 = (card.dist_ema20 || 0) >= 0 ? '+' : '';
-                    const signEma50 = (card.dist_ema50 || 0) >= 0 ? '+' : '';
-                    subHtml = `
-                        <div class="text-[11px] text-slate-400 mt-1 flex flex-col gap-0.5">
-                            <div><b>5D:</b> <span class="${(card.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-bold">${sign5d}${card.pct_5d}%</span> • <b>20D:</b> <span class="${(card.pct_20d || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-bold">${sign20d}${card.pct_20d}%</span> • <span style="color:${card.color};" class="font-bold">${card.state}</span></div>
-                            <div class="text-[10px] text-slate-400"><b>vs 20EMA:</b> <span class="${(card.dist_ema20 || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${signEma20}${card.dist_ema20}%</span> &nbsp;|&nbsp; <b>vs 50EMA:</b> <span class="${(card.dist_ema50 || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${signEma50}${card.dist_ema50}%</span></div>
-                            <div class="text-[10.5px] text-slate-300"><b>Action:</b> ${card.action}</div>
-                        </div>
-                    `;
-                }
-
+            cards.forEach(c => {
+                const p1d = c.pct1d || 0;
+                const pill = p1d >= 0 ? 'pill-green' : 'pill-red';
+                const sign = p1d >= 0 ? '+' : '';
                 html += `
-                    <div class="lux-card p-4">
-                        <div class="flex justify-between items-center text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                            <span>${card.name}</span>
-                            <span class="${pill} px-2 py-0.5 rounded font-bold">${badge}</span>
+                    <div class="lux-card p-3.5 flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                                <span>${c.ticker} <span class="text-slate-500 font-medium">• ${c.name}</span></span>
+                                <span class="${pill} px-2 py-0.5 rounded font-bold text-[11px]">${sign}${p1d.toFixed(2)}%</span>
+                            </div>
+                            <div class="text-2xl font-extrabold text-white tracking-tight mt-0.5">$${Number(c.price || 0).toFixed(2)}</div>
                         </div>
-                        <div class="text-2xl font-extrabold text-white tracking-tight">${isRatio ? Number(card.p).toFixed(4) : '$' + Number(card.p).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                        ${subHtml}
+                        <div class="mt-2.5 pt-2 border-t border-white/5 text-[11px] text-slate-400 flex flex-col gap-0.5">
+                            <div>${c.sub1}</div>
+                            <div class="text-[10px] text-slate-500 truncate">${c.sub2}</div>
+                        </div>
                     </div>
                 `;
             });
@@ -1377,30 +1378,102 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         function renderMacroBarometers() {
             const macro = DATA.market_data.macro_assets || {};
-            const items = [
-                { s: 'GLD', n: 'Gold Debasement', d: macro.GLD, tag: 'Safe Haven' },
-                { s: 'USO', n: 'Crude Oil', d: macro.USO, tag: 'Energy Cost' },
-                { s: 'TLT', n: '20Y Treasuries', d: macro.TLT, tag: 'Yield Pressure' },
-                { s: 'IBIT', n: 'Bitcoin Trust', d: macro.IBIT, tag: 'Liquidity' }
+            const r = DATA.market_data.ratios || {};
+            const spy_rsp = r.SPY_RSP || {};
+            const qqq_rsp = r.QQQ_RSP || {};
+            const iwm_qqq = r.IWM_QQQ || {};
+
+            const cards = [
+                {
+                    type: 'asset',
+                    ticker: "IBIT", name: "Bitcoin Trust",
+                    price: macro.IBIT?.close, pct1d: macro.IBIT?.pct_1d,
+                    sub1: `5D: <span class="font-bold ${(macro.IBIT?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(macro.IBIT?.pct_5d || 0) >= 0 ? '+' : ''}${macro.IBIT?.pct_5d?.toFixed(2)}%</span> • 20D: <span class="font-semibold text-slate-300">${macro.IBIT?.pct_20d?.toFixed(2)}%</span>`,
+                    sub2: `High-Beta Liquidity Barometer`
+                },
+                {
+                    type: 'asset',
+                    ticker: "USO", name: "Crude Oil",
+                    price: macro.USO?.close, pct1d: macro.USO?.pct_1d,
+                    sub1: `5D: <span class="font-bold ${(macro.USO?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(macro.USO?.pct_5d || 0) >= 0 ? '+' : ''}${macro.USO?.pct_5d?.toFixed(2)}%</span> • 20D: <span class="font-semibold text-slate-300">${macro.USO?.pct_20d?.toFixed(2)}%</span>`,
+                    sub2: `Energy & Inflation Input Cost`
+                },
+                {
+                    type: 'ratio',
+                    ticker: "SPY / RSP", name: "Market Breadth",
+                    value: spy_rsp.current || 0,
+                    sigma: spy_rsp.z_score_50d || 0,
+                    state: spy_rsp.actionable_state || "Breadth Expansion",
+                    stateColor: spy_rsp.state_color || "#10b981",
+                    pct5d: spy_rsp.pct_5d || 0,
+                    action: "Equal-Weight RSP Outperforming"
+                },
+                {
+                    type: 'ratio',
+                    ticker: "QQQ / RSP", name: "Tech Breadth",
+                    value: qqq_rsp.current || 0,
+                    sigma: qqq_rsp.z_score_50d || 0,
+                    state: qqq_rsp.actionable_state || "Tech Consolidating",
+                    stateColor: qqq_rsp.state_color || "#94a3b8",
+                    pct5d: qqq_rsp.pct_5d || 0,
+                    action: "Broadening Beyond Mega-Tech"
+                },
+                {
+                    type: 'ratio',
+                    ticker: "IWM / QQQ", name: "Small vs Tech",
+                    value: iwm_qqq.current || 0,
+                    sigma: iwm_qqq.z_score_50d || 0,
+                    state: iwm_qqq.actionable_state || "Small-Cap Bid",
+                    stateColor: iwm_qqq.state_color || "#10b981",
+                    pct5d: iwm_qqq.pct_5d || 0,
+                    action: "Small-Cap Alpha Momentum"
+                }
             ];
+
             let html = '';
-            items.forEach(it => {
-                const d = it.d || {};
-                const c = d.pct_1d || 0;
-                const d5 = d.pct_5d || 0;
-                const d20 = d.pct_20d || 0;
-                const pill = c >= 0 ? 'pill-green' : 'pill-red';
-                const sign = c >= 0 ? '+' : '';
-                html += `
-                    <div class="lux-card p-4">
-                        <div class="flex justify-between items-center text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
-                            <span>${it.s} • ${it.n}</span>
-                            <span class="${pill} px-2 py-0.5 rounded font-bold">${sign}${c.toFixed(2)}%</span>
+            cards.forEach(c => {
+                if (c.type === 'asset') {
+                    const p1d = c.pct1d || 0;
+                    const pill = p1d >= 0 ? 'pill-green' : 'pill-red';
+                    const sign = p1d >= 0 ? '+' : '';
+                    html += `
+                        <div class="lux-card p-3.5 flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                                    <span>${c.ticker} <span class="text-slate-500 font-medium">• ${c.name}</span></span>
+                                    <span class="${pill} px-2 py-0.5 rounded font-bold text-[11px]">${sign}${p1d.toFixed(2)}%</span>
+                                </div>
+                                <div class="text-2xl font-extrabold text-white tracking-tight mt-0.5">$${Number(c.price || 0).toFixed(2)}</div>
+                            </div>
+                            <div class="mt-2.5 pt-2 border-t border-white/5 text-[11px] text-slate-400 flex flex-col gap-0.5">
+                                <div>${c.sub1}</div>
+                                <div class="text-[10px] text-slate-500 truncate">${c.sub2}</div>
+                            </div>
                         </div>
-                        <div class="text-2xl font-extrabold text-white tracking-tight">$${Number(d.close || 0).toFixed(2)}</div>
-                        <div class="text-[11px] text-slate-400 mt-1">5D: ${d5 > 0 ? '+' : ''}${d5.toFixed(2)}% | 20D: ${d20 > 0 ? '+' : ''}${d20.toFixed(2)}% | ${it.tag}</div>
-                    </div>
-                `;
+                    `;
+                } else {
+                    const sig = c.sigma || 0;
+                    const pill = sig > 0 ? 'pill-cyan' : 'pill-amber';
+                    const sigText = `${sig > 0 ? '+' : ''}${sig.toFixed(2)}σ`;
+                    html += `
+                        <div class="lux-card p-3.5 flex flex-col justify-between border-t-2" style="border-top-color: ${c.stateColor};">
+                            <div>
+                                <div class="flex justify-between items-center text-xs font-bold text-slate-300 uppercase tracking-wider mb-1">
+                                    <span>${c.ticker} <span class="text-slate-500 font-medium">• ${c.name}</span></span>
+                                    <span class="${pill} px-2 py-0.5 rounded font-bold text-[11px] font-mono">${sigText}</span>
+                                </div>
+                                <div class="flex items-baseline gap-2 mt-0.5">
+                                    <span class="text-2xl font-extrabold text-white tracking-tight font-mono">${Number(c.value).toFixed(4)}</span>
+                                    <span class="text-[11px] font-bold truncate" style="color: ${c.stateColor};">${c.state}</span>
+                                </div>
+                            </div>
+                            <div class="mt-2.5 pt-2 border-t border-white/5 text-[11px] text-slate-400 flex flex-col gap-0.5">
+                                <div>5D: <span class="font-bold ${c.pct5d >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${c.pct5d >= 0 ? '+' : ''}${c.pct5d}%</span> • Regime Trend</div>
+                                <div class="text-[10.5px] text-amber-400/90 font-medium truncate">${c.action}</div>
+                            </div>
+                        </div>
+                    `;
+                }
             });
             document.getElementById('macroBarometersRow').innerHTML = html;
         }

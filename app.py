@@ -419,114 +419,139 @@ st.markdown(brand_hero_html, unsafe_allow_html=True)
 
 
 
-# ----------------- TOP METRIC CARDS ROW 1: EQUITY BENCHMARKS -----------------
-c1, c2, c3, c4, c5 = st.columns(5)
+# ----------------- TOP METRIC CARDS ROW 1: CORE EQUITY & MACRO BENCHMARKS -----------------
+st.markdown('<div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Core Equity & Macro Benchmarks</div>', unsafe_allow_html=True)
+r1_c1, r1_c2, r1_c3, r1_c4, r1_c5 = st.columns(5)
 
-def render_metric_card(label, price, change, sub_text, pill_type="green"):
+def render_metric_card(label, price, change, sub_text1, sub_text2, pill_type="green"):
     sign = "+" if change >= 0 else ""
     pill_class = f"pill-{pill_type}"
     return (
-        f'<div class="metric-card-lux">'
+        f'<div class="metric-card-lux" style="display:flex; flex-direction:column; justify-content:space-between; height:100%;">'
+        f'<div>'
         f'<div class="card-label"><span>{label}</span><span class="{pill_class}">{sign}{change:.2f}%</span></div>'
         f'<div class="card-val">${price:,.2f}</div>'
-        f'<div class="card-sub">{sub_text}</div>'
+        f'</div>'
+        f'<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06); font-size:11px; color:#94a3b8; display:flex; flex-direction:column; gap:2px;">'
+        f'<div>{sub_text1}</div>'
+        f'<div style="font-size:10px; color:#64748b;">{sub_text2}</div>'
+        f'</div>'
         f'</div>'
     )
 
-with c1:
+with r1_c1:
     st.markdown(render_metric_card(
         "SPY • S&P 500", spy_metrics.get("close", 0), spy_metrics.get("pct_1d", 0),
-        f"ATH DD: {spy_metrics.get('drawdown_ath')}% | 5D: {spy_metrics.get('pct_5d', 0):+.2f}% | RSI: {spy_metrics.get('rsi')}",
+        f"ATH DD: <b style='color:#cbd5e1;'>{spy_metrics.get('drawdown_ath')}%</b> • 5D: <b>{spy_metrics.get('pct_5d', 0):+.2f}%</b>",
+        f"14D RSI: {spy_metrics.get('rsi')} • Large-Cap Core",
         "green" if spy_metrics.get("pct_1d", 0) >= 0 else "red"
     ), unsafe_allow_html=True)
 
-with c2:
+with r1_c2:
     st.markdown(render_metric_card(
         "QQQ • Nasdaq 100", qqq_metrics.get("close", 0), qqq_metrics.get("pct_1d", 0),
-        f"ATH DD: {qqq_metrics.get('drawdown_ath')}% | 5D: {qqq_metrics.get('pct_5d', 0):+.2f}% | RSI: {qqq_metrics.get('rsi')}",
+        f"ATH DD: <b style='color:#cbd5e1;'>{qqq_metrics.get('drawdown_ath')}%</b> • 5D: <b>{qqq_metrics.get('pct_5d', 0):+.2f}%</b>",
+        f"14D RSI: {qqq_metrics.get('rsi')} • Tech Growth",
         "green" if qqq_metrics.get("pct_1d", 0) >= 0 else "red"
     ), unsafe_allow_html=True)
 
-with c3:
+with r1_c3:
     st.markdown(render_metric_card(
         "IWM • Russell 2000", iwm_metrics.get("close", 0), iwm_metrics.get("pct_1d", 0),
-        f"ATH DD: {iwm_metrics.get('drawdown_ath')}% | 5D: {iwm_metrics.get('pct_5d', 0):+.2f}% | RSI: {iwm_metrics.get('rsi')}",
+        f"ATH DD: <b style='color:#cbd5e1;'>{iwm_metrics.get('drawdown_ath')}%</b> • 5D: <b>{iwm_metrics.get('pct_5d', 0):+.2f}%</b>",
+        f"14D RSI: {iwm_metrics.get('rsi')} • Small-Cap Value",
         "green" if iwm_metrics.get("pct_1d", 0) >= 0 else "red"
     ), unsafe_allow_html=True)
 
-with c4:
-    z_val = spy_rsp.get("z_score_50d", 0)
-    act_state = spy_rsp.get("actionable_state", "Concentration Peaking")
-    act_text = spy_rsp.get("action_text", "Rotate into Equal-Weight (RSP)")
-    p5d = spy_rsp.get("pct_5d", 0)
-    p20d = spy_rsp.get("pct_20d", 0)
-    d_ema20 = spy_rsp.get("dist_ema20", 0)
-    d_ema50 = spy_rsp.get("dist_ema50", 0)
-    color_val = spy_rsp.get("state_color", "#f59e0b")
-    card_c4 = (
-        f'<div class="metric-card-lux">'
-        f'<div class="card-label"><span>SPY / RSP (Breadth)</span><span class="pill-amber">{z_val:+.2f}σ</span></div>'
-        f'<div class="card-val">{spy_rsp.get("current", 0):.4f}</div>'
-        f'<div class="card-sub" style="flex-direction:column; align-items:flex-start; gap:2px;">'
-        f'<div><b>5D:</b> <span style="color:{"#10b981" if p5d >= 0 else "#ef4444"}; font-weight:700;">{p5d:+.2f}%</span> • <b>20D:</b> <span style="color:{"#10b981" if p20d >= 0 else "#ef4444"}; font-weight:700;">{p20d:+.2f}%</span> • <span style="color:{color_val}; font-weight:700;">{act_state}</span></div>'
-        f'<div style="font-size:11px; color:#94a3b8;"><b>vs 20EMA:</b> {d_ema20:+.2f}% &nbsp;|&nbsp; <b>vs 50EMA:</b> {d_ema50:+.2f}%</div>'
-        f'<div style="font-size:11px; color:#cbd5e1;"><b>Action:</b> {act_text}</div>'
-        f'</div>'
-        f'</div>'
-    )
-    st.markdown(card_c4, unsafe_allow_html=True)
-
-with c5:
-    z_rot = iwm_qqq.get("z_score_50d", 0)
-    act_state_rot = iwm_qqq.get("actionable_state", "Small-Cap Coiling")
-    act_text_rot = iwm_qqq.get("action_text", "Early Mean-Reversion Bid in IWM")
-    p5d_rot = iwm_qqq.get("pct_5d", 0)
-    p20d_rot = iwm_qqq.get("pct_20d", 0)
-    d_ema20_rot = iwm_qqq.get("dist_ema20", 0)
-    d_ema50_rot = iwm_qqq.get("dist_ema50", 0)
-    color_rot = iwm_qqq.get("state_color", "#10b981")
-    card_c5 = (
-        f'<div class="metric-card-lux">'
-        f'<div class="card-label"><span>IWM / QQQ (Rotation)</span><span class="pill-amber">{z_rot:+.2f}σ</span></div>'
-        f'<div class="card-val">{iwm_qqq.get("current", 0):.4f}</div>'
-        f'<div class="card-sub" style="flex-direction:column; align-items:flex-start; gap:2px;">'
-        f'<div><b>5D:</b> <span style="color:{"#10b981" if p5d_rot >= 0 else "#ef4444"}; font-weight:700;">{p5d_rot:+.2f}%</span> • <b>20D:</b> <span style="color:{"#10b981" if p20d_rot >= 0 else "#ef4444"}; font-weight:700;">{p20d_rot:+.2f}%</span> • <span style="color:{color_rot}; font-weight:700;">{act_state_rot}</span></div>'
-        f'<div style="font-size:11px; color:#94a3b8;"><b>vs 20EMA:</b> {d_ema20_rot:+.2f}% &nbsp;|&nbsp; <b>vs 50EMA:</b> {d_ema50_rot:+.2f}%</div>'
-        f'<div style="font-size:11px; color:#cbd5e1;"><b>Action:</b> {act_text_rot}</div>'
-        f'</div>'
-        f'</div>'
-    )
-    st.markdown(card_c5, unsafe_allow_html=True)
-
-# ----------------- TOP METRIC CARDS ROW 2: MACRO CROSS-ASSET BAROMETERS -----------------
-mc1, mc2, mc3, mc4 = st.columns(4)
-
-with mc1:
+with r1_c4:
     st.markdown(render_metric_card(
-        "GLD • Gold Debasement", gld_m.get("close", 0), gld_m.get("pct_1d", 0),
-        f"5D: {gld_m.get('pct_5d', 0):+.2f}% | 20D: {gld_m.get('pct_20d', 0):+.2f}% | Safe Haven",
+        "GLD • Gold Trust", gld_m.get("close", 0), gld_m.get("pct_1d", 0),
+        f"5D: <b>{gld_m.get('pct_5d', 0):+.2f}%</b> • 20D: {gld_m.get('pct_20d', 0):+.2f}%",
+        "Safe Haven • Debasement Hedge",
         "green" if gld_m.get("pct_1d", 0) >= 0 else "red"
     ), unsafe_allow_html=True)
 
-with mc2:
-    st.markdown(render_metric_card(
-        "USO • Crude Oil", uso_m.get("close", 0), uso_m.get("pct_1d", 0),
-        f"5D: {uso_m.get('pct_5d', 0):+.2f}% | 20D: {uso_m.get('pct_20d', 0):+.2f}% | Energy Cost",
-        "green" if uso_m.get("pct_1d", 0) >= 0 else "red"
-    ), unsafe_allow_html=True)
-
-with mc3:
+with r1_c5:
     st.markdown(render_metric_card(
         "TLT • 20Y Treasuries", tlt_m.get("close", 0), tlt_m.get("pct_1d", 0),
-        f"5D: {tlt_m.get('pct_5d', 0):+.2f}% | 20D: {tlt_m.get('pct_20d', 0):+.2f}% | Yield Pressure",
+        f"5D: <b>{tlt_m.get('pct_5d', 0):+.2f}%</b> • 20D: {tlt_m.get('pct_20d', 0):+.2f}%",
+        "Duration • Real Yield Pressure",
         "green" if tlt_m.get("pct_1d", 0) >= 0 else "red"
     ), unsafe_allow_html=True)
 
-with mc4:
+# ----------------- TOP METRIC CARDS ROW 2: LIQUIDITY, ENERGY & REGIME RADAR -----------------
+st.markdown('<div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-top:10px; margin-bottom:6px;">Liquidity, Energy & Quantitative Regime Radar</div>', unsafe_allow_html=True)
+r2_c1, r2_c2, r2_c3, r2_c4, r2_c5 = st.columns(5)
+
+qqq_rsp = market_data["ratios"].get("QQQ_RSP", {})
+
+with r2_c1:
     st.markdown(render_metric_card(
         "IBIT • Bitcoin Trust", ibit_m.get("close", 0), ibit_m.get("pct_1d", 0),
-        f"5D: {ibit_m.get('pct_5d', 0):+.2f}% | 20D: {ibit_m.get('pct_20d', 0):+.2f}% | Liquidity",
+        f"5D: <b>{ibit_m.get('pct_5d', 0):+.2f}%</b> • 20D: {ibit_m.get('pct_20d', 0):+.2f}%",
+        "High-Beta Liquidity Barometer",
         "green" if ibit_m.get("pct_1d", 0) >= 0 else "red"
+    ), unsafe_allow_html=True)
+
+with r2_c2:
+    st.markdown(render_metric_card(
+        "USO • Crude Oil", uso_m.get("close", 0), uso_m.get("pct_1d", 0),
+        f"5D: <b>{uso_m.get('pct_5d', 0):+.2f}%</b> • 20D: {uso_m.get('pct_20d', 0):+.2f}%",
+        "Energy & Inflation Input Cost",
+        "green" if uso_m.get("pct_1d", 0) >= 0 else "red"
+    ), unsafe_allow_html=True)
+
+def render_ratio_card(label, val, z_val, state, state_color, p5d, action_text):
+    sig_text = f"{z_val:+.2f}σ"
+    pill_class = "pill-cyan" if z_val > 0 else "pill-amber"
+    p5_color = "#10b981" if p5d >= 0 else "#ef4444"
+    return (
+        f'<div class="metric-card-lux" style="display:flex; flex-direction:column; justify-content:space-between; height:100%; border-top:2px solid {state_color};">'
+        f'<div>'
+        f'<div class="card-label"><span>{label}</span><span class="{pill_class}">{sig_text}</span></div>'
+        f'<div style="display:flex; align-items:baseline; gap:8px;">'
+        f'<span class="card-val" style="font-family:monospace;">{val:.4f}</span>'
+        f'<span style="font-size:11px; font-weight:700; color:{state_color};">{state}</span>'
+        f'</div>'
+        f'</div>'
+        f'<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06); font-size:11px; color:#94a3b8; display:flex; flex-direction:column; gap:2px;">'
+        f'<div>5D: <b style="color:{p5_color};">{p5d:+.2f}%</b> • Regime Trend</div>'
+        f'<div style="font-size:10.5px; color:#f59e0b; font-weight:500;">{action_text}</div>'
+        f'</div>'
+        f'</div>'
+    )
+
+with r2_c3:
+    st.markdown(render_ratio_card(
+        "SPY / RSP • Breadth",
+        spy_rsp.get("current", 0),
+        spy_rsp.get("z_score_50d", 0),
+        spy_rsp.get("actionable_state", "Breadth Expansion"),
+        spy_rsp.get("state_color", "#10b981"),
+        spy_rsp.get("pct_5d", 0),
+        "Equal-Weight RSP Leading"
+    ), unsafe_allow_html=True)
+
+with r2_c4:
+    st.markdown(render_ratio_card(
+        "QQQ / RSP • Tech Breadth",
+        qqq_rsp.get("current", 0),
+        qqq_rsp.get("z_score_50d", 0),
+        qqq_rsp.get("actionable_state", "Tech Consolidating"),
+        qqq_rsp.get("state_color", "#94a3b8"),
+        qqq_rsp.get("pct_5d", 0),
+        "Broadening Beyond Mega-Tech"
+    ), unsafe_allow_html=True)
+
+with r2_c5:
+    st.markdown(render_ratio_card(
+        "IWM / QQQ • Small vs Tech",
+        iwm_qqq.get("current", 0),
+        iwm_qqq.get("z_score_50d", 0),
+        iwm_qqq.get("actionable_state", "Small-Cap Bid"),
+        iwm_qqq.get("state_color", "#10b981"),
+        iwm_qqq.get("pct_5d", 0),
+        "Small-Cap Alpha Momentum"
     ), unsafe_allow_html=True)
 
 st.caption(f"**Cross-Asset Macro Barometer Reading:** {macro_reading}")
