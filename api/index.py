@@ -402,10 +402,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 </head>
 <body class="min-h-screen bg-[#08090d] text-[#f8fafc] flex flex-col antialiased">
 
-    <!-- Top Ticker Ribbon -->
-    <div id="tickerRibbon" class="ticker-ribbon py-2 px-6 flex items-center gap-6 overflow-x-auto text-xs font-semibold whitespace-nowrap shrink-0 border-b border-white/5">
-        <span class="text-slate-500">Loading market tickers...</span>
-    </div>
+
 
     <!-- App Wrapper: Left Sidebar + Main Dashboard -->
     <div class="flex flex-1 min-h-0">
@@ -519,21 +516,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- Regime Ribbon Card -->
-        <div id="regimeCard" class="lux-card p-4 mb-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-                <div class="flex items-center gap-2">
-                    <span class="text-[11px] font-bold text-amber-500 uppercase tracking-wider">Current Market Regime</span>
-                    <span id="regimeAiBadge" class="hidden text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">AI Synthesized</span>
-                </div>
-                <div id="regimeTitle" class="text-lg font-extrabold text-white mt-0.5">Analyzing Market Narrative...</div>
-                <div id="regimeDetail" class="text-xs text-slate-400 mt-1 max-w-4xl">Decoding multi-factor sector flows and breadth concentration...</div>
-            </div>
-            <div class="text-left md:text-right">
-                <div class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Risk Profile</div>
-                <div id="regimeRiskBadge" class="pill-amber inline-block px-3 py-1 rounded-full text-xs font-bold mt-1">Moderate</div>
-            </div>
-        </div>
+
 
         <!-- Metric Cards Row 1: Equities & Ratios -->
         <div id="benchmarksRow" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mb-3.5">
@@ -1172,8 +1155,6 @@ HTML_CONTENT = """<!DOCTYPE html>
                 DATA = await res.json();
                 
                 // 2. Render primary dashboard shell immediately
-                renderTickerTape();
-                renderRegime();
                 renderBenchmarks();
                 renderMacroBarometers();
                 renderBriefingBaskets();
@@ -1274,6 +1255,8 @@ HTML_CONTENT = """<!DOCTYPE html>
         }
 
         function renderTickerTape() {
+            const el = document.getElementById('tickerRibbon');
+            if (!el) return;
             const m = DATA.benchmarks;
             const macro = DATA.market_data.macro_assets || {};
             const list = [
@@ -1299,14 +1282,17 @@ HTML_CONTENT = """<!DOCTYPE html>
                     </div>
                 `;
             });
-            document.getElementById('tickerRibbon').innerHTML = html;
+            el.innerHTML = html;
         }
 
         function renderRegime() {
             const md = DATA.market_data;
-            document.getElementById('regimeTitle').innerText = md.narrative_title || "Secular Uptrend";
-            document.getElementById('regimeDetail').innerText = md.narrative_detail || "";
-            document.getElementById('regimeRiskBadge').innerText = md.risk_level || "Moderate";
+            const t = document.getElementById('regimeTitle');
+            if (t) t.innerText = md.narrative_title || "Secular Uptrend";
+            const d = document.getElementById('regimeDetail');
+            if (d) d.innerText = md.narrative_detail || "";
+            const b = document.getElementById('regimeRiskBadge');
+            if (b) b.innerText = md.risk_level || "Moderate";
             const sessionBadge = document.getElementById('sessionDateBadge');
             if (sessionBadge) {
                 sessionBadge.innerText = 'Prices: ' + (DATA.last_market_session || '2026-10-27');
@@ -1314,6 +1300,10 @@ HTML_CONTENT = """<!DOCTYPE html>
         }
 
         function renderBenchmarks() {
+            const sessionBadge = document.getElementById('sessionDateBadge');
+            if (sessionBadge && DATA.last_market_session) {
+                sessionBadge.innerText = 'Prices: ' + DATA.last_market_session;
+            }
             const b = DATA.benchmarks;
             const r = DATA.market_data.ratios;
             const spy_rsp = r.SPY_RSP || {};

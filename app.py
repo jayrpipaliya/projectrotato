@@ -391,29 +391,7 @@ ibit_m = macro_assets_data.get("IBIT", {})
 spy_rsp = market_data["ratios"].get("SPY_RSP", {})
 iwm_qqq = market_data["ratios"].get("IWM_QQQ", {})
 
-# ----------------- TOP TICKER TAPE RIBBON -----------------
-def render_ticker_tape():
-    tickers = [
-        ("SPY", spy_metrics.get("close"), spy_metrics.get("pct_1d")),
-        ("QQQ", qqq_metrics.get("close"), qqq_metrics.get("pct_1d")),
-        ("IWM", iwm_metrics.get("close"), iwm_metrics.get("pct_1d")),
-        ("GLD", gld_m.get("close"), gld_m.get("pct_1d")),
-        ("TLT", tlt_m.get("close"), tlt_m.get("pct_1d")),
-        ("USO", uso_m.get("close"), uso_m.get("pct_1d")),
-        ("IBIT", ibit_m.get("close"), ibit_m.get("pct_1d")),
-    ]
-    items_html = []
-    for sym, prc, chg in tickers:
-        if prc is None:
-            continue
-        pill_class = "pill-green" if (chg or 0) >= 0 else "pill-red"
-        sign = "+" if (chg or 0) >= 0 else ""
-        items_html.append(
-            f'<div class="ticker-item"><span class="ticker-symbol">{sym}</span><span>${prc:,.2f}</span><span class="{pill_class}">{sign}{chg:.2f}%</span></div>'
-        )
-    return f'<div class="ticker-tape-container">{"".join(items_html)}</div>'
 
-st.markdown(render_ticker_tape(), unsafe_allow_html=True)
 
 # ----------------- HERO BRAND BAR -----------------
 last_market_session = "Today"
@@ -439,26 +417,7 @@ brand_hero_html = (
 )
 st.markdown(brand_hero_html, unsafe_allow_html=True)
 
-# ----------------- REGIME RIBBON CARD -----------------
-narrative_title = market_data.get("narrative_title", "Secular Uptrend")
-risk_level = market_data.get("risk_level", "Moderate")
-macro_reading = market_data.get("macro_context", "Balanced backdrop.")
-narrative_detail_text = market_data.get("narrative_detail", "")
 
-regime_card_html = (
-    '<div class="regime-card">'
-    '<div>'
-    '<div style="font-size:12px; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px;">Current Market Regime</div>'
-    f'<div style="font-size:18px; font-weight:800; color:#ffffff; margin-top:2px;">{narrative_title}</div>'
-    f'<div style="font-size:13px; color:#94a3b8; margin-top:4px;">{narrative_detail_text}</div>'
-    '</div>'
-    '<div style="text-align:right;">'
-    '<div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">Risk Profile</div>'
-    f'<div class="pill-amber" style="display:inline-block; margin-top:4px; font-size:12px; padding:3px 10px;">{risk_level}</div>'
-    '</div>'
-    '</div>'
-)
-st.markdown(regime_card_html, unsafe_allow_html=True)
 
 # ----------------- TOP METRIC CARDS ROW 1: EQUITY BENCHMARKS -----------------
 c1, c2, c3, c4, c5 = st.columns(5)
