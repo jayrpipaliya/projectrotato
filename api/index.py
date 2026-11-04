@@ -1900,7 +1900,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                         name: tickers[i],
                         type: 'scatter',
                         mode: 'lines',
-                        line: { color: palette[i % palette.length], width: 2 }
+                        line: { color: palette[i % palette.length], width: 2, shape: 'spline', smoothing: 1.3 }
                     });
                 }
             });

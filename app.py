@@ -1032,7 +1032,7 @@ with tab4:
                 sub = df_t.iloc[-60:].copy()
                 base_price = sub["Close"].iloc[0]
                 norm_returns = (sub["Close"] / base_price - 1) * 100
-                fig_norm.add_trace(go.Scatter(x=sub["Date"], y=norm_returns, mode="lines", name=ticker, line=dict(color=palette[idx % len(palette)], width=2)))
+                fig_norm.add_trace(go.Scatter(x=sub["Date"], y=norm_returns, mode="lines", name=ticker, line=dict(color=palette[idx % len(palette)], width=2, shape='spline', smoothing=1.3)))
         apply_dark_theme(fig_norm, height=350)
         fig_norm.update_layout(yaxis_title="Return (%)")
         st.plotly_chart(fig_norm, use_container_width=True)
