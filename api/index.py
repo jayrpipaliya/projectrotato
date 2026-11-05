@@ -48,10 +48,10 @@ def get_cached_analysis():
     _CACHE["market_data_time"] = now
     return data
 
-def get_cached_ai(market_data, api_key: Optional[str] = None):
+def get_cached_ai(market_data, api_key: Optional[str] = None, force: bool = False):
     now = time.time()
     cache_key = f"ai_{api_key or 'default'}"
-    if cache_key in _CACHE and now - _CACHE.get(f"{cache_key}_time", 0) < 600:
+    if not force and cache_key in _CACHE and now - _CACHE.get(f"{cache_key}_time", 0) < 600:
         return _CACHE[cache_key]
     ai = generate_ai_ideas(market_data, gemini_api_key=api_key)
     _CACHE[cache_key] = ai
@@ -113,9 +113,9 @@ def api_market_data():
     })
 
 @app.get("/api/ai-briefing")
-def api_ai_briefing(api_key: Optional[str] = Query(None)):
+def api_ai_briefing(api_key: Optional[str] = Query(None), force: bool = Query(False)):
     market_data = get_cached_analysis()
-    ai_output = get_cached_ai(market_data, api_key=api_key)
+    ai_output = get_cached_ai(market_data, api_key=api_key, force=force)
     return clean_json(ai_output)
 
 @app.post("/api/agent-chat")
@@ -988,14 +988,19 @@ HTML_CONTENT = """<!DOCTYPE html>
               </div>
             </div>
 
-            <!-- Navigation View Filter Pills -->
-            <div class="flex flex-wrap items-center gap-1.5 p-1.5 rounded-lg bg-stealth-950 border border-stealth-border">
-              <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">Focus Pillar:</span>
-              <button onclick="filterSynthesisSection('all')" id="synthPill-all" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-bold bg-mint text-stealth-950 shadow-sm transition">All 4 Pillars</button>
-              <button onclick="filterSynthesisSection('macro')" id="synthPill-macro" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">1. Macro Liquidity</button>
-              <button onclick="filterSynthesisSection('sectors')" id="synthPill-sectors" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">2. Sector Velocity</button>
-              <button onclick="filterSynthesisSection('setups')" id="synthPill-setups" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">3. Setups & Traps</button>
-              <button onclick="filterSynthesisSection('risk')" id="synthPill-risk" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">4. Desk Game Plan</button>
+            <!-- Navigation View Filter Pills & Regenerate Button -->
+            <div class="flex flex-wrap items-center justify-between gap-1.5 p-1.5 rounded-lg bg-stealth-950 border border-stealth-border">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">Focus Pillar:</span>
+                <button onclick="filterSynthesisSection('all')" id="synthPill-all" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-bold bg-mint text-stealth-950 shadow-sm transition">All 4 Pillars</button>
+                <button onclick="filterSynthesisSection('macro')" id="synthPill-macro" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">1. Macro Liquidity</button>
+                <button onclick="filterSynthesisSection('sectors')" id="synthPill-sectors" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">2. Sector Velocity</button>
+                <button onclick="filterSynthesisSection('setups')" id="synthPill-setups" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">3. Setups & Traps</button>
+                <button onclick="filterSynthesisSection('risk')" id="synthPill-risk" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">4. Desk Game Plan</button>
+              </div>
+              <button onclick="loadAiBriefingAsync(true)" title="Force fresh AI synthesis bypassing cache" class="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 transition flex items-center gap-1.5 ml-auto">
+                <span>↻</span> <span>Regenerate Briefing</span>
+              </button>
             </div>
 
             <!-- Structured Synthesis Section Cards Container -->
@@ -1451,6 +1456,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 renderBenchmarks();
                 renderMacroBarometers();
                 renderBriefingBaskets();
+                loadAiBriefingAsync(true);
 
                 if (hBtnText) hBtnText.innerText = 'Synced!';
                 if (sBtnText) sBtnText.innerText = 'Synced!';
@@ -2124,7 +2130,7 @@ async function init() {
             if (grid) grid.innerHTML = bHtml;
         }
 
-        async function loadAiBriefingAsync() {
+        async function loadAiBriefingAsync(force = false) {
             const synthBox = document.getElementById('synthesisText');
             if (synthBox) {
                 synthBox.innerHTML = `
@@ -2136,7 +2142,10 @@ async function init() {
             }
 
             try {
-                const url = USER_API_KEY ? `/api/ai-briefing?api_key=${encodeURIComponent(USER_API_KEY)}` : '/api/ai-briefing';
+                let url = `/api/ai-briefing?force=${force}`;
+                if (USER_API_KEY) {
+                    url += `&api_key=${encodeURIComponent(USER_API_KEY)}`;
+                }
                 const res = await fetch(url);
                 if (!res.ok) {
                     const errBody = await res.text();

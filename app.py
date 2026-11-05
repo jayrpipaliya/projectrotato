@@ -269,7 +269,7 @@ def get_market_analysis():
     generate_synthetic_ratios()
     return analyze_market_narrative()
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=300)
 def get_cached_ai_output(_market_data, api_key_val):
     return generate_ai_ideas(_market_data, gemini_api_key=api_key_val)
 
