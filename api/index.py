@@ -708,6 +708,9 @@ HTML_CONTENT = """<!DOCTYPE html>
         <button onclick="switchTab('tab2')" id="btn-tab2" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Automated Trade Ideas
         </button>
+        <button onclick="switchTab('tab3')" id="btn-tab3" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          Bias Matrix
+        </button>
         <button onclick="switchTab('tab5')" id="btn-tab5" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Indexes & Sector Flow
         </button>
@@ -866,7 +869,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- Tab 3: Confirmation & Confluence Radar -->
+        <!-- Tab 3: Bias Matrix -->
         <div id="tab3" class="tab-pane hidden">
             <div class="inline-flex flex-wrap bg-[#18181b] p-1 rounded-lg border border-[#27272a] gap-1 mb-4">
                 <button onclick="loadConfluence('core', this)" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-white">Core Universe</button>
@@ -879,7 +882,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div id="confluenceChart" style="width: 100%; min-height: 480px;"></div>
             </div>
             
-            <h4 class="text-sm font-bold text-white mb-2">Confluence Confirmation Matrix</h4>
+            <h4 class="text-sm font-bold text-white mb-2">Multi-Factor Bias Matrix</h4>
             <div class="lux-card overflow-x-auto mb-6">
                 <table class="w-full text-left text-xs border-collapse" id="confluenceTable">
                     <thead>
@@ -894,7 +897,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="lux-card p-5">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <h4 class="text-sm font-bold text-white">Asset Confirmation Layer Inspector</h4>
-                    <select id="inspectorSelect" onchange="inspectAsset(this.value)" class="bg-[#0b0d12] text-xs text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-amber-500"></select>
+                    <select id="inspectorSelect" onchange="inspectAsset(this.value)" class="bg-[#0b0d12] text-xs text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-mint"></select>
                 </div>
                 <div id="inspectorDetail" class="space-y-2"></div>
             </div>
@@ -1283,6 +1286,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             'tab1': 'AI Macro Letter',
             'tab_agent': 'AI Agent',
             'tab2': 'Automated Trade Ideas Desk',
+            'tab3': 'Bias Matrix',
             'tab5': 'Indexes & Sector Flow',
             'tab4': 'Magnificant 7 Flow',
             'tab6': 'Synthetic Ratio Rotations',

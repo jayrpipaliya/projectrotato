@@ -584,10 +584,11 @@ st.caption(f"**Cross-Asset Macro Barometer Reading:** {macro_reading}")
 st.markdown("<div style='margin-bottom:12px;'></div>", unsafe_allow_html=True)
 
 # ----------------- MODERN TABS (Institutional Options Desk v3.0 Full Suite) -----------------
-tab1, tab_agent, tab2, tab5, tab4, tab6, tab_options = st.tabs([
+tab1, tab_agent, tab2, tab3, tab5, tab4, tab6, tab_options = st.tabs([
     "AI Macro Letter",
     "AI Agent",
     "Automated Trade Ideas",
+    "Bias Matrix",
     "Indexes & Sector Flow",
     "Magnificant 7 Flow",
     "Synthetic Ratio Rotations",
@@ -905,9 +906,9 @@ with tab2:
             unsafe_allow_html=True
         )
 
-# ================= LEGACY TAB: CONFIRMATION & CONFLUENCE RADAR =================
-if False:
-    st.subheader("Multi-Factor Confirmation & Bias Intensity Radar")
+# ================= TAB 3: BIAS MATRIX =================
+with tab3:
+    st.subheader("Multi-Factor Bias Matrix & Confirmation Radar")
     st.markdown("""
     Instead of rigid binary rules, each asset is scored across **7 independent confirmation layers** 
     (Structural Trend, Value Pullback/Extension Zone, Volume Flow Conviction, Momentum/Divergence, Realized Vol Squeeze, Macro Flow, and **20-Year Historical Backtest Odds**).
@@ -1010,14 +1011,16 @@ if False:
         checklist = inspect_item["checklist"]
         for layer in checklist:
             status = layer["status"]
+            pts = int(layer.get("points", 0))
+            pts_color = "#00F5A0" if pts > 0 else ("#FF2E55" if pts < 0 else "#94a3b8")
             if status == "PASS_BULL":
                 badge = "[BULLISH CONFIRMATION]"
-                box_color = "rgba(16, 185, 129, 0.08)"
-                border_color = "#0ecb81"
+                box_color = "rgba(0, 245, 160, 0.08)"
+                border_color = "#00F5A0"
             elif status == "PASS_BEAR":
                 badge = "[BEARISH CONFIRMATION]"
-                box_color = "rgba(239, 68, 68, 0.08)"
-                border_color = "#f6465d"
+                box_color = "rgba(255, 46, 85, 0.08)"
+                border_color = "#FF2E55"
             else:
                 badge = "[NEUTRAL / INACTIVE]"
                 box_color = "#111319"
@@ -1027,7 +1030,7 @@ if False:
                 f'<div style="background-color: {box_color}; border-left: 4px solid {border_color}; padding: 12px 16px; border-radius: 8px; margin-bottom: 8px; border-top: 1px solid rgba(255,255,255,0.04); border-right: 1px solid rgba(255,255,255,0.04); border-bottom: 1px solid rgba(255,255,255,0.04);">'
                 f'<span style="font-weight: 700; font-size: 14px; color: #ffffff;">{layer["layer"]}</span> &nbsp;'
                 f'<code style="font-size: 12px; background: rgba(0,0,0,0.3);">{badge}</code> &nbsp;'
-                f'<span style="float: right; font-weight: 700; color: #f59e0b;">{layer["points"]} pts</span>'
+                f'<span style="float: right; font-weight: 700; color: {pts_color};">{layer["points"]} pts</span>'
                 f'<p style="margin: 6px 0 0 0; font-size: 13px; color: #94a3b8;">{layer["detail"]}</p>'
                 f'</div>'
             )
