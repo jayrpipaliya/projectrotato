@@ -289,70 +289,226 @@ if not spy_df.empty and "Date" in spy_df.columns:
 
 
 
-def render_filament_hero_card(ticker, label, price_val, change, sub_text, is_pos=True, is_ratio=False, sigma=0.0):
-    pill_class = "badge-mint" if is_pos else "badge-cherry"
+# ----------------- SECTION 1: CORE EQUITIES & MACRO BENCHMARKS (7 UNIVERSE ASSETS) -----------------
+st.markdown('''
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+    <div style="display:flex; align-items:center; gap:6px;">
+        <span style="width:6px; height:6px; border-radius:50%; background:#00F5A0; display:inline-block; box-shadow:0 0 6px #00F5A0;"></span>
+        <span style="font-size:11px; font-weight:700; color:#cbd5e1; text-transform:uppercase; letter-spacing:0.5px;">Core Equities & Macro Benchmarks</span>
+    </div>
+    <span style="font-size:11px; color:#64748b;">Session Closes & Momentum • 7 Universe Assets</span>
+</div>
+''', unsafe_allow_html=True)
+
+def render_stealth_benchmark_card(ticker, name, price, pct_1d, sub1, sub2, pct_5d=0.0):
+    is_pos = pct_1d >= 0
+    badge_cls = "badge-mint" if is_pos else "badge-cherry"
     sign = "+" if is_pos else ""
-    badge = f'<span class="badge-mint tabular-num">{sigma:+.2f}σ</span>' if (is_ratio and sigma >= 0) else (f'<span class="badge-cherry tabular-num">{sigma:+.2f}σ</span>' if is_ratio else f'<span class="{pill_class} tabular-num">{sign}{change:.2f}%</span>')
-    stroke_color = "#00F5A0" if is_pos else "#FF2E55"
-    spark_path = "M0,18 Q30,8 60,14 T120,6 T180,12 T240,4" if is_pos else "M0,6 Q30,14 60,10 T120,20 T180,16 T240,24"
-    return (
-        f'<div class="stealth-card" style="display:flex; flex-direction:column; justify-content:space-between; height:100%;">'
-        f'<div>'
-        f'<div class="card-label"><span>{ticker} <span style="color:#64748b; font-weight:normal;">• {label}</span></span>{badge}</div>'
-        f'<div class="card-val tabular-num">{price_val}</div>'
-        f'</div>'
-        f'<div style="margin-top:14px;">'
-        f'<svg style="width:100%; height:24px; overflow:visible;" viewBox="0 0 240 24" fill="none">'
-        f'<path d="{spark_path}" stroke="{stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
-        f'</svg>'
-        f'<div style="font-size:11px; color:#94a3b8; border-top:1px solid #1B212D; padding-top:6px; margin-top:4px;" class="tabular-num">{sub_text}</div>'
-        f'</div>'
-        f'</div>'
-    )
+    spark_col = "#00F5A0" if pct_5d >= 0 else "#FF2E55"
+    spark_path = "M 2 15 Q 16 12, 28 8 T 42 10 T 54 6" if pct_5d >= 0 else "M 2 7 Q 15 4, 28 13 T 44 10 T 54 13"
+    spark_end = 6 if pct_5d >= 0 else 13
+    return f'''
+    <div class="stealth-card" style="padding:12px; display:flex; flex-direction:column; justify-content:space-between; height:100%;">
+        <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <span style="font-size:12px; font-weight:700; color:#f1f5f9;">{ticker} <span style="font-weight:normal; color:#64748b;">• {name}</span></span>
+                <span class="{badge_cls}" style="padding:1px 6px; font-size:11px; border-radius:4px;">{sign}{pct_1d:.2f}%</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="tabular-num" style="font-size:19px; font-weight:800; color:#ffffff;">${price:,.2f}</span>
+                <div style="width:52px; height:18px;">
+                    <svg viewBox="0 0 56 20" style="width:100%; height:100%; overflow:visible;">
+                        <path d="{spark_path}" fill="none" stroke="{spark_col}" stroke-width="1.5" stroke-linecap="round" />
+                        <circle cx="54" cy="{spark_end}" r="2" fill="{spark_col}" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+        <div style="margin-top:8px; padding-top:6px; border-top:1px solid #1B212D; font-size:11px; color:#94a3b8; display:flex; flex-direction:column; gap:2px;" class="tabular-num">
+            <div>{sub1}</div>
+            <div style="font-size:10px; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{sub2}</div>
+        </div>
+    </div>
+    '''
 
-# ----------------- FILAMENT HERO STAT CARDS (4 SPAGIOUS CARDS WITH SPARKLINES) -----------------
-col_h_head1, col_h_head2 = st.columns([4, 1])
-with col_h_head1:
-    st.markdown('<div style="font-size:11px; font-weight:600; color:#a1a1aa; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Desk Core Radar</div>', unsafe_allow_html=True)
+b_col1, b_col2, b_col3, b_col4, b_col5, b_col6, b_col7 = st.columns(7)
 
-hero_c1, hero_c2, hero_c3, hero_c4 = st.columns(4)
-
-with hero_c1:
-    spy_p = spy_metrics.get("pct_1d", 0)
-    st.markdown(render_filament_hero_card(
-        "SPY", "S&P 500 Core", f"${spy_metrics.get('close', 0):,.2f}",
-        spy_p, f"ATH DD: {spy_metrics.get('drawdown_ath')}% • 5D: {spy_metrics.get('pct_5d', 0):+.2f}%",
-        is_pos=(spy_p >= 0)
+with b_col1:
+    p1d = spy_metrics.get("pct_1d", 0)
+    p5d = spy_metrics.get("pct_5d", 0)
+    p5_col = "#00F5A0" if p5d >= 0 else "#FF2E55"
+    st.markdown(render_stealth_benchmark_card(
+        "SPY", "S&P 500", spy_metrics.get("close", 0), p1d,
+        f'ATH DD: <span style="color:#FF2E55; font-weight:600;">{spy_metrics.get("drawdown_ath")}%</span> • 5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span>',
+        "Large-Cap Core Benchmark", pct_5d=p5d
     ), unsafe_allow_html=True)
 
-with hero_c2:
-    qqq_p = qqq_metrics.get("pct_1d", 0)
-    st.markdown(render_filament_hero_card(
-        "QQQ", "Nasdaq 100 Tech", f"${qqq_metrics.get('close', 0):,.2f}",
-        qqq_p, f"ATH DD: {qqq_metrics.get('drawdown_ath')}% • 5D: {qqq_metrics.get('pct_5d', 0):+.2f}%",
-        is_pos=(qqq_p >= 0)
+with b_col2:
+    p1d = qqq_metrics.get("pct_1d", 0)
+    p5d = qqq_metrics.get("pct_5d", 0)
+    p5_col = "#00F5A0" if p5d >= 0 else "#FF2E55"
+    st.markdown(render_stealth_benchmark_card(
+        "QQQ", "NASDAQ 100", qqq_metrics.get("close", 0), p1d,
+        f'ATH DD: <span style="color:#FF2E55; font-weight:600;">{qqq_metrics.get("drawdown_ath")}%</span> • 5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span>',
+        "Tech Growth Benchmark", pct_5d=p5d
     ), unsafe_allow_html=True)
 
-with hero_c3:
-    s_val = spy_rsp.get("current", 0)
-    s_sig = spy_rsp.get("z_score_50d", 0)
-    s_state = spy_rsp.get("actionable_state", "Breadth Expansion")
-    s_col = spy_rsp.get("state_color", "#34d399")
-    st.markdown(render_filament_hero_card(
-        "SPY / RSP", "Breadth Spread", f"{s_val:.4f}",
-        spy_rsp.get("pct_5d", 0), f'<span style="color:{s_col}; font-weight:600;">{s_state}</span>',
-        is_pos=(spy_rsp.get("pct_5d", 0) >= 0), is_ratio=True, sigma=s_sig
+with b_col3:
+    p1d = iwm_metrics.get("pct_1d", 0)
+    p5d = iwm_metrics.get("pct_5d", 0)
+    p5_col = "#00F5A0" if p5d >= 0 else "#FF2E55"
+    st.markdown(render_stealth_benchmark_card(
+        "IWM", "RUSSELL 2000", iwm_metrics.get("close", 0), p1d,
+        f'ATH DD: <span style="color:#FF2E55; font-weight:600;">{iwm_metrics.get("drawdown_ath")}%</span> • 5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span>',
+        "Small-Cap Value Benchmark", pct_5d=p5d
     ), unsafe_allow_html=True)
 
-with hero_c4:
-    iwm_p = iwm_metrics.get("pct_1d", 0)
-    st.markdown(render_filament_hero_card(
-        "IWM", "Russell 2000 Small", f"${iwm_metrics.get('close', 0):,.2f}",
-        iwm_p, f"ATH DD: {iwm_metrics.get('drawdown_ath')}% • 5D: {iwm_metrics.get('pct_5d', 0):+.2f}%",
-        is_pos=(iwm_p >= 0)
+with b_col4:
+    p1d = gld_m.get("pct_1d", 0)
+    p5d = gld_m.get("pct_5d", 0)
+    p20d = gld_m.get("pct_20d", 0)
+    p5_col = "#00F5A0" if p5d >= 0 else "#FF2E55"
+    st.markdown(render_stealth_benchmark_card(
+        "GLD", "GOLD TRUST", gld_m.get("close", 0), p1d,
+        f'5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span> • 20D: <span style="color:#94a3b8;">{p20d:+.2f}%</span>',
+        "Safe Haven • Debasement", pct_5d=p5d
     ), unsafe_allow_html=True)
 
-st.markdown("<div style='margin-bottom:16px;'></div>", unsafe_allow_html=True)
+with b_col5:
+    p1d = tlt_m.get("pct_1d", 0)
+    p5d = tlt_m.get("pct_5d", 0)
+    p20d = tlt_m.get("pct_20d", 0)
+    p5_col = "#00F5A0" if p5d >= 0 else "#FF2E55"
+    st.markdown(render_stealth_benchmark_card(
+        "TLT", "20Y TREAS", tlt_m.get("close", 0), p1d,
+        f'5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span> • 20D: <span style="color:#94a3b8;">{p20d:+.2f}%</span>',
+        "Duration • Real Yield Pressure", pct_5d=p5d
+    ), unsafe_allow_html=True)
+
+with b_col6:
+    p1d = ibit_m.get("pct_1d", 0)
+    p5d = ibit_m.get("pct_5d", 0)
+    p20d = ibit_m.get("pct_20d", 0)
+    p5_col = "#00F5A0" if p5d >= 0 else "#FF2E55"
+    st.markdown(render_stealth_benchmark_card(
+        "IBIT", "BITCOIN", ibit_m.get("close", 0), p1d,
+        f'5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span> • 20D: <span style="color:#94a3b8;">{p20d:+.2f}%</span>',
+        "High-Beta Liquidity Barometer", pct_5d=p5d
+    ), unsafe_allow_html=True)
+
+with b_col7:
+    p1d = uso_m.get("pct_1d", 0)
+    p5d = uso_m.get("pct_5d", 0)
+    p20d = uso_m.get("pct_20d", 0)
+    p5_col = "#00F5A0" if p5d >= 0 else "#FF2E55"
+    st.markdown(render_stealth_benchmark_card(
+        "USO", "CRUDE OIL", uso_m.get("close", 0), p1d,
+        f'5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span> • 20D: <span style="color:#94a3b8;">{p20d:+.2f}%</span>',
+        "Energy & Inflation Input", pct_5d=p5d
+    ), unsafe_allow_html=True)
+
+# ----------------- SECTION 2: QUANTITATIVE REGIME & BREADTH RATIOS (3 DEDICATED PAIRS) -----------------
+st.markdown('''
+<div style="margin-top:14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+    <div style="display:flex; align-items:center; gap:6px;">
+        <span style="width:6px; height:6px; border-radius:50%; background:#FF2E55; display:inline-block; box-shadow:0 0 6px #FF2E55;"></span>
+        <span style="font-size:11px; font-weight:700; color:#cbd5e1; text-transform:uppercase; letter-spacing:0.5px;">Quantitative Regime & Breadth Ratios</span>
+        <span style="padding:1px 6px; border-radius:4px; background:#131720; font-size:10px; color:#94a3b8; border:1px solid #1B212D;">3 Pairs Monitored</span>
+    </div>
+    <span style="font-size:11px; color:#64748b;">50-Day Z-Score & Relative Velocity</span>
+</div>
+''', unsafe_allow_html=True)
+
+qqq_rsp = market_data["ratios"].get("QQQ_RSP", {})
+
+def render_stealth_ratio_card(ticker, name, subtitle, val, z_val, state, pct5d, action_text):
+    is_z_pos = z_val >= 0
+    badge_cls = "badge-mint" if is_z_pos else "badge-cherry"
+    needle_col = "#00F5A0" if is_z_pos else "#FF2E55"
+    needle_pct = max(5.0, min(95.0, ((z_val + 3.0) / 6.0) * 100))
+    trend_col = "#00F5A0" if pct5d >= 0 else "#FF2E55"
+    sign_5d = "+" if pct5d >= 0 else ""
+    
+    st_lower = state.lower()
+    if any(k in st_lower for k in ["range", "neutral", "consolidat"]):
+        pill_style = "color:#cbd5e1; background:#131720; border:1px solid #1B212D;"
+    elif any(k in st_lower for k in ["risk-off", "bear", "narrow", "contract"]):
+        pill_style = "color:#FF2E55; background:rgba(255,46,85,0.1); border:1px solid rgba(255,46,85,0.25);"
+    else:
+        pill_style = "color:#00F5A0; background:rgba(0,245,160,0.1); border:1px solid rgba(0,245,160,0.25);"
+        
+    return f'''
+    <div class="stealth-card" style="padding:14px; display:flex; flex-direction:column; justify-content:space-between; height:100%;">
+        <div>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <div style="font-size:12px; font-weight:700; color:#ffffff;">{ticker} <span style="font-size:11px; color:#64748b; font-weight:normal;">• {name}</span></div>
+                    <div style="font-size:11px; color:#64748b;">{subtitle}</div>
+                </div>
+                <span class="{badge_cls} tabular-num" style="font-size:12px; font-weight:700; padding:2px 8px; border-radius:6px;">{z_val:+.2f}σ</span>
+            </div>
+            
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:8px;">
+                <span class="tabular-num" style="font-size:24px; font-weight:800; color:#ffffff;">{val:.4f}</span>
+                <span style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; {pill_style}">{state}</span>
+            </div>
+            
+            <!-- Z-Score Gauge Spectrum Meter (-3σ to +3σ) -->
+            <div style="margin-top:8px;">
+                <div style="display:flex; justify-content:space-between; font-size:10px; color:#64748b; font-family:monospace;">
+                    <span>-3.0σ (Oversold)</span>
+                    <span>0.0σ</span>
+                    <span>+3.0σ (Extended)</span>
+                </div>
+                <div style="width:100%; height:6px; border-radius:9999px; background:#181E2A; position:relative; overflow:hidden; margin-top:2px;">
+                    <div style="position:absolute; left:50%; top:0; bottom:0; width:1px; background:#475569;"></div>
+                    <div style="position:absolute; top:0; bottom:0; left:{needle_pct:.1f}%; width:8px; margin-left:-4px; background:{needle_col}; border-radius:9999px; box-shadow:0 0 6px {needle_col};"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="margin-top:10px; padding-top:6px; border-top:1px solid #1B212D; font-size:11px; color:#94a3b8; display:flex; justify-content:space-between; align-items:center;" class="tabular-num">
+            <div>5D Trend: <span style="color:{trend_col}; font-weight:600;">{sign_5d}{pct5d:.2f}%</span></div>
+            <div style="font-size:11px; color:#64748b;">{action_text}</div>
+        </div>
+    </div>
+    '''
+
+r_col1, r_col2, r_col3 = st.columns(3)
+
+with r_col1:
+    st.markdown(render_stealth_ratio_card(
+        "SPY / RSP", "Market Breadth", "Cap-Weighted vs Equal-Weight",
+        spy_rsp.get("current", 0),
+        spy_rsp.get("z_score_50d", 0),
+        spy_rsp.get("actionable_state", "Broad Breadth Expansion"),
+        spy_rsp.get("pct_5d", 0),
+        "Equal-Weight RSP Outperforming"
+    ), unsafe_allow_html=True)
+
+with r_col2:
+    st.markdown(render_stealth_ratio_card(
+        "QQQ / RSP", "Tech Breadth", "Tech Beta vs Broad Market",
+        qqq_rsp.get("current", 0),
+        qqq_rsp.get("z_score_50d", 0),
+        qqq_rsp.get("actionable_state", "Range-Bound Ratio"),
+        qqq_rsp.get("pct_5d", 0),
+        "Broadening Beyond Mega-Tech"
+    ), unsafe_allow_html=True)
+
+with r_col3:
+    st.markdown(render_stealth_ratio_card(
+        "IWM / QQQ", "Small vs Tech", "Small-Cap vs Mega-Cap Tech",
+        iwm_qqq.get("current", 0),
+        iwm_qqq.get("z_score_50d", 0),
+        iwm_qqq.get("actionable_state", "Aggressive Small-Cap Momentum"),
+        iwm_qqq.get("pct_5d", 0),
+        "Small-Cap Alpha Momentum"
+    ), unsafe_allow_html=True)
+
+st.caption(f"**Cross-Asset Macro Barometer Reading:** {macro_reading}")
+st.markdown("<div style='margin-bottom:12px;'></div>", unsafe_allow_html=True)
+
 # ----------------- MODERN TABS (Institutional Options Desk v3.0 Full Suite) -----------------
 tab1, tab_agent, tab2, tab3, tab4, tab5, tab6, tab7, tab_options = st.tabs([
     "📊 Daily AI Macro Briefing",

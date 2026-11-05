@@ -582,7 +582,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         <div>
           <label class="block text-xs text-slate-400 mb-1.5 font-medium">Gemini API Key</label>
           <div class="relative">
-            <input type="password" id="sidebarApiKeyInput" value="••••••••••••••••••••••••••••" readonly 
+            <input type="password" id="sidebarApiKey" value="••••••••••••••••••••••••••••" readonly 
                    class="w-full bg-stealth-900 border border-stealth-border rounded-lg px-3 py-2 text-xs text-slate-400 font-mono focus:outline-none cursor-default" />
           </div>
         </div>
@@ -1325,12 +1325,11 @@ HTML_CONTENT = """<!DOCTYPE html>
             } else if (tabId === 'tab7') {
                 if (!LOADED_TABS.has('tab7')) {
                     LOADED_TABS.add('tab7');
-                    updateSingleTicker();
+                    loadSingleTicker();
                 } else {
-                    setTimeout(() => Plotly.Plots.resize('singleTickerChart'), 50);
+                    setTimeout(() => Plotly.Plots.resize('singleTickerCombinedChart'), 50);
                 }
-            }
-        } else if (tabId === 'tab_options') {
+            } else if (tabId === 'tab_options') {
                 populateOptionsTickersDropdown();
                 if (!LOADED_TABS.has('tab_options')) {
                     LOADED_TABS.add('tab_options');
@@ -1341,13 +1340,14 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
         }
 
-        
         let CURRENT_HERO_VIEW = 'benchmarks';
 
         function toggleHeroCards(view, btn) {
             CURRENT_HERO_VIEW = view;
-            document.getElementById('heroBtnBench').className = view === 'benchmarks' ? 'px-3 py-1 rounded-md font-semibold bg-[#202026] text-white' : 'px-3 py-1 rounded-md font-medium text-zinc-400 hover:text-white';
-            document.getElementById('heroBtnMacro').className = view === 'macro' ? 'px-3 py-1 rounded-md font-semibold bg-[#202026] text-white' : 'px-3 py-1 rounded-md font-medium text-zinc-400 hover:text-white';
+            const bBtn = document.getElementById('heroBtnBench');
+            const mBtn = document.getElementById('heroBtnMacro');
+            if (bBtn) bBtn.className = view === 'benchmarks' ? 'px-3 py-1 rounded-md font-semibold bg-[#202026] text-white' : 'px-3 py-1 rounded-md font-medium text-zinc-400 hover:text-white';
+            if (mBtn) mBtn.className = view === 'macro' ? 'px-3 py-1 rounded-md font-semibold bg-[#202026] text-white' : 'px-3 py-1 rounded-md font-medium text-zinc-400 hover:text-white';
             renderFilamentHeroCards();
         }
 
@@ -1953,7 +1953,7 @@ async function init() {
                 const bodyText = lines.slice(1).join(String.fromCharCode(10)).trim();
                 let parsed = window.marked ? marked.parse(bodyText) : bodyText;
                 
-                parsed = parsed.replace(/<li>([\\s\\S]*?)<\\/li>/g, function(m, inner) {
+                parsed = parsed.replace(new RegExp('<li>([\\s\\S]*?)<\\/li>', 'g'), function(m, inner) {
                     const low = inner.toLowerCase();
                     let cls = '';
                     if (low.indexOf('long') >= 0 || low.indexOf('bid') >= 0 || low.indexOf('continuation') >= 0 || low.indexOf('leading') >= 0 || low.indexOf('growth') >= 0) {
