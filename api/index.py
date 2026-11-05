@@ -1397,7 +1397,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                     },
                     {
                         label: 'Breadth Spread', ticker: 'SPY / RSP',
-                        val: Number(spy_rsp.current || 0).toFixed(4),
+                        val: Number(spy_rsp.current || 0).toFixed(2),
                         pct: spy_rsp.pct_5d || 0,
                         isSigma: true, sigma: spy_rsp.z_score_50d || 0,
                         sub: `<span style="color:${spy_rsp.state_color || '#34d399'}; font-weight:600;">${spy_rsp.actionable_state || 'Breadth Expansion'}</span>`,
@@ -1855,7 +1855,7 @@ async function init() {
                         </div>
 
                         <div class="flex items-baseline justify-between pt-1">
-                            <span class="text-3xl font-bold text-white tracking-tight tabular-num">${Number(c.value).toFixed(4)}</span>
+                            <span class="text-3xl font-bold text-white tracking-tight tabular-num">${Number(c.value).toFixed(2)}</span>
                             <span class="${statusPillClass}">
                                 ${c.state}
                             </span>

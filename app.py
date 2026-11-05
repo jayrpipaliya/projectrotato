@@ -523,7 +523,7 @@ def render_stealth_ratio_card(ticker, name, subtitle, val, z_val, state, pct5d, 
             </div>
             
             <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:8px;">
-                <span class="tabular-num" style="font-size:24px; font-weight:800; color:#ffffff;">{val:.4f}</span>
+                <span class="tabular-num" style="font-size:24px; font-weight:800; color:#ffffff;">{val:.2f}</span>
                 <span style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px; {pill_style}">{state}</span>
             </div>
             
