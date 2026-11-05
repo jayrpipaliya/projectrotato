@@ -247,10 +247,10 @@ def api_ticker(ticker: str, horizon: str = Query("All Historical Data")):
     })
 
 @app.get("/api/options/{ticker}")
-def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Query("Buy"), expiration: str = Query(None)):
+def api_options(ticker: str, direction: str = Query("Calls"), side: str = Query("Buy"), expiration: str = Query(None)):
     try:
         t_up = ticker.upper()
-        dir_clean = "Bullish" if "Bullish" in str(direction) else "Bearish"
+        dir_clean = "Calls" if ("Call" in str(direction) or str(direction) == "Bullish") else "Puts"
         side_clean = "Sell" if "Sell" in str(side) else "Buy"
         from options_engine import compute_realized_volatilities, fetch_term_structure, scan_cross_chain_recommendations, analyze_smile_and_skew
         df_hist = load_ticker_data(t_up)
@@ -303,7 +303,7 @@ def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Quer
                 metrics['term_slope_text'] = "N/A"
 
             # Filter execution spread overlay to active tradable moneyness (eliminates deep ITM 50%+ IV spread spikes)
-            if dir_clean == "Bullish":
+            if "Call" in dir_clean:
                 exec_mask = (target_df['strike'] >= spot_price * 0.95) & (target_df['strike'] <= spot_price * 1.15)
             else:
                 exec_mask = (target_df['strike'] <= spot_price * 1.05) & (target_df['strike'] >= spot_price * 0.85)
@@ -361,10 +361,10 @@ def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Quer
         return {"error": str(e)}
 
 @app.get("/api/options/{ticker}/smile")
-def api_options_smile(ticker: str, expiration: str = Query(...), direction: str = Query("Bullish"), side: str = Query("Buy"), spot: float = Query(None)):
+def api_options_smile(ticker: str, expiration: str = Query(...), direction: str = Query("Calls"), side: str = Query("Buy"), spot: float = Query(None)):
     try:
         t_up = ticker.upper()
-        dir_clean = "Bullish" if "Bullish" in str(direction) else "Bearish"
+        dir_clean = "Calls" if ("Call" in str(direction) or str(direction) == "Bullish") else "Puts"
         side_clean = "Sell" if "Sell" in str(side) else "Buy"
         from options_engine import analyze_smile_and_skew
         spot_price = spot
@@ -413,7 +413,7 @@ def api_options_smile(ticker: str, expiration: str = Query(...), direction: str 
             metrics['term_slope_text'] = "N/A"
             
         # Filter execution spread overlay to active tradable moneyness (eliminates deep ITM 50%+ IV spread spikes)
-        if dir_clean == "Bullish":
+        if "Call" in dir_clean:
             exec_mask = (target_df['strike'] >= spot_price * 0.95) & (target_df['strike'] <= spot_price * 1.15)
         else:
             exec_mask = (target_df['strike'] <= spot_price * 1.05) & (target_df['strike'] >= spot_price * 0.85)
@@ -1251,10 +1251,10 @@ HTML_CONTENT = """<!DOCTYPE html>
                         </div>
 
                         <div>
-                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Direction</label>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Contract Type</label>
                             <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="optionsDirGroup">
-                                <button onclick="setOptionsDirection('Bullish')" id="btnOptBullish" class="px-3 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30">🟢 Bullish (Calls)</button>
-                                <button onclick="setOptionsDirection('Bearish')" id="btnOptBearish" class="px-3 py-1 rounded font-bold transition text-slate-400">🔴 Bearish (Puts)</button>
+                                <button onclick="setOptionsDirection('Calls')" id="btnOptCalls" class="px-3 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30">Calls</button>
+                                <button onclick="setOptionsDirection('Puts')" id="btnOptPuts" class="px-3 py-1 rounded font-bold transition text-slate-400">Puts</button>
                             </div>
                         </div>
 
@@ -2859,7 +2859,7 @@ async function init() {
             Plotly.newPlot('singleTickerCombinedChart', [tracePrice, traceEMA20, traceEMA50, traceEMA200, traceDD], layout, {responsive: true});
         }
 
-        let CURRENT_OPTIONS_DIR = "Bullish";
+        let CURRENT_OPTIONS_DIR = "Calls";
         let CURRENT_OPTIONS_SIDE = "Buy";
         let CURRENT_OPTIONS_EXPIRATION = "";
         let CURRENT_OPTIONS_SPOT = 0;
@@ -2888,14 +2888,14 @@ async function init() {
 
         function setOptionsDirection(dir) {
             CURRENT_OPTIONS_DIR = dir;
-            const btnBull = document.getElementById('btnOptBullish');
-            const btnBear = document.getElementById('btnOptBearish');
-            if (dir === 'Bullish') {
-                btnBull.className = "px-3 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30";
-                btnBear.className = "px-3 py-1 rounded font-bold transition text-slate-400";
+            const btnCalls = document.getElementById('btnOptCalls');
+            const btnPuts = document.getElementById('btnOptPuts');
+            if (dir === 'Calls') {
+                if (btnCalls) btnCalls.className = "px-3 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30";
+                if (btnPuts) btnPuts.className = "px-3 py-1 rounded font-bold transition text-slate-400";
             } else {
-                btnBear.className = "px-3 py-1 rounded font-bold transition bg-cherry/20 text-cherry border border-cherry/30";
-                btnBull.className = "px-3 py-1 rounded font-bold transition text-slate-400";
+                if (btnPuts) btnPuts.className = "px-3 py-1 rounded font-bold transition bg-cherry/20 text-cherry border border-cherry/30";
+                if (btnCalls) btnCalls.className = "px-3 py-1 rounded font-bold transition text-slate-400";
             }
             loadOptionsDesk();
         }
@@ -2959,7 +2959,7 @@ async function init() {
                     cardsContainer.innerHTML = `<div class="col-span-full text-center text-xs text-slate-400 py-6">No liquid ${isBuy ? 'cheap' : 'overpriced'} contracts identified matching criteria.</div>`;
                 } else {
                     cardsContainer.innerHTML = picks.map((p, idx) => {
-                        const isCall = isBuy ? (CURRENT_OPTIONS_DIR === 'Bullish') : (CURRENT_OPTIONS_DIR === 'Bearish');
+                        const isCall = (CURRENT_OPTIONS_DIR === 'Calls');
                         const cType = isCall ? 'Call' : 'Put';
                         
                         let hTag = 'Tactical (10–21d)';
@@ -3396,8 +3396,8 @@ async function init() {
             const spreadIvs = [];
             if (s.market_strikes && (s.market_ask_iv || s.market_bid_iv)) {
                 const rawIvs = isBuy ? s.market_ask_iv : s.market_bid_iv;
-                const minK = isBuy ? (direction === 'Bullish' ? spot * 0.95 : spot * 0.85) : spot * 0.85;
-                const maxK = isBuy ? (direction === 'Bullish' ? spot * 1.15 : spot * 1.05) : spot * 1.15;
+                const minK = isBuy ? (direction === 'Calls' ? spot * 0.95 : spot * 0.85) : spot * 0.85;
+                const maxK = isBuy ? (direction === 'Calls' ? spot * 1.15 : spot * 1.05) : spot * 1.15;
                 const upperIvCap = atmIvVal + 5.5;
                 const lowerIvFloor = Math.max(8.0, atmIvVal - 6.5);
                 s.market_strikes.forEach((k, idx) => {

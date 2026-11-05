@@ -498,7 +498,12 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
 
         # Execution Desk Target Filtering
         side_clean = "Sell" if "Sell" in str(side) else "Buy"
-        is_call = (direction == "Bullish") if side_clean == "Buy" else (direction == "Bearish")
+        if "Call" in str(direction):
+            is_call = True
+        elif "Put" in str(direction):
+            is_call = False
+        else:
+            is_call = (direction == "Bullish") if side_clean == "Buy" else (direction == "Bearish")
         target_df = (calls if is_call else puts).copy()
         if len(target_df) < 5:
             return None
@@ -709,8 +714,9 @@ def scan_cross_chain_recommendations(ticker_symbol, cheap_expirations_list, spot
                 liq = max(oi, vol)
                 cand['Effective_Liquidity'] = liq
                 
+                is_call_cand = ("Call" in str(direction)) if ("Call" in str(direction) or "Put" in str(direction)) else ((direction == "Bullish") if side_clean == "Buy" else (direction == "Bearish"))
                 if side_clean == "Sell":
-                    ideal_d = -0.25 if direction == "Bullish" else 0.25
+                    ideal_d = 0.25 if is_call_cand else -0.25
                     # Composite Cross-Chain Score for sellers: rewards high term ratio, Bid-Edge, and IV-Premium
                     cand['Cross_Chain_Score'] = (
                         (term_ratio - 0.95) * 16.0
@@ -721,7 +727,7 @@ def scan_cross_chain_recommendations(ticker_symbol, cheap_expirations_list, spot
                         - (cand.get('Spread_Pct', 0) * 0.1)
                     )
                 else:
-                    ideal_d = 0.40 if direction == "Bullish" else -0.40
+                    ideal_d = 0.40 if is_call_cand else -0.40
                     earnings_penalty = 1.5 if spans_earnings else 0.0
                     cand['Cross_Chain_Score'] = (
                         (1.35 - term_ratio) * 18.0
@@ -818,8 +824,8 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         side_clean = "Sell" if "Sell" in side_sel else "Buy"
 
     with ctrl_col3:
-        direction = st.radio("Directional Bias", ["🟢 Bullish (Calls)", "🔴 Bearish (Puts)"], horizontal=True)
-        dir_clean = "Bullish" if "Bullish" in direction else "Bearish"
+        direction = st.radio("Contract Type", ["Calls", "Puts"], horizontal=True)
+        dir_clean = "Calls" if "Call" in direction else "Puts"
 
     # 2. Historical Realized Volatility Baseline (with De-Jumping)
     df_hist = load_ticker_data_func(selected_ticker)
@@ -888,7 +894,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
             rec_cols = st.columns(len(cross_recommendations))
             for i, rec in enumerate(cross_recommendations):
                 with rec_cols[i]:
-                    is_call_rec = (dir_clean == "Bullish") if side_clean == "Buy" else (dir_clean == "Bearish")
+                    is_call_rec = ("Call" in dir_clean)
                     c_type = "Call" if is_call_rec else "Put"
                     
                     if rec['DTE'] <= 22:
@@ -1298,7 +1304,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         s_cols = st.columns(len(top_strikes))
         for i, (_, s_row) in enumerate(top_strikes.iterrows()):
             with s_cols[i]:
-                is_call_rec = (dir_clean == "Bullish") if side_clean == "Buy" else (dir_clean == "Bearish")
+                is_call_rec = ("Call" in dir_clean)
                 c_type = "Call" if is_call_rec else "Put"
                 spread_badge = s_row.get('Spread_Quality', '🟢 Tight')
                 if side_clean == "Sell":
