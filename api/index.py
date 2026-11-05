@@ -695,36 +695,26 @@ HTML_CONTENT = """<!DOCTYPE html>
 
       <!-- ================= 3. NAVIGATION PILL TABS ================= -->
       <nav class="flex items-center space-x-1.5 overflow-x-auto py-1 border-b border-stealth-border text-xs scrollbar-none font-medium">
-        <button onclick="switchTab('tab1')" id="btn-tab1" class="tab-btn active px-4 py-2 rounded-lg bg-stealth-850 text-white font-semibold border border-mint/40 shadow-[0_0_12px_rgba(0,245,160,0.15)] flex items-center space-x-1.5 shrink-0">
-          <span>AI Macro Briefing</span>
+        <button onclick="switchTab('tab1')" id="btn-tab1" class="tab-btn active px-4 py-2 rounded-lg bg-stealth-850 text-white font-semibold border border-mint/40 shadow-[0_0_12px_rgba(0,245,160,0.15)] shrink-0">
+          AI Macro Letter
         </button>
-        <button onclick="switchTab('tab_agent')" id="btn-tab_agent" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0 flex items-center space-x-1.5">
-          <svg class="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-          </svg>
-          <span>AI Quant Agent</span>
+        <button onclick="switchTab('tab_agent')" id="btn-tab_agent" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          AI Agent
         </button>
         <button onclick="switchTab('tab2')" id="btn-tab2" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Automated Trade Ideas
         </button>
-        <button onclick="switchTab('tab3')" id="btn-tab3" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
-          Confirmation & Confluence
-        </button>
-        <button onclick="switchTab('tab4')" id="btn-tab4" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
-          Mag 7 Diagnostics
-        </button>
         <button onclick="switchTab('tab5')" id="btn-tab5" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Indexes & Sector Flow
         </button>
+        <button onclick="switchTab('tab4')" id="btn-tab4" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          Magnificent 7 Flow
+        </button>
         <button onclick="switchTab('tab6')" id="btn-tab6" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
-          Key Ratio & Breadth Radar
+          Synthetic Ratio Rotations
         </button>
-        <button onclick="switchTab('tab7')" id="btn-tab7" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
-          Single Ticker Explorer
-        </button>
-        <button onclick="switchTab('tab_options')" id="btn-tab_options" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0 flex items-center space-x-1.5">
-          <span class="w-1.5 h-1.5 rounded-full bg-cherry shadow-[0_0_6px_#FF2E55]"></span>
-          <span>Volatility Pricing</span>
+        <button onclick="switchTab('tab_options')" id="btn-tab_options" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          Volatility Pricing
         </button>
       </nav>
 <!-- Tab Agent: Interactive AI Quant Agent -->
@@ -762,15 +752,15 @@ HTML_CONTENT = """<!DOCTYPE html>
 
                 <!-- Chat Input Bar -->
                 <form onsubmit="handleAgentSubmit(event)" class="flex gap-2">
-                    <input id="chatInput" type="text" placeholder="Ask the Quant AI Agent anything about today's market data, tickers, or setups..." class="flex-1 bg-[#161722] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500">
-                    <button type="submit" id="chatSendBtn" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition">
+                    <input id="chatInput" type="text" placeholder="Ask the Quant AI Agent anything about today's market data, tickers, or setups..." class="flex-1 bg-[#161722] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-mint">
+                    <button type="submit" id="chatSendBtn" class="bg-mint hover:bg-mint/80 text-black font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition">
                         <span>Send</span>
                     </button>
                 </form>
             </div>
         </div>
 
-        <!-- Tab 1: AI Macro Briefing -->
+        <!-- Tab 1: AI Macro Letter -->
         <div id="tab1" class="tab-pane">
           <!-- ================= 4. MARKET REGIME & SECTOR VELOCITY BASKETS ================= -->
           <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 mb-5">
@@ -906,9 +896,9 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- Tab 4: Mag 7 Granular Diagnostics -->
+        <!-- Tab 4: Magnificant 7 Flow -->
         <div id="tab4" class="tab-pane hidden">
-            <h3 class="text-base font-bold text-white mb-1">Mag 7 Granular Diagnostics (Technicals, Realized Vol, Drawdowns & Odds)</h3>
+            <h3 class="text-base font-bold text-white mb-1">Magnificant 7 Flow (Technicals, Realized Vol, Drawdowns & Odds)</h3>
             <p class="text-xs text-slate-400 mb-4">Every mega-cap analyzed for <b>Drawdown Depths, Moving Average Spreads, RVOL, and 20-Day Historical Forward Odds</b>.</p>
             <div class="lux-card overflow-x-auto mb-5">
                 <table class="w-full text-left text-xs border-collapse" id="mag7Table">
@@ -946,14 +936,14 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- Tab 6: Key Synthetic Ratio Regimes -->
+        <!-- Tab 6: Synthetic Ratio Rotations -->
         <div id="tab6" class="tab-pane hidden">
             <div class="flex justify-between items-center mb-4">
                 <div>
-                    <h3 class="text-base font-bold text-white">Key Synthetic Ratio Regimes</h3>
+                    <h3 class="text-base font-bold text-white">Synthetic Ratio Rotations</h3>
                     <p class="text-xs text-slate-400">Quantitative measures of breadth, mega-cap concentration, and small-cap rotation.</p>
                 </div>
-                <select id="ratioSelect" onchange="loadRatio(this.value)" class="bg-[#0b0d12] text-xs text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-amber-500">
+                <select id="ratioSelect" onchange="loadRatio(this.value)" class="bg-[#0b0d12] text-xs text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-mint">
                     <option value="SPY_RSP">SPY / RSP (Breadth Concentration)</option>
                     <option value="QQQ_RSP">QQQ / RSP (Tech vs Equal-Weight)</option>
                     <option value="IWM_QQQ">IWM / QQQ (Small vs Mega Growth)</option>
@@ -1286,14 +1276,12 @@ HTML_CONTENT = """<!DOCTYPE html>
         let AI_DATA = null;
 
         const TAB_NAMES = {
-            'tab1': 'Daily Macro Briefing',
-            'tab_agent': 'Interactive AI Quant Agent',
+            'tab1': 'AI Macro Letter',
+            'tab_agent': 'AI Agent',
             'tab2': 'Automated Trade Ideas Desk',
-            'tab3': 'Confirmation & Confluence Radar',
-            'tab4': 'Mag 7 Granular Diagnostics',
-            'tab5': 'Indexes & Sector Money Flow',
-            'tab6': 'Key Ratio & Breadth Radar',
-            'tab7': 'Single Ticker Explorer',
+            'tab5': 'Indexes & Sector Flow',
+            'tab4': 'Magnificant 7 Flow',
+            'tab6': 'Synthetic Ratio Rotations',
             'tab_options': 'Volatility Pricing'
         };
 

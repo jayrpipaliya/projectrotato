@@ -584,23 +584,21 @@ st.caption(f"**Cross-Asset Macro Barometer Reading:** {macro_reading}")
 st.markdown("<div style='margin-bottom:12px;'></div>", unsafe_allow_html=True)
 
 # ----------------- MODERN TABS (Institutional Options Desk v3.0 Full Suite) -----------------
-tab1, tab_agent, tab2, tab3, tab4, tab5, tab6, tab7, tab_options = st.tabs([
-    "Daily AI Macro Briefing",
-    "Interactive AI Quant Agent",
+tab1, tab_agent, tab2, tab5, tab4, tab6, tab_options = st.tabs([
+    "AI Macro Letter",
+    "AI Agent",
     "Automated Trade Ideas",
-    "Confirmation & Confluence Radar",
-    "Mag 7 Deep Dive & Realized Vol",
-    "Indexes & Sector Money Flow",
-    "Key Ratio & Breadth Radar",
-    "Single Ticker Explorer",
+    "Indexes & Sector Flow",
+    "Magnificant 7 Flow",
+    "Synthetic Ratio Rotations",
     "Volatility Pricing"
 ])
 
-# ================= TAB 1: DAILY AI MACRO BRIEFING =================
+# ================= TAB 1: AI MACRO LETTER =================
 with tab1:
     col_t1, col_t2 = st.columns([3, 1])
     with col_t1:
-        st.subheader("Daily Institutional Macro Briefing & AI Analysis")
+        st.subheader("Daily Institutional Macro Letter & AI Analysis")
         st.caption("AI-Powered Cross-Asset Liquidity & Market Regime Intelligence")
     with col_t2:
         refresh_ai = st.button("Generate Fresh Briefing", use_container_width=True)
@@ -907,8 +905,8 @@ with tab2:
             unsafe_allow_html=True
         )
 
-# ================= TAB 3: CONFIRMATION & CONFLUENCE RADAR =================
-with tab3:
+# ================= LEGACY TAB: CONFIRMATION & CONFLUENCE RADAR =================
+if False:
     st.subheader("Multi-Factor Confirmation & Bias Intensity Radar")
     st.markdown("""
     Instead of rigid binary rules, each asset is scored across **7 independent confirmation layers** 
@@ -1035,9 +1033,9 @@ with tab3:
             )
             st.markdown(layer_card_html, unsafe_allow_html=True)
 
-# ================= TAB 4: MAG 7 DEEP DIVE =================
+# ================= TAB 4: MAGNIFICANT 7 FLOW =================
 with tab4:
-    st.subheader("Mag 7 Granular Diagnostics (Technicals, Realized Vol, Drawdowns & Odds)")
+    st.subheader("Magnificant 7 Flow (Technicals, Realized Vol, Drawdowns & Odds)")
     st.markdown("Every mega-cap analyzed for **Realized Volatility, Pullback Depths, RVOL, and 20-Day Historical Forward Odds**.")
 
     mag7_data = market_data.get("mag7", {})
@@ -1219,9 +1217,9 @@ with tab5:
         )
         st.markdown(basket_card_html, unsafe_allow_html=True)
 
-# ================= TAB 6: RATIO RADAR =================
+# ================= TAB 6: SYNTHETIC RATIO ROTATIONS =================
 with tab6:
-    st.subheader("Key Synthetic Ratio Regimes")
+    st.subheader("Synthetic Ratio Rotations & Statistical Regimes")
     st.markdown("Quantitative measures of breadth, mega-cap concentration, and small-cap rotation.")
 
     ratio_choice = st.selectbox("Select Ratio to Inspect", ["SPY_RSP", "QQQ_RSP", "IWM_QQQ"], index=0)
@@ -1247,8 +1245,8 @@ with tab6:
         fig_r.update_layout(yaxis_title="Ratio Value")
         st.plotly_chart(fig_r, use_container_width=True)
 
-# ================= TAB 7: SINGLE TICKER EXPLORER =================
-with tab7:
+# ================= LEGACY TAB: SINGLE TICKER EXPLORER =================
+if False:
     st.subheader("Deep Single Ticker Quantitative Explorer & Historical Odds")
 
     available_tickers = get_available_tickers()
