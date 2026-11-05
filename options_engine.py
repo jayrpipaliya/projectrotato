@@ -320,93 +320,188 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
         r = 0.045  # ~4.5% risk-free rate proxy
         q = get_dividend_yield(ticker_symbol)  # continuous dividend yield
 
-        # Outlier Filters
+        # Outlier Filters & Per-Strike Greeks Extractor
         def clean_chain(df_sub, is_call=True):
             c = df_sub[(df_sub['strike'] >= min_strike) & (df_sub['strike'] <= max_strike)].copy()
-            # After-hours resilience: If bids/asks are zeroed out by Yahoo overnight, synthesize from lastPrice
-            if (c['bid'] == 0).all() and 'lastPrice' in c.columns:
-                c = c[c['lastPrice'] > 0].copy()
-                c['bid'] = (c['lastPrice'] * 0.98).round(2)
-                c['ask'] = (c['lastPrice'] * 1.02).round(2)
-            else:
-                c = c[(c['bid'] > 0.0) & (c['ask'] > 0.0) & (c['ask'] > c['bid'])]
+            # After-hours resilience: If bids/asks are zeroed out by Yahoo overnight, synthesize from lastPrice row-by-row
+            zero_bid_mask = (c['bid'] <= 0.0) | (c['ask'] <= 0.0)
+            if 'lastPrice' in c.columns:
+                valid_lp = zero_bid_mask & (c['lastPrice'] > 0)
+                c.loc[valid_lp, 'bid'] = (c.loc[valid_lp, 'lastPrice'] * 0.98).round(2)
+                c.loc[valid_lp, 'ask'] = (c.loc[valid_lp, 'lastPrice'] * 1.02).round(2)
 
-            # If impliedVolatility is zeroed out by Yahoo overnight, invert Black-Scholes from price
-            if (c['impliedVolatility'] < 0.04).any() and 'lastPrice' in c.columns:
+            c = c[(c['bid'] > 0.0) & (c['ask'] > 0.0) & (c['ask'] >= c['bid'])]
+
+            # If impliedVolatility is zeroed out by Yahoo overnight, invert Black-Scholes from lastPrice
+            low_iv_mask = (c['impliedVolatility'] < 0.04) | (c['impliedVolatility'] > 1.8)
+            if low_iv_mask.any() and 'lastPrice' in c.columns:
                 c['impliedVolatility'] = c.apply(
                     lambda row: implied_vol_solver(row['lastPrice'], spot_price, row['strike'], t_years, r, q, is_call=is_call)
-                    if row['impliedVolatility'] < 0.04 and row.get('lastPrice', 0) > 0 else row['impliedVolatility'],
+                    if (row['impliedVolatility'] < 0.04 or row['impliedVolatility'] > 1.8) and row.get('lastPrice', 0) > 0 else row['impliedVolatility'],
                     axis=1
                 )
 
-            c = c[(c['impliedVolatility'] > 0.04) & (c['impliedVolatility'] < 1.8)]
-            c = c[abs(c['impliedVolatility'] - 0.250007) > 0.005]
-            c = c.drop_duplicates(subset=['strike'])
+            c['IV_Pct'] = c['impliedVolatility'] * 100.0
+            c = c[(c['IV_Pct'] >= 6.0) & (c['IV_Pct'] <= 160.0)]
+            c = c[abs(c['IV_Pct'] - 25.0007) > 0.005]
+            c = c.drop_duplicates(subset=['strike']).sort_values('strike')
             c['openInterest'] = pd.to_numeric(c['openInterest'], errors='coerce').fillna(0)
             c['volume'] = pd.to_numeric(c['volume'], errors='coerce').fillna(0)
+            
             # Eliminate extreme bid-ask spread garbage (spread > 60% of mid)
             mid = (c['bid'] + c['ask']) / 2.0
             c = c[(c['ask'] - c['bid']) / mid.clip(lower=0.1) <= 0.60]
             if spot_price > 50:
                 c = c[c['strike'].apply(lambda s: (round(s * 100) % 25 == 0) or (s % 1 == 0))]
+
+            # Full Black-Scholes Greeks with dividend yield
+            sig = c['impliedVolatility'].clip(0.05, 1.5)
+            d1 = (np.log(spot_price / c['strike']) + (r - q + 0.5 * sig**2) * t_years) / (sig * np.sqrt(t_years))
+            if is_call:
+                c['Est_Delta'] = np.exp(-q * t_years) * norm_cdf(d1)
+            else:
+                c['Est_Delta'] = -np.exp(-q * t_years) * norm_cdf(-d1)
+            c['Vega'] = (spot_price * np.exp(-q * t_years) * np.sqrt(t_years) * norm_pdf(d1)) / 100.0
+
+            # Exact Black-Scholes IV Inversion for Ask and Bid
+            ask_ivs = []
+            bid_ivs = []
+            for a_p, b_p, k in zip(c['ask'], c['bid'], c['strike']):
+                a_iv = implied_vol_solver(a_p, spot_price, k, t_years, r=r, q=q, is_call=is_call) * 100.0 if a_p > 0 else 20.0
+                b_iv = implied_vol_solver(b_p, spot_price, k, t_years, r=r, q=q, is_call=is_call) * 100.0 if b_p > 0 else 10.0
+                ask_ivs.append(round(a_iv, 2))
+                bid_ivs.append(round(b_iv, 2))
+            c['Ask_IV_Pct'] = ask_ivs
+            c['Bid_IV_Pct'] = bid_ivs
+            c['Mid_Price'] = (c['bid'] + c['ask']) / 2.0
+            c['Spread_Pct'] = (((c['ask'] - c['bid']) / c['Mid_Price'].clip(lower=0.1)) * 100.0).round(1)
             return c
             
         calls = clean_chain(calls, is_call=True)
         puts = clean_chain(puts, is_call=False)
         
-        calls['IV_Pct'] = calls['impliedVolatility'] * 100.0
-        puts['IV_Pct'] = puts['impliedVolatility'] * 100.0
+        if calls.empty and puts.empty:
+            return None
+
+        # Determine ATM Strike and Baseline ATM Implied Volatility
+        pool_for_atm = calls if not calls.empty else puts
+        atm_strike = float(min(pool_for_atm['strike'], key=lambda k: abs(k - spot_price)))
+        atm_call_iv = float(calls[calls['strike'] == atm_strike]['IV_Pct'].values[0]) if (calls['strike'] == atm_strike).any() else 25.0
+        atm_put_iv = float(puts[puts['strike'] == atm_strike]['IV_Pct'].values[0]) if (puts['strike'] == atm_strike).any() else atm_call_iv
+        atm_iv = round(float((atm_call_iv + atm_put_iv) / 2.0), 1)
+
+        # Institutional OTM Stitching: OTM Puts (K <= Spot) and OTM Calls (K >= Spot)
+        otm_puts = puts[puts['strike'] <= spot_price].copy() if not puts.empty else pd.DataFrame()
+        if not otm_puts.empty:
+            otm_puts = otm_puts[(otm_puts['IV_Pct'] >= atm_iv * 0.55) & (otm_puts['IV_Pct'] <= atm_iv * 2.8)]
+
+        otm_calls = calls[calls['strike'] >= spot_price].copy() if not calls.empty else pd.DataFrame()
+        if not otm_calls.empty:
+            otm_calls = otm_calls[(otm_calls['IV_Pct'] >= atm_iv * 0.50) & (otm_calls['IV_Pct'] <= atm_iv * 2.8)]
+
+        # Extract 25-Delta and 10-Delta structural markers
+        put_25d = otm_puts.iloc[(otm_puts['Est_Delta'] - (-0.25)).abs().argsort()[:1]].iloc[0] if not otm_puts.empty else None
+        call_25d = otm_calls.iloc[(otm_calls['Est_Delta'] - 0.25).abs().argsort()[:1]].iloc[0] if not otm_calls.empty else None
+        put_10d = otm_puts.iloc[(otm_puts['Est_Delta'] - (-0.10)).abs().argsort()[:1]].iloc[0] if not otm_puts.empty else None
+
+        # 6 Institutional Skew Metrics Calculation
+        skew_25d = round(float(put_25d['IV_Pct'] - call_25d['IV_Pct']), 1) if (put_25d is not None and call_25d is not None) else 0.0
+        fly_25d = round(float(((put_25d['IV_Pct'] + call_25d['IV_Pct']) / 2.0) - atm_iv), 1) if (put_25d is not None and call_25d is not None) else 0.0
+        skew_10d = round(float(put_10d['IV_Pct'] - atm_iv), 1) if put_10d is not None else 0.0
         
+        if put_25d is not None and call_25d is not None:
+            pct_dist = ((call_25d['strike'] - put_25d['strike']) / spot_price) * 100.0
+            skew_slope = round(float((call_25d['IV_Pct'] - put_25d['IV_Pct']) / max(pct_dist, 1.0)), 2)
+            skew_25d_sub = f"{int(put_25d['strike'])}P {put_25d['IV_Pct']:.1f}% vs {int(call_25d['strike'])}C {call_25d['IV_Pct']:.1f}%"
+        else:
+            skew_slope = -0.1
+            skew_25d_sub = "N/A"
+
+        if skew_25d > 0.5:
+            skew_25d_text = "Puts rich, downside bid"
+        elif skew_25d < -0.5:
+            skew_25d_text = "Calls rich, upside bid"
+        else:
+            skew_25d_text = "Flat skew / Neutral"
+
+        if fly_25d >= 1.0:
+            fly_25d_text = "Elevated wing curvature"
+        elif fly_25d <= -1.0:
+            fly_25d_text = "Inverted curvature"
+        else:
+            fly_25d_text = "Little curvature"
+
+        if skew_10d >= 3.0:
+            skew_10d_text = "Extreme crash hedge"
+        elif skew_10d >= 1.2:
+            skew_10d_text = "Crash-hedge tilt"
+        else:
+            skew_10d_text = "Moderate tail risk"
+
+        # Fit Monotonic PCHIP Spline across combined stitched OTM strikes
+        comb_list = []
+        if not otm_puts.empty:
+            comb_list.append(otm_puts[['strike', 'IV_Pct']])
+        if not otm_calls.empty:
+            comb_list.append(otm_calls[['strike', 'IV_Pct']])
+            
+        if comb_list:
+            df_comb = pd.concat(comb_list).groupby('strike').mean().reset_index().sort_values('strike')
+        else:
+            df_comb = calls[['strike', 'IV_Pct']].drop_duplicates().sort_values('strike')
+
+        grid_strikes = np.sort(np.unique(np.concatenate([np.linspace(df_comb['strike'].min(), df_comb['strike'].max(), 120), [spot_price]])))
+        pchip = None
+        try:
+            from scipy.interpolate import PchipInterpolator
+            if len(df_comb) >= 3:
+                pchip = PchipInterpolator(df_comb['strike'].values, df_comb['IV_Pct'].values)
+                grid_ivs = np.clip(pchip(grid_strikes), df_comb['IV_Pct'].min() * 0.75, df_comb['IV_Pct'].max() * 1.35)
+        except Exception:
+            pchip = None
+
+        if pchip is None:
+            p_fit = np.polyfit(df_comb['strike'].values, df_comb['IV_Pct'].values, min(2, len(df_comb)-1))
+            grid_ivs = np.clip(np.polyval(p_fit, grid_strikes), df_comb['IV_Pct'].min() * 0.75, df_comb['IV_Pct'].max() * 1.35)
+
+        # Split into seamless put (K <= Spot) and call (K >= Spot) curves meeting at Spot
+        put_mask = grid_strikes <= spot_price
+        call_mask = grid_strikes >= spot_price
+        otm_put_curve = {
+            'strikes': [round(float(s), 2) for s in grid_strikes[put_mask]],
+            'iv': [round(float(iv), 2) for iv in grid_ivs[put_mask]]
+        }
+        otm_call_curve = {
+            'strikes': [round(float(s), 2) for s in grid_strikes[call_mask]],
+            'iv': [round(float(iv), 2) for iv in grid_ivs[call_mask]]
+        }
+        otm_puts_market = {
+            'strikes': [round(float(s), 2) for s in otm_puts['strike']] if not otm_puts.empty else [],
+            'iv': [round(float(iv), 2) for iv in otm_puts['IV_Pct']] if not otm_puts.empty else []
+        }
+        otm_calls_market = {
+            'strikes': [round(float(s), 2) for s in otm_calls['strike']] if not otm_calls.empty else [],
+            'iv': [round(float(iv), 2) for iv in otm_calls['IV_Pct']] if not otm_calls.empty else []
+        }
+
+        # Execution Desk Target Filtering
         side_clean = "Sell" if "Sell" in str(side) else "Buy"
-        # Buy Side: Bullish buys Calls, Bearish buys Puts
-        # Sell Side: Bullish writes Puts (bull put/credit), Bearish writes Calls (bear call/credit)
         is_call = (direction == "Bullish") if side_clean == "Buy" else (direction == "Bearish")
-        target_df = calls if is_call else puts
+        target_df = (calls if is_call else puts).copy()
         if len(target_df) < 5:
             return None
         
-        # Standardized Log-Moneyness: k = ln(K / S)
         target_df['Log_Moneyness'] = np.log(target_df['strike'] / spot_price)
         
-        # Black-Scholes Greeks with dividend yield
-        sigma = target_df['impliedVolatility'].clip(0.05, 1.5)
-        d1 = (np.log(spot_price / target_df['strike']) + (r - q + 0.5 * sigma**2) * t_years) / (sigma * np.sqrt(t_years))
-        
-        if is_call:
-            target_df['Est_Delta'] = np.exp(-q * t_years) * norm_cdf(d1)
+        # Evaluate Fair Fitted Skew using the monotonic PCHIP model (eliminates inverted bowl distortion)
+        if pchip is not None:
+            fitted = pchip(target_df['strike'].values)
         else:
-            target_df['Est_Delta'] = -np.exp(-q * t_years) * norm_cdf(-d1)
-            
-        # Vega ($ change per 1.0% IV move)
-        target_df['Vega'] = (spot_price * np.exp(-q * t_years) * np.sqrt(t_years) * norm_pdf(d1)) / 100.0
-        
-        # Asymmetric Skew Fit (Degree-3 Cubic Polynomial over Log-Moneyness with Degree-2 / Linear Fallback)
-        k_vals = target_df['Log_Moneyness'].values
-        iv_vals = target_df['IV_Pct'].values
-        weights = np.sqrt(np.clip(target_df['openInterest'].fillna(10).values, 1, 10000))
-        
-        poly_degree = 3 if len(target_df) >= 7 else 2
-        fitted = None
-        try:
-            poly_coeffs_k = np.polyfit(k_vals, iv_vals, poly_degree, w=weights)
-            fitted = np.polyval(poly_coeffs_k, k_vals)
-            # Guard against polynomial explosion on sparse wings
-            if np.any(np.isnan(fitted)) or np.min(fitted) <= 0 or np.min(fitted) < iv_vals.min() * 0.4 or np.max(fitted) > iv_vals.max() * 1.6:
-                raise ValueError("Polyfit diverged")
-        except Exception:
-            try:
-                poly_coeffs_k = np.polyfit(k_vals, iv_vals, 2, w=weights)
-                fitted = np.polyval(poly_coeffs_k, k_vals)
-            except Exception:
-                poly_coeffs_k = np.polyfit(k_vals, iv_vals, 1, w=weights)
-                fitted = np.polyval(poly_coeffs_k, k_vals)
+            fitted = np.polyval(p_fit, target_df['strike'].values)
 
         target_df['Fitted_IV'] = np.clip(fitted, target_df['IV_Pct'].min() * 0.75, target_df['IV_Pct'].max() * 1.35)
         target_df['IV_Discount'] = target_df['Fitted_IV'] - target_df['IV_Pct']  # Midpoint discount (cheapness)
         target_df['IV_Premium'] = target_df['IV_Pct'] - target_df['Fitted_IV']   # Midpoint premium (richness)
-        
-        target_df['Mid_Price'] = (target_df['bid'] + target_df['ask']) / 2.0
-        target_df['Spread_Pct'] = (((target_df['ask'] - target_df['bid']) / target_df['Mid_Price'].clip(lower=0.1)) * 100.0).round(1)
         
         # Spread Quality Rating
         def classify_spread(sp):
@@ -418,24 +513,11 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
                 return "🔴 Wide"
         target_df['Spread_Quality'] = target_df['Spread_Pct'].apply(classify_spread)
         
-        # Exact Black-Scholes IV Inversion for Ask and Bid
-        # Eliminates first-order linear Vega approximation error on low-Vega OTM strikes and short DTEs
-        ask_ivs = []
-        bid_ivs = []
-        for a_p, b_p, k in zip(target_df['ask'], target_df['bid'], target_df['strike']):
-            a_iv = implied_vol_solver(a_p, spot_price, k, t_years, r=r, q=q, is_call=is_call) * 100.0 if a_p > 0 else 20.0
-            b_iv = implied_vol_solver(b_p, spot_price, k, t_years, r=r, q=q, is_call=is_call) * 100.0 if b_p > 0 else 10.0
-            ask_ivs.append(round(a_iv, 2))
-            bid_ivs.append(round(b_iv, 2))
-            
-        target_df['Ask_IV_Pct'] = ask_ivs
-        target_df['Bid_IV_Pct'] = bid_ivs
         target_df['Ask_Edge'] = (target_df['Fitted_IV'] - target_df['Ask_IV_Pct']).round(2)
         target_df['Bid_Edge'] = (target_df['Bid_IV_Pct'] - target_df['Fitted_IV']).round(2)
         
         # Expected Move Context
-        atm_iv_approx = target_df['impliedVolatility'].mean()
-        exp_move = spot_price * atm_iv_approx * np.sqrt(t_years)
+        exp_move = spot_price * (atm_iv / 100.0) * np.sqrt(t_years)
         target_df['Dist_From_Spot'] = target_df['strike'] - spot_price
         target_df['Within_1_Sigma'] = target_df['Dist_From_Spot'].abs() <= exp_move
         
@@ -530,6 +612,27 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
             
         top_strikes = candidates.sort_values('Composite_Score', ascending=False).head(4)
         
+        metrics = {
+            'atm_iv': atm_iv,
+            'atm_strike': atm_strike,
+            'skew_25d': skew_25d,
+            'skew_25d_text': skew_25d_text,
+            'skew_25d_sub': skew_25d_sub,
+            'fly_25d': fly_25d,
+            'fly_25d_text': fly_25d_text,
+            'skew_10d': skew_10d,
+            'skew_10d_text': skew_10d_text,
+            'skew_slope': skew_slope,
+            'skew_slope_text': "IV pts per 1% of strike",
+            'total_contracts': int(len(calls) + len(puts))
+        }
+        structural_markers = {
+            'atm': {'strike': atm_strike, 'iv': atm_iv},
+            'put_25d': {'strike': float(put_25d['strike']), 'iv': float(put_25d['IV_Pct'])} if put_25d is not None else None,
+            'call_25d': {'strike': float(call_25d['strike']), 'iv': float(call_25d['IV_Pct'])} if call_25d is not None else None,
+            'put_10d': {'strike': float(put_10d['strike']), 'iv': float(put_10d['IV_Pct'])} if put_10d is not None else None
+        }
+
         return {
             'calls': calls,
             'puts': puts,
@@ -538,10 +641,16 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
             'spot_price': spot_price,
             'dte': dte,
             'expiration': expiration,
-            'poly_coeffs_k': poly_coeffs_k,
+            'poly_coeffs_k': [0, 0, 0],
             'exp_move': exp_move,
             'dividend_yield': q,
-            'side': side_clean
+            'side': side_clean,
+            'metrics': metrics,
+            'structural_markers': structural_markers,
+            'otm_put_curve': otm_put_curve,
+            'otm_call_curve': otm_call_curve,
+            'otm_puts_market': otm_puts_market,
+            'otm_calls_market': otm_calls_market
         }
     except Exception:
         return None
@@ -861,49 +970,126 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
     target_df = smile_data['target_df']
     top_strikes = smile_data['top_strikes']
     
+    # 6 Institutional Skew KPI Metric Cards
+    metrics = smile_data.get('metrics', {})
+    m_col1, m_col2, m_col3, m_col4, m_col5, m_col6 = st.columns(6)
+    with m_col1:
+        st.metric("ATM IV", f"{metrics.get('atm_iv', 0):.1f}%", f"Strike {metrics.get('atm_strike', 0):.0f}")
+    with m_col2:
+        s25 = metrics.get('skew_25d', 0)
+        s25_color = "inverse" if s25 > 0 else "normal"
+        st.metric("25Δ SKEW", f"{s25:+.1f} pts", metrics.get('skew_25d_text', 'Risk Reversal'), delta_color=s25_color)
+    with m_col3:
+        st.metric("25Δ BUTTERFLY", f"{metrics.get('fly_25d', 0):+.1f} pts", metrics.get('fly_25d_text', 'Curvature'))
+    with m_col4:
+        st.metric("10Δ SKEW", f"{metrics.get('skew_10d', 0):+.1f} pts", metrics.get('skew_10d_text', 'Crash tilt'))
+    with m_col5:
+        st.metric("SKEW SLOPE", f"{metrics.get('skew_slope', 0):.2f}", "pts/1% strike")
+    with m_col6:
+        st.metric("TERM SLOPE", f"{chosen_row.get('IV_HV_Ratio', 1.0):.2f}x", "vs Clean HV")
+
     fig = go.Figure()
-    
-    # Baseline Model Skew Curve (evaluated over log-moneyness)
-    k_smooth = np.linspace(target_df['Log_Moneyness'].min(), target_df['Log_Moneyness'].max(), 200)
-    y_smooth = np.polyval(smile_data['poly_coeffs_k'], k_smooth)
-    x_strikes_smooth = spot_price * np.exp(k_smooth)
-    
+
+    # OTM Puts Fitted Curve (Cherry Red)
+    if 'otm_put_curve' in smile_data and smile_data['otm_put_curve']['strikes']:
+        fig.add_trace(go.Scatter(
+            x=smile_data['otm_put_curve']['strikes'],
+            y=smile_data['otm_put_curve']['iv'],
+            mode='lines',
+            name='OTM Puts Skew',
+            line=dict(color='#FF2E55', width=2.5)
+        ))
+
+    # OTM Calls Fitted Curve (Mint Green)
+    if 'otm_call_curve' in smile_data and smile_data['otm_call_curve']['strikes']:
+        fig.add_trace(go.Scatter(
+            x=smile_data['otm_call_curve']['strikes'],
+            y=smile_data['otm_call_curve']['iv'],
+            mode='lines',
+            name='OTM Calls Skew',
+            line=dict(color='#00F5A0', width=2.5)
+        ))
+
+    # OTM Market Mid IV Points
+    if 'otm_puts_market' in smile_data and smile_data['otm_puts_market']['strikes']:
+        fig.add_trace(go.Scatter(
+            x=smile_data['otm_puts_market']['strikes'],
+            y=smile_data['otm_puts_market']['iv'],
+            mode='markers',
+            name='Market Puts IV',
+            marker=dict(size=5, color='#FF2E55', opacity=0.35),
+            showlegend=False
+        ))
+    if 'otm_calls_market' in smile_data and smile_data['otm_calls_market']['strikes']:
+        fig.add_trace(go.Scatter(
+            x=smile_data['otm_calls_market']['strikes'],
+            y=smile_data['otm_calls_market']['iv'],
+            mode='markers',
+            name='Market Calls IV',
+            marker=dict(size=5, color='#00F5A0', opacity=0.35),
+            showlegend=False
+        ))
+
+    # Key Structural Markers: ATM Dot, 25Δ Put, 25Δ Call
+    struct = smile_data.get('structural_markers', {})
+    if struct.get('atm'):
+        fig.add_trace(go.Scatter(
+            x=[struct['atm']['strike']], y=[struct['atm']['iv']],
+            mode='markers', name='ATM Baseline',
+            marker=dict(size=11, color='#F59E0B', line=dict(color='#ffffff', width=1.5))
+        ))
+    if struct.get('put_25d'):
+        fig.add_trace(go.Scatter(
+            x=[struct['put_25d']['strike']], y=[struct['put_25d']['iv']],
+            mode='markers+text', name='25Δ Put',
+            text=['25Δ'], textposition='top center',
+            marker=dict(size=12, color='rgba(255, 46, 85, 0.2)', line=dict(color='#FF2E55', width=2))
+        ))
+    if struct.get('call_25d'):
+        fig.add_trace(go.Scatter(
+            x=[struct['call_25d']['strike']], y=[struct['call_25d']['iv']],
+            mode='markers+text', name='25Δ Call',
+            text=['25Δ'], textposition='top center',
+            marker=dict(size=12, color='rgba(0, 245, 160, 0.2)', line=dict(color='#00F5A0', width=2))
+        ))
+
+    # Effective Ask IV / Bid IV Execution Overlay
+    is_buy = (side_clean == "Buy")
+    spread_trace_y = target_df['Ask_IV_Pct'] if is_buy else target_df['Bid_IV_Pct']
+    spread_name = 'Effective Ask IV (Cost to Buy)' if is_buy else 'Effective Bid IV (Selling Price)'
+    spread_color = 'rgba(245, 158, 11, 0.75)' if is_buy else 'rgba(0, 245, 160, 0.75)'
     fig.add_trace(go.Scatter(
-        x=x_strikes_smooth, y=y_smooth,
-        mode='lines',
-        name='Model Fair Skew (Asymmetric Cubic)',
-        line=dict(color='#8b949e', width=2, dash='dash')
+        x=target_df['strike'], y=spread_trace_y,
+        mode='lines', name=spread_name,
+        line=dict(color=spread_color, width=1.5, dash='dot')
     ))
-    
-    # Market Strikes Scatter
-    trace_color = '#00F5A0' if dir_clean == "Bullish" else '#FF2E55'
-    fig.add_trace(go.Scatter(
-        x=target_df['strike'], y=target_df['IV_Pct'],
-        mode='markers',
-        name=f"Market {dir_clean} Strikes IV",
-        marker=dict(size=8, color=trace_color, opacity=0.7),
-        text=[f"Strike: ${r.strike:.1f}<br>Market IV: {r.IV_Pct:.2f}%<br>Ask IV: {r.Ask_IV_Pct:.2f}%<br>Bid IV: {r.Bid_IV_Pct:.2f}%<br>Delta: {r.Est_Delta:.2f}<br>Bid/Ask: ${r.bid}-${r.ask}" for _, r in target_df.iterrows()],
-        hoverinfo='text'
-    ))
-    
+
     # Highlight Spot Price & Expected Move Bands
     fig.add_vline(
-        x=spot_price, line_width=1.5, line_dash="dot", line_color="#58a6ff",
+        x=spot_price, line_width=1.5, line_dash="dash", line_color="#94a3b8",
         annotation_text=f"Spot: ${spot_price:.2f}", annotation_position="top left",
-        annotation_font_color="#58a6ff"
+        annotation_font_color="#94a3b8"
     )
     
+    # Horizontal ATM IV Line
+    atm_val = metrics.get('atm_iv', 25.0)
+    fig.add_hline(
+        y=atm_val, line_width=1.2, line_dash="dash", line_color="#F59E0B",
+        annotation_text=f"ATM: {atm_val:.1f}%", annotation_position="bottom right",
+        annotation_font_color="#F59E0B"
+    )
+
     # Expected Move Shaded Region
     fig.add_vrect(
         x0=spot_price - smile_data['exp_move'],
         x1=spot_price + smile_data['exp_move'],
-        fillcolor="rgba(88, 166, 255, 0.06)",
+        fillcolor="rgba(56, 189, 248, 0.04)",
         layer="below", line_width=0,
         annotation_text="1σ Expected Range", annotation_position="top right",
-        annotation_font_color="rgba(88, 166, 255, 0.5)"
+        annotation_font_color="rgba(56, 189, 248, 0.4)"
     )
-    
-    # Highlight Top Strikes
+
+    # Highlight Top Recommended Strikes
     if side_clean == "Sell":
         marker_color = '#FF2E55'
         trace_label = '🔴 Recommended Sell Strikes (Bid Edge)'
@@ -919,7 +1105,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         x=top_strikes['strike'], y=top_strikes['IV_Pct'],
         mode='markers+text',
         name=trace_label,
-        marker=dict(size=16, color=marker_color, line=dict(color='#ffffff', width=2.5), symbol='circle'),
+        marker=dict(size=15, color=marker_color, line=dict(color='#ffffff', width=2), symbol='circle'),
         text=rec_texts,
         textposition="bottom center",
         textfont=dict(color=marker_color, size=11, family="sans-serif"),
@@ -934,7 +1120,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         margin=dict(l=40, r=40, t=30, b=40),
         xaxis=dict(title="Strike Price ($)", gridcolor="#21262d"),
         yaxis=dict(title="Implied Volatility (%)", gridcolor="#21262d"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5)
     )
     
     st.plotly_chart(fig, use_container_width=True)

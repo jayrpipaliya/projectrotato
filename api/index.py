@@ -4,6 +4,7 @@ import time
 import json
 from datetime import datetime
 import numpy as np
+import pandas as pd
 from typing import Optional
 from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -271,16 +272,48 @@ def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Quer
         smile_payload = None
         if smile:
             target_df = smile['target_df']
-            k_smooth = np.linspace(target_df['Log_Moneyness'].min(), target_df['Log_Moneyness'].max(), 50)
-            y_smooth = np.polyval(smile['poly_coeffs_k'], k_smooth)
-            x_strikes_smooth = spot_price * np.exp(k_smooth)
             top_edges = smile['top_strikes']['Bid_Edge'] if side_clean == 'Sell' else smile['top_strikes']['Ask_Edge']
+            
+            # Compute term slope vs next expiration in term_df
+            metrics = smile.get('metrics', {})
+            try:
+                exps = term_df['Expiration'].tolist()
+                if chosen_exp in exps:
+                    idx = exps.index(chosen_exp)
+                    if idx + 1 < len(term_df):
+                        next_row = term_df.iloc[idx + 1]
+                        next_exp_name = str(next_row['Expiration'])
+                        next_atm = float(next_row['ATM_IV'])
+                        curr_atm = float(metrics.get('atm_iv', next_atm))
+                        t_slope = round(curr_atm - next_atm, 1)
+                        dt = pd.Timestamp(next_exp_name)
+                        short_date = dt.strftime("%b %d")
+                        metrics['term_slope'] = t_slope
+                        if abs(t_slope) <= 0.3:
+                            metrics['term_slope_text'] = f"Term flat vs {short_date}"
+                        elif t_slope > 0:
+                            metrics['term_slope_text'] = f"Inverted (+{t_slope:.1f} pts vs {short_date})"
+                        else:
+                            metrics['term_slope_text'] = f"Contango ({t_slope:.1f} pts vs {short_date})"
+                    else:
+                        metrics['term_slope'] = 0.0
+                        metrics['term_slope_text'] = "Front cycle"
+            except Exception:
+                metrics['term_slope'] = 0.0
+                metrics['term_slope_text'] = "N/A"
+
             smile_payload = {
                 "expiration": chosen_exp,
                 "dte": smile['dte'],
                 "exp_move": round(smile['exp_move'], 2),
-                "model_strikes": [round(float(s), 2) for s in x_strikes_smooth],
-                "model_iv": [round(float(iv), 2) for iv in y_smooth],
+                "metrics": metrics,
+                "structural_markers": smile.get('structural_markers', {}),
+                "otm_put_curve": smile.get('otm_put_curve', {}),
+                "otm_call_curve": smile.get('otm_call_curve', {}),
+                "otm_puts_market": smile.get('otm_puts_market', {}),
+                "otm_calls_market": smile.get('otm_calls_market', {}),
+                "model_strikes": smile.get('otm_call_curve', {}).get('strikes', []),
+                "model_iv": smile.get('otm_call_curve', {}).get('iv', []),
                 "market_strikes": [round(float(s), 2) for s in target_df['strike']],
                 "market_iv": [round(float(iv), 2) for iv in target_df['IV_Pct']],
                 "market_ask_iv": [round(float(iv), 2) for iv in target_df['Ask_IV_Pct']],
@@ -341,11 +374,36 @@ def api_options_smile(ticker: str, expiration: str = Query(...), direction: str 
             return {"error": f"Could not construct volatility smile for {expiration}"}
             
         target_df = smile['target_df']
-        k_smooth = np.linspace(target_df['Log_Moneyness'].min(), target_df['Log_Moneyness'].max(), 50)
-        y_smooth = np.polyval(smile['poly_coeffs_k'], k_smooth)
-        x_strikes_smooth = spot_price * np.exp(k_smooth)
         top_edges = smile['top_strikes']['Bid_Edge'] if side_clean == 'Sell' else smile['top_strikes']['Ask_Edge']
         
+        # Calculate term slope vs adjacent cycle
+        metrics = smile.get('metrics', {})
+        try:
+            from options_engine import fetch_term_structure
+            term_df, _, _ = fetch_term_structure(t_up)
+            if not term_df.empty and 'Expiration' in term_df.columns:
+                exps = term_df['Expiration'].tolist()
+                if expiration in exps:
+                    idx = exps.index(expiration)
+                    if idx + 1 < len(term_df):
+                        next_row = term_df.iloc[idx + 1]
+                        next_exp_name = str(next_row['Expiration'])
+                        next_atm = float(next_row['ATM_IV'])
+                        curr_atm = float(metrics.get('atm_iv', next_atm))
+                        t_slope = round(curr_atm - next_atm, 1)
+                        dt = pd.Timestamp(next_exp_name)
+                        short_date = dt.strftime("%b %d")
+                        metrics['term_slope'] = t_slope
+                        if abs(t_slope) <= 0.3:
+                            metrics['term_slope_text'] = f"Term flat vs {short_date}"
+                        elif t_slope > 0:
+                            metrics['term_slope_text'] = f"Inverted (+{t_slope:.1f} pts vs {short_date})"
+                        else:
+                            metrics['term_slope_text'] = f"Contango ({t_slope:.1f} pts vs {short_date})"
+        except Exception:
+            metrics['term_slope'] = 0.0
+            metrics['term_slope_text'] = "N/A"
+            
         return clean_json({
             "ticker": t_up,
             "direction": dir_clean,
@@ -355,8 +413,14 @@ def api_options_smile(ticker: str, expiration: str = Query(...), direction: str 
                 "expiration": expiration,
                 "dte": smile['dte'],
                 "exp_move": round(smile['exp_move'], 2),
-                "model_strikes": [round(float(s), 2) for s in x_strikes_smooth],
-                "model_iv": [round(float(iv), 2) for iv in y_smooth],
+                "metrics": metrics,
+                "structural_markers": smile.get('structural_markers', {}),
+                "otm_put_curve": smile.get('otm_put_curve', {}),
+                "otm_call_curve": smile.get('otm_call_curve', {}),
+                "otm_puts_market": smile.get('otm_puts_market', {}),
+                "otm_calls_market": smile.get('otm_calls_market', {}),
+                "model_strikes": smile.get('otm_call_curve', {}).get('strikes', []),
+                "model_iv": smile.get('otm_call_curve', {}).get('iv', []),
                 "market_strikes": [round(float(s), 2) for s in target_df['strike']],
                 "market_iv": [round(float(iv), 2) for iv in target_df['IV_Pct']],
                 "market_ask_iv": [round(float(iv), 2) for iv in target_df['Ask_IV_Pct']],
@@ -1213,9 +1277,9 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
                     <div>
                         <h4 class="text-sm font-bold text-white flex items-center gap-1.5">
-                            Volatility Smile & Fitted Asymmetric Skew Curve
+                            Volatility Skew <span class="text-slate-500 hover:text-slate-300 cursor-pointer text-xs" title="Institutional Volatility Surface: Stitched OTM Puts (Cherry Red) & OTM Calls (Mint Green) with Risk Reversal Skew Metrics">ⓘ</span>
                         </h4>
-                        <p class="text-[11px] text-slate-400" id="optionsSmileSubtitle">Showing nearest active expiration chain, degree-3 log-moneyness skew, and 1σ expected move boundary</p>
+                        <p class="text-[11px] text-slate-400" id="optionsSmileSubtitle">Showing nearest active expiration chain, monotonic PCHIP skew surface, and 1σ expected move boundary</p>
                     </div>
                     <!-- Expiration Date Slicer / Selector -->
                     <div class="flex items-center gap-2">
@@ -1225,7 +1289,13 @@ HTML_CONTENT = """<!DOCTYPE html>
                         </select>
                     </div>
                 </div>
-                <div id="optionsSmileChart" style="height: 420px;"></div>
+
+                <!-- 6 Institutional Skew KPI Cards -->
+                <div id="optionsSkewKpiStrip" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-4">
+                    <!-- Populated dynamically: ATM IV, 25Δ SKEW, 25Δ BUTTERFLY, 10Δ SKEW, SKEW SLOPE, TERM SLOPE -->
+                </div>
+
+                <div id="optionsSmileChart" style="height: 440px;"></div>
             </div>
         </div>
 
@@ -2955,72 +3025,279 @@ async function init() {
         function renderSmileChart(s, direction, isBuy, spot) {
             if (!s) return;
             const subEl = document.getElementById('optionsSmileSubtitle');
+            const m = s.metrics || {};
+            const totalContracts = m.total_contracts ? ` · ${m.total_contracts} contracts` : '';
             if (subEl) {
-                subEl.innerText = `Showing ${s.expiration} (${s.dte}d DTE) | Market 1σ Expected Move: ±$${s.exp_move} | ${isBuy ? 'Buy Side (Ask Edge)' : 'Sell Side (Bid Edge)'}`;
+                subEl.innerText = `${s.expiration} · ${s.dte}DTE${totalContracts} | 1σ Expected Move: ±$${s.exp_move} | ${isBuy ? 'Buy Side (Ask Edge)' : 'Sell Side (Bid Edge)'}`;
             }
 
-            const traceModel = {
-                x: s.model_strikes, y: s.model_iv,
-                name: 'Model Fair Skew (Asymmetric Cubic)',
-                type: 'scatter', mode: 'lines',
-                line: { color: '#94a3b8', width: 2, dash: 'dash' }
-            };
-            const traceMarket = {
-                x: s.market_strikes, y: s.market_iv,
-                name: `${direction} Market Mid IV`,
-                type: 'scatter', mode: 'markers',
-                marker: { color: direction === 'Bullish' ? '#00F5A0' : '#FF2E55', size: 7, opacity: 0.85 }
-            };
+            // Populate the 6 Institutional Skew KPI Cards
+            const kpiStrip = document.getElementById('optionsSkewKpiStrip');
+            if (kpiStrip) {
+                const atmIv = m.atm_iv != null ? m.atm_iv.toFixed(1) + '%' : '--';
+                const atmStrike = m.atm_strike != null ? 'Strike ' + m.atm_strike : '--';
+                
+                const skew25d = m.skew_25d != null ? (m.skew_25d > 0 ? '+' : '') + m.skew_25d.toFixed(1) + ' pts' : '--';
+                const skew25dColor = (m.skew_25d || 0) > 0 ? 'text-cherry' : ((m.skew_25d || 0) < 0 ? 'text-mint' : 'text-slate-200');
+                const skew25dText = m.skew_25d_text || 'Risk Reversal';
+                const skew25dSub = m.skew_25d_sub || '';
+
+                const fly25d = m.fly_25d != null ? (m.fly_25d > 0 ? '+' : '') + m.fly_25d.toFixed(1) + ' pts' : '--';
+                const fly25dText = m.fly_25d_text || 'Curvature';
+
+                const skew10d = m.skew_10d != null ? (m.skew_10d > 0 ? '+' : '') + m.skew_10d.toFixed(1) + ' pts' : '--';
+                const skew10dColor = (m.skew_10d || 0) > 1.2 ? 'text-cherry' : 'text-slate-200';
+                const skew10dText = m.skew_10d_text || 'Tail risk';
+
+                const skewSlope = m.skew_slope != null ? (m.skew_slope > 0 ? '+' : '') + m.skew_slope.toFixed(2) : '--';
+                const skewSlopeText = m.skew_slope_text || 'IV pts per 1% of strike';
+
+                const termSlope = m.term_slope != null ? (m.term_slope > 0 ? '+' : '') + m.term_slope.toFixed(1) + ' pts' : '--';
+                const termSlopeText = m.term_slope_text || 'Term flat';
+
+                kpiStrip.innerHTML = `
+                    <div class="bg-[#12151c]/90 border border-white/5 rounded-lg p-2.5 flex flex-col justify-between">
+                        <span class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">ATM IV</span>
+                        <div class="text-lg font-mono font-bold text-white mt-0.5">${atmIv}</div>
+                        <span class="text-[10px] text-slate-400 font-medium">${atmStrike}</span>
+                    </div>
+                    <div class="bg-[#12151c]/90 border border-white/5 rounded-lg p-2.5 flex flex-col justify-between">
+                        <span class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">25Δ SKEW</span>
+                        <div class="text-lg font-mono font-bold ${skew25dColor} mt-0.5">${skew25d}</div>
+                        <div class="text-[10px] text-slate-300 font-semibold leading-tight">${skew25dText}</div>
+                        ${skew25dSub ? `<span class="text-[9px] text-slate-500 font-mono mt-0.5">${skew25dSub}</span>` : ''}
+                    </div>
+                    <div class="bg-[#12151c]/90 border border-white/5 rounded-lg p-2.5 flex flex-col justify-between">
+                        <span class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">25Δ BUTTERFLY</span>
+                        <div class="text-lg font-mono font-bold text-white mt-0.5">${fly25d}</div>
+                        <span class="text-[10px] text-slate-300 font-semibold">${fly25dText}</span>
+                    </div>
+                    <div class="bg-[#12151c]/90 border border-white/5 rounded-lg p-2.5 flex flex-col justify-between">
+                        <span class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">10Δ SKEW</span>
+                        <div class="text-lg font-mono font-bold ${skew10dColor} mt-0.5">${skew10d}</div>
+                        <span class="text-[10px] text-slate-300 font-semibold">${skew10dText}</span>
+                    </div>
+                    <div class="bg-[#12151c]/90 border border-white/5 rounded-lg p-2.5 flex flex-col justify-between">
+                        <span class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">SKEW SLOPE</span>
+                        <div class="text-lg font-mono font-bold text-white mt-0.5">${skewSlope}</div>
+                        <span class="text-[10px] text-slate-400 font-medium">${skewSlopeText}</span>
+                    </div>
+                    <div class="bg-[#12151c]/90 border border-white/5 rounded-lg p-2.5 flex flex-col justify-between">
+                        <span class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">TERM SLOPE</span>
+                        <div class="text-lg font-mono font-bold text-white mt-0.5">${termSlope}</div>
+                        <span class="text-[10px] text-slate-400 font-medium">${termSlopeText}</span>
+                    </div>
+                `;
+            }
+
+            // Build Plotly Traces
+            const traces = [];
+            const atmIvVal = m.atm_iv || 25.0;
+
+            // 1. OTM Puts Fitted Curve (Cherry Red)
+            if (s.otm_put_curve && s.otm_put_curve.strikes && s.otm_put_curve.strikes.length > 0) {
+                traces.push({
+                    x: s.otm_put_curve.strikes,
+                    y: s.otm_put_curve.iv,
+                    name: 'OTM puts',
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { color: '#FF2E55', width: 2.5 },
+                    hovertemplate: '<b>OTM Put Skew</b><br>Strike: $%{x}<br>IV: %{y:.1f}%<extra></extra>'
+                });
+            }
+
+            // 2. OTM Calls Fitted Curve (Mint Green)
+            if (s.otm_call_curve && s.otm_call_curve.strikes && s.otm_call_curve.strikes.length > 0) {
+                traces.push({
+                    x: s.otm_call_curve.strikes,
+                    y: s.otm_call_curve.iv,
+                    name: 'OTM calls',
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { color: '#00F5A0', width: 2.5 },
+                    hovertemplate: '<b>OTM Call Skew</b><br>Strike: $%{x}<br>IV: %{y:.1f}%<extra></extra>'
+                });
+            }
+
+            // 3. Raw Market Scatter: OTM Puts (Cherry Red, low opacity)
+            if (s.otm_puts_market && s.otm_puts_market.strikes && s.otm_puts_market.strikes.length > 0) {
+                traces.push({
+                    x: s.otm_puts_market.strikes,
+                    y: s.otm_puts_market.iv,
+                    name: 'Market Puts IV',
+                    type: 'scatter',
+                    mode: 'markers',
+                    marker: { color: '#FF2E55', size: 5, opacity: 0.35 },
+                    hovertemplate: 'Put Strike: $%{x}<br>Market IV: %{y:.1f}%<extra></extra>',
+                    showlegend: false
+                });
+            }
+
+            // 4. Raw Market Scatter: OTM Calls (Mint Green, low opacity)
+            if (s.otm_calls_market && s.otm_calls_market.strikes && s.otm_calls_market.strikes.length > 0) {
+                traces.push({
+                    x: s.otm_calls_market.strikes,
+                    y: s.otm_calls_market.iv,
+                    name: 'Market Calls IV',
+                    type: 'scatter',
+                    mode: 'markers',
+                    marker: { color: '#00F5A0', size: 5, opacity: 0.35 },
+                    hovertemplate: 'Call Strike: $%{x}<br>Market IV: %{y:.1f}%<extra></extra>',
+                    showlegend: false
+                });
+            }
+
+            // 5. Key Structural Markers: ATM Dot, 25Δ Put, 25Δ Call
+            const struct = s.structural_markers || {};
+            const markerX = [];
+            const markerY = [];
+            const markerColors = [];
+            const markerLines = [];
+            const markerSymbols = [];
+            const markerTexts = [];
+            const markerHovers = [];
+
+            if (struct.atm && struct.atm.strike) {
+                markerX.push(struct.atm.strike);
+                markerY.push(struct.atm.iv);
+                markerColors.push('#F59E0B');
+                markerLines.push('#F59E0B');
+                markerSymbols.push('circle');
+                markerTexts.push('');
+                markerHovers.push(`<b>ATM Baseline</b><br>Strike: $${struct.atm.strike}<br>IV: ${struct.atm.iv.toFixed(1)}%<extra></extra>`);
+            }
+            if (struct.put_25d && struct.put_25d.strike) {
+                markerX.push(struct.put_25d.strike);
+                markerY.push(struct.put_25d.iv);
+                markerColors.push('rgba(255, 46, 85, 0.15)');
+                markerLines.push('#FF2E55');
+                markerSymbols.push('circle');
+                markerTexts.push('25Δ');
+                markerHovers.push(`<b>25Δ Put Wing</b><br>Strike: $${struct.put_25d.strike}<br>IV: ${struct.put_25d.iv.toFixed(1)}%<extra></extra>`);
+            }
+            if (struct.call_25d && struct.call_25d.strike) {
+                markerX.push(struct.call_25d.strike);
+                markerY.push(struct.call_25d.iv);
+                markerColors.push('rgba(0, 245, 160, 0.15)');
+                markerLines.push('#00F5A0');
+                markerSymbols.push('circle');
+                markerTexts.push('25Δ');
+                markerHovers.push(`<b>25Δ Call Wing</b><br>Strike: $${struct.call_25d.strike}<br>IV: ${struct.call_25d.iv.toFixed(1)}%<extra></extra>`);
+            }
+
+            if (markerX.length > 0) {
+                traces.push({
+                    x: markerX,
+                    y: markerY,
+                    name: '25Δ wings & ATM',
+                    type: 'scatter',
+                    mode: 'markers+text',
+                    marker: {
+                        color: markerColors,
+                        size: 13,
+                        symbol: markerSymbols,
+                        line: { color: markerLines, width: 2 }
+                    },
+                    text: markerTexts,
+                    textposition: 'top center',
+                    textfont: { color: markerLines, size: 10, family: 'Plus Jakarta Sans, sans-serif' },
+                    hovertemplate: markerHovers
+                });
+            }
+
+            // 6. Execution Overlay: Effective Ask IV / Bid IV
             const traceSpreadLine = isBuy ? {
                 x: s.market_strikes, y: s.market_ask_iv,
                 name: 'Effective Ask IV (Cost to Buy)',
                 type: 'scatter', mode: 'lines',
-                line: { color: 'rgba(234, 179, 8, 0.55)', width: 1.5 }
+                line: { color: 'rgba(245, 158, 11, 0.65)', width: 1.5, dash: 'dot' },
+                hovertemplate: 'Strike: $%{x}<br>Effective Ask IV: %{y:.1f}%<extra></extra>'
             } : {
                 x: s.market_strikes, y: s.market_bid_iv,
                 name: 'Effective Bid IV (Selling Price)',
                 type: 'scatter', mode: 'lines',
-                line: { color: 'rgba(0, 245, 160, 0.55)', width: 1.5 }
+                line: { color: 'rgba(0, 245, 160, 0.65)', width: 1.5, dash: 'dot' },
+                hovertemplate: 'Strike: $%{x}<br>Effective Bid IV: %{y:.1f}%<extra></extra>'
             };
+            traces.push(traceSpreadLine);
 
-            const traceHighlightStrikes = {
-                x: s.top_strikes || [],
-                y: s.top_strikes_iv || [],
-                name: isBuy ? '🟢 Recommended Buy Strikes' : '🔴 Recommended Sell Strikes',
-                type: 'scatter',
-                mode: 'markers+text',
-                marker: {
-                    color: isBuy ? '#00F5A0' : '#FF2E55',
-                    size: 16,
-                    symbol: 'circle',
-                    line: { color: '#ffffff', width: 2.5 }
-                },
-                text: (s.top_strikes || []).map(st => isBuy ? `🟢 Buy $${st}` : `🔴 Sell $${st}`),
-                textposition: 'bottom center',
-                textfont: { color: isBuy ? '#00F5A0' : '#FF2E55', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
-                hovertemplate: isBuy ? '<b>🟢 VALUE BUY STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>' : '<b>🔴 PREMIUM SELL STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>'
-            };
+            // 7. Execution Overlay: Recommended Value Strikes
+            if (s.top_strikes && s.top_strikes.length > 0) {
+                traces.push({
+                    x: s.top_strikes,
+                    y: s.top_strikes_iv,
+                    name: isBuy ? '🟢 Recommended Buy Strikes' : '🔴 Recommended Sell Strikes',
+                    type: 'scatter',
+                    mode: 'markers+text',
+                    marker: {
+                        color: isBuy ? '#00F5A0' : '#FF2E55',
+                        size: 14,
+                        symbol: 'circle',
+                        line: { color: '#ffffff', width: 2.5 }
+                    },
+                    text: s.top_strikes.map(st => isBuy ? `🟢 Buy $${st}` : `🔴 Sell $${st}`),
+                    textposition: 'bottom center',
+                    textfont: { color: isBuy ? '#00F5A0' : '#FF2E55', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
+                    hovertemplate: isBuy ? '<b>🟢 VALUE BUY STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>' : '<b>🔴 PREMIUM SELL STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>'
+                });
+            }
+
+            // Shapes & Annotations
+            const shapes = [];
+            const annotations = [];
+
+            // Vertical line at Spot
+            if (spot) {
+                shapes.push({
+                    type: 'line', x0: spot, x1: spot, y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#94a3b8', width: 1.5, dash: 'dash' }
+                });
+                annotations.push({
+                    x: spot, y: 1.05, yref: 'paper',
+                    text: `Spot ${spot.toFixed(2)}`,
+                    showarrow: false,
+                    font: { color: '#94a3b8', size: 10, family: 'Plus Jakarta Sans, sans-serif' }
+                });
+            }
+
+            // Horizontal line at ATM IV
+            if (atmIvVal) {
+                shapes.push({
+                    type: 'line', x0: 0, x1: 1, xref: 'paper', y0: atmIvVal, y1: atmIvVal,
+                    line: { color: '#F59E0B', width: 1.2, dash: 'dash' }
+                });
+                annotations.push({
+                    x: 1.0, xref: 'paper', y: atmIvVal,
+                    text: `ATM ${atmIvVal.toFixed(1)}%`,
+                    showarrow: false,
+                    xanchor: 'right',
+                    yanchor: 'bottom',
+                    font: { color: '#F59E0B', size: 10, family: 'Plus Jakarta Sans, sans-serif' }
+                });
+            }
+
+            // 1-sigma expected move band
+            if (spot && s.exp_move) {
+                shapes.push({
+                    type: 'rect', x0: spot - s.exp_move, x1: spot + s.exp_move, y0: 0, y1: 1, yref: 'paper',
+                    fillcolor: 'rgba(56, 189, 248, 0.04)', line: { width: 0 }
+                });
+            }
 
             const layout = {
                 plot_bgcolor: "#0D0F14",
                 paper_bgcolor: "#0D0F14",
                 font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 11 },
-                margin: { l: 45, r: 25, t: 30, b: 35 },
+                margin: { l: 45, r: 45, t: 30, b: 45 },
                 xaxis: { title: "Strike Price ($)", gridcolor: "#1B212D" },
                 yaxis: { title: "Implied Volatility (%)", gridcolor: "#1B212D" },
-                legend: { orientation: "h", y: 1.12, x: 1, xanchor: "right" },
-                shapes: [
-                    {
-                        type: 'line', x0: spot, x1: spot, y0: 0, y1: 1, yref: 'paper',
-                        line: { color: '#00F5A0', width: 1.5, dash: 'dot' }
-                    },
-                    {
-                        type: 'rect', x0: spot - s.exp_move, x1: spot + s.exp_move, y0: 0, y1: 1, yref: 'paper',
-                        fillcolor: 'rgba(0, 245, 160, 0.05)', line: { width: 0 }
-                    }
-                ]
+                legend: { orientation: "h", y: -0.22, x: 0.5, xanchor: "center" },
+                shapes: shapes,
+                annotations: annotations
             };
-            Plotly.newPlot('optionsSmileChart', [traceModel, traceMarket, traceSpreadLine, traceHighlightStrikes], layout, {responsive: true});
+
+            Plotly.newPlot('optionsSmileChart', traces, layout, {responsive: true});
         }
 
         async function onExpirationChange(expDate) {
