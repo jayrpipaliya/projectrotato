@@ -577,7 +577,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             <svg class="w-3.5 h-3.5 text-mint group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
             </svg>
-            <span id="aiGlobalStatusText" class="font-medium text-emerald-400">Gemini Key Active</span>
+            <span id="aiGlobalStatusText" class="font-medium text-mint">Gemini Key Active</span>
           </div>
           <span class="w-1.5 h-1.5 rounded-full bg-mint shadow-[0_0_6px_#00F5A0]"></span>
         </button>
@@ -989,12 +989,12 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         <!-- Tab Options: Volatility Pricing Desk -->
         <div id="tab_options" class="tab-pane hidden">
-            <div class="lux-card p-5 mb-5 border border-emerald-500/20 bg-gradient-to-r from-emerald-950/20 via-[#0d1117] to-slate-900/40">
+            <div class="lux-card p-5 mb-5 border border-mint/20 bg-gradient-to-r from-mint/5 via-[#0d1117] to-slate-900/40">
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                     <div>
                         <div class="flex items-center gap-2">
                             <h2 class="text-lg font-black text-white tracking-wide">Institutional Volatility Pricing Desk</h2>
-                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Live Options Vol</span>
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-mint/15 text-mint border border-mint/25">Live Options Vol</span>
                         </div>
                         <p class="text-xs text-slate-400 mt-1 max-w-2xl">
                             Institutional volatility architecture: Switch between <b>Buy Side (Ask Edge)</b> for underpriced cheap IV and <b>Sell Side (Bid Edge)</b> for overpriced premium harvesting. De-jumps historical volatility, models Asymmetric Log-Moneyness Skew, and executes full Bid/Ask spread inversion.
@@ -1004,7 +1004,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <div class="flex flex-wrap items-center gap-3">
                         <div>
                             <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ticker</label>
-                            <select id="optionsTickerSelect" onchange="loadOptionsDesk()" class="bg-[#0b0d12] text-xs font-bold text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-emerald-500">
+                            <select id="optionsTickerSelect" onchange="loadOptionsDesk()" class="bg-[#0b0d12] text-xs font-bold text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-mint">
                                 <option value="QQQ" selected>QQQ (Nasdaq 100)</option>
                                 <option value="SPY">SPY (S&P 500)</option>
                                 <option value="NVDA">NVDA (Nvidia)</option>
@@ -1096,7 +1096,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Execution Side</label>
                             <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="optionsSideGroup">
-                                <button onclick="setOptionsSide('Buy')" id="btnOptBuy" class="px-3 py-1 rounded font-bold transition bg-emerald-500/20 text-emerald-400">🟢 Buy (Ask Edge)</button>
+                                <button onclick="setOptionsSide('Buy')" id="btnOptBuy" class="px-3 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30">🟢 Buy (Ask Edge)</button>
                                 <button onclick="setOptionsSide('Sell')" id="btnOptSell" class="px-3 py-1 rounded font-bold transition text-slate-400">🔴 Sell (Bid Edge)</button>
                             </div>
                         </div>
@@ -1104,13 +1104,13 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Direction</label>
                             <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="optionsDirGroup">
-                                <button onclick="setOptionsDirection('Bullish')" id="btnOptBullish" class="px-3 py-1 rounded font-bold transition bg-emerald-500/20 text-emerald-400">🟢 Bullish (Calls)</button>
+                                <button onclick="setOptionsDirection('Bullish')" id="btnOptBullish" class="px-3 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30">🟢 Bullish (Calls)</button>
                                 <button onclick="setOptionsDirection('Bearish')" id="btnOptBearish" class="px-3 py-1 rounded font-bold transition text-slate-400">🔴 Bearish (Puts)</button>
                             </div>
                         </div>
 
                         <div class="self-end">
-                            <button onclick="loadOptionsDesk(true)" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-900/30 transition flex items-center gap-1.5">
+                            <button onclick="loadOptionsDesk(true)" class="px-3 py-1.5 rounded-lg bg-mint hover:bg-mint/80 text-black font-bold text-xs shadow-lg shadow-mint/20 transition flex items-center gap-1.5">
                                 Scan Chains
                             </button>
                         </div>
@@ -1404,7 +1404,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                         val: Number(spy_rsp.current || 0).toFixed(2),
                         pct: spy_rsp.pct_5d || 0,
                         isSigma: true, sigma: spy_rsp.z_score_50d || 0,
-                        sub: `<span style="color:${spy_rsp.state_color || '#34d399'}; font-weight:600;">${spy_rsp.actionable_state || 'Breadth Expansion'}</span>`,
+                        sub: `<span style="color:${spy_rsp.state_color || '#00F5A0'}; font-weight:600;">${spy_rsp.actionable_state || 'Breadth Expansion'}</span>`,
                         sparkPoints: 'M0,8 Q30,14 60,10 T120,18 T180,14 T240,22'
                     },
                     {
@@ -1454,7 +1454,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 const pillClass = isPos ? 'pill-green' : 'pill-red';
                 const sign = isPos ? '+' : '';
                 const badge = c.isSigma ? `<span class="pill-cyan font-mono">${c.sigma > 0 ? '+' : ''}${c.sigma?.toFixed(2)}σ</span>` : `<span class="${pillClass}">${sign}${c.pct?.toFixed(2)}%</span>`;
-                const strokeColor = isPos ? '#34d399' : '#fb7185';
+                const strokeColor = isPos ? '#00F5A0' : '#FF2E55';
                 html += `
                     <div class="lux-card p-5 flex flex-col justify-between">
                         <div>
@@ -1951,9 +1951,9 @@ async function init() {
             } catch (err) {
                 if (synthBox) {
                     synthBox.innerHTML = `
-                        <div class="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-300 flex items-center justify-between">
+                        <div class="p-3 bg-cherry/10 border border-cherry/20 rounded-lg text-xs text-cherry flex items-center justify-between">
                             <span>AI Briefing unavailable: ${err.message}</span>
-                            <button onclick="loadAiBriefingAsync()" class="px-2.5 py-1 bg-red-500/20 hover:bg-red-500/30 text-red-200 rounded border border-red-500/30 transition text-[11px] font-medium">Retry</button>
+                            <button onclick="loadAiBriefingAsync()" class="px-2.5 py-1 bg-cherry/20 hover:bg-cherry/30 text-cherry rounded border border-cherry/30 transition text-[11px] font-medium">Retry</button>
                         </div>
                     `;
                 }
@@ -2113,8 +2113,8 @@ async function init() {
                                 <div class="text-purple-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5">Pillar 2: Sector Velocity</div>
                                 <div class="text-slate-300">Tracking 5D capital rotation across Growth, Cyclicals, Defensives & Breadth...</div>
                             </div>
-                            <div class="p-3.5 rounded-xl bg-black/20 border border-emerald-500/20 space-y-1.5">
-                                <div class="text-emerald-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5">Pillar 3: Actionable Setups</div>
+                            <div class="p-3.5 rounded-xl bg-black/20 border border-mint/20 space-y-1.5">
+                                <div class="text-mint font-extrabold uppercase text-[11px] flex items-center gap-1.5">Pillar 3: Actionable Setups</div>
                                 <div class="text-slate-300">Filtering algorithmic high-conviction long bids & distribution traps...</div>
                             </div>
                             <div class="p-3.5 rounded-xl bg-black/20 border border-amber-500/20 space-y-1.5">
@@ -2242,10 +2242,10 @@ async function init() {
             if (!state) return 'text-slate-400';
             const s = String(state);
             if (s.includes('Alert') || s.includes('Overbought') || s.includes('Bearish') || s.includes('Exhaustion (Overbought') || s.includes('Upside') || s.includes('Fading')) {
-                return 'text-red-400 font-bold';
+                return 'text-cherry font-bold';
             }
             if (s.includes('Healthy') || s.includes('Support') || s.includes('Downside') || s.includes('Bounce') || s.includes('Bullish') || s.includes('Signal') || s.includes('Confirmed') || s.includes('Breakout')) {
-                return 'text-emerald-400 font-bold';
+                return 'text-mint font-bold';
             }
             return 'text-slate-400 font-medium';
         }
@@ -2324,13 +2324,13 @@ async function init() {
                         <td>$${Number(m.close || 0).toFixed(2)}</td>
                         <td><span class="${pill} px-2 py-0.5 rounded font-bold">${c.score}</span></td>
                         <td class="${getStateColor(c.bias_label)} font-bold">${c.bias_label}</td>
-                        <td class="text-emerald-400 font-semibold">${c.bull_count} / 7</td>
-                        <td class="text-red-400 font-semibold">${c.bear_count} / 7</td>
+                        <td class="text-mint font-semibold">${c.bull_count} / 7</td>
+                        <td class="text-cherry font-semibold">${c.bear_count} / 7</td>
                         <td class="${getStateColor(c.flicker_status)}">${c.flicker_status}</td>
                         <td>${edge.win_rate_20d || 0}%</td>
                         <td>${m.rsi || 0}</td>
                         <td>${m.rvol || 0}x</td>
-                        <td class="${(m.dist_ema50 ?? m.dist_sma50 ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${(m.dist_ema50 ?? m.dist_sma50 ?? 0) >= 0 ? '+' : ''}${(m.dist_ema50 ?? m.dist_sma50 ?? 0).toFixed(2)}%</td>
+                        <td class="${(m.dist_ema50 ?? m.dist_sma50 ?? 0) >= 0 ? 'text-mint' : 'text-cherry'} font-semibold">${(m.dist_ema50 ?? m.dist_sma50 ?? 0) >= 0 ? '+' : ''}${(m.dist_ema50 ?? m.dist_sma50 ?? 0).toFixed(2)}%</td>
                         <td>${m.drawdown_ath || 0}%</td>
                     </tr>
                 `;
@@ -2355,13 +2355,15 @@ async function init() {
                 let bg = 'bg-white/[0.02]';
                 if (layer.status === 'PASS_BULL') {
                     badge = '[BULLISH CONFIRMATION]';
-                    border = 'border-emerald-500';
-                    bg = 'bg-emerald-500/10';
+                    border = 'border-mint';
+                    bg = 'bg-mint/10';
                 } else if (layer.status === 'PASS_BEAR') {
                     badge = '[BEARISH CONFIRMATION]';
-                    border = 'border-red-500';
-                    bg = 'bg-red-500/10';
+                    border = 'border-cherry';
+                    bg = 'bg-cherry/10';
                 }
+                const ptNum = parseInt(layer.points) || 0;
+                const ptColor = ptNum > 0 ? 'text-mint' : (ptNum < 0 ? 'text-cherry' : 'text-slate-400');
                 html += `
                     <div class="p-3 rounded-lg border-l-4 ${border} ${bg} flex justify-between items-start">
                         <div>
@@ -2371,7 +2373,7 @@ async function init() {
                             </div>
                             <p class="text-[11px] text-slate-400 mt-1">${layer.detail}</p>
                         </div>
-                        <span class="text-xs font-bold text-amber-500">${layer.points} pts</span>
+                        <span class="text-xs font-bold ${ptColor}">${layer.points} pts</span>
                     </div>
                 `;
             });
@@ -2388,16 +2390,16 @@ async function init() {
                     <tr class="border-b border-white/5 hover:bg-white/[0.02]">
                         <td class="font-bold text-white">${ticker}</td>
                         <td>$${Number(d.close).toFixed(2)}</td>
-                        <td class="${d.pct_1d >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${d.pct_1d >= 0 ? '+' : ''}${d.pct_1d}%</td>
-                        <td class="${d.pct_5d >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${d.pct_5d >= 0 ? '+' : ''}${d.pct_5d}%</td>
-                        <td class="${d.pct_20d >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${d.pct_20d >= 0 ? '+' : ''}${d.pct_20d}%</td>
-                        <td class="${d.dist_ema20 >= 0 ? 'text-emerald-400' : 'text-red-400'}">${d.dist_ema20 >= 0 ? '+' : ''}${d.dist_ema20}%</td>
-                        <td class="${(d.dist_ema50 ?? d.dist_sma50) >= 0 ? 'text-emerald-400' : 'text-red-400'}">${(d.dist_ema50 ?? d.dist_sma50) >= 0 ? '+' : ''}${d.dist_ema50 ?? d.dist_sma50}%</td>
+                        <td class="${d.pct_1d >= 0 ? 'text-mint' : 'text-cherry'} font-semibold">${d.pct_1d >= 0 ? '+' : ''}${d.pct_1d}%</td>
+                        <td class="${d.pct_5d >= 0 ? 'text-mint' : 'text-cherry'} font-semibold">${d.pct_5d >= 0 ? '+' : ''}${d.pct_5d}%</td>
+                        <td class="${d.pct_20d >= 0 ? 'text-mint' : 'text-cherry'} font-semibold">${d.pct_20d >= 0 ? '+' : ''}${d.pct_20d}%</td>
+                        <td class="${d.dist_ema20 >= 0 ? 'text-mint' : 'text-cherry'}">${d.dist_ema20 >= 0 ? '+' : ''}${d.dist_ema20}%</td>
+                        <td class="${(d.dist_ema50 ?? d.dist_sma50) >= 0 ? 'text-mint' : 'text-cherry'}">${(d.dist_ema50 ?? d.dist_sma50) >= 0 ? '+' : ''}${d.dist_ema50 ?? d.dist_sma50}%</td>
                         <td>${d.rsi}</td>
                         <td>${d.rvol}x</td>
                         <td>${d.drawdown_ath}%</td>
-                        <td class="text-emerald-400 font-bold">${edge.win_rate_20d || 0}%</td>
-                        <td class="${edge.median_return_20d >= 0 ? 'text-emerald-400' : 'text-red-400'}">${edge.median_return_20d >= 0 ? '+' : ''}${edge.median_return_20d || 0}%</td>
+                        <td class="text-mint font-bold">${edge.win_rate_20d || 0}%</td>
+                        <td class="${edge.median_return_20d >= 0 ? 'text-mint' : 'text-cherry'}">${edge.median_return_20d >= 0 ? '+' : ''}${edge.median_return_20d || 0}%</td>
                         <td class="${getStateColor(d.tech_status)}">${d.tech_status}</td>
                     </tr>
                 `;
@@ -2409,7 +2411,7 @@ async function init() {
         }
 
         async function loadMag7NormChart() {
-            const palette = ["#f59e0b", "#0ecb81", "#3b82f6", "#ec4899", "#8b5cf6", "#06b6d4", "#f97316"];
+            const palette = ["#f59e0b", "#00F5A0", "#3b82f6", "#ec4899", "#8b5cf6", "#06b6d4", "#f97316"];
             const tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA'];
             
             const promises = tickers.map(t => fetch(`/api/ticker/${t}?horizon=1 Year`).then(r => r.json()).catch(() => null));
@@ -2452,10 +2454,10 @@ async function init() {
                     <tr class="border-b border-white/5 hover:bg-white/[0.02]">
                         <td class="font-bold text-white">${ticker}</td>
                         <td>$${Number(d.close).toFixed(2)}</td>
-                        <td class="${d.pct_1d >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${d.pct_1d >= 0 ? '+' : ''}${d.pct_1d}%</td>
-                        <td class="${d.pct_5d >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${d.pct_5d >= 0 ? '+' : ''}${d.pct_5d}%</td>
-                        <td class="${d.pct_20d >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${d.pct_20d >= 0 ? '+' : ''}${d.pct_20d}%</td>
-                        <td class="${(d.dist_ema50 ?? d.dist_sma50) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">${(d.dist_ema50 ?? d.dist_sma50) >= 0 ? '+' : ''}${d.dist_ema50 ?? d.dist_sma50}%</td>
+                        <td class="${d.pct_1d >= 0 ? 'text-mint' : 'text-cherry'} font-semibold">${d.pct_1d >= 0 ? '+' : ''}${d.pct_1d}%</td>
+                        <td class="${d.pct_5d >= 0 ? 'text-mint' : 'text-cherry'} font-semibold">${d.pct_5d >= 0 ? '+' : ''}${d.pct_5d}%</td>
+                        <td class="${d.pct_20d >= 0 ? 'text-mint' : 'text-cherry'} font-semibold">${d.pct_20d >= 0 ? '+' : ''}${d.pct_20d}%</td>
+                        <td class="${(d.dist_ema50 ?? d.dist_sma50) >= 0 ? 'text-mint' : 'text-cherry'} font-semibold">${(d.dist_ema50 ?? d.dist_sma50) >= 0 ? '+' : ''}${d.dist_ema50 ?? d.dist_sma50}%</td>
                         <td>${d.rsi}</td>
                         <td>${d.rvol}x</td>
                         <td>${d.atr_stretch}</td>
@@ -2476,7 +2478,7 @@ async function init() {
             ];
             const bNames = displayKeys.filter(k => k in baskets);
             const bVals = bNames.map(k => baskets[k]);
-            const bColors = bVals.map(v => v >= 0 ? '#0ecb81' : '#f6465d');
+            const bColors = bVals.map(v => v >= 0 ? '#00F5A0' : '#FF2E55');
             const trace = {
                 x: bVals,
                 y: bNames,
@@ -2501,8 +2503,8 @@ async function init() {
             if (!data.dates) return;
 
             const traces = [
-                { x: data.dates, y: data.upper2, name: "+2σ Extreme", mode: "lines", line: { color: "rgba(239, 68, 68, 0.4)", dash: "dot" } },
-                { x: data.dates, y: data.lower2, name: "-2σ Extreme", mode: "lines", line: { color: "rgba(16, 185, 129, 0.4)", dash: "dot" } },
+                { x: data.dates, y: data.upper2, name: "+2σ Extreme", mode: "lines", line: { color: "rgba(255, 46, 85, 0.7)", dash: "dot" } },
+                { x: data.dates, y: data.lower2, name: "-2σ Extreme", mode: "lines", line: { color: "rgba(0, 245, 160, 0.7)", dash: "dot" } },
                 { x: data.dates, y: data.ema20, name: "20-Day EMA", mode: "lines", line: { color: "#06b6d4", width: 1.5 } },
                 { x: data.dates, y: data.ema50 || data.sma50, name: "50-Day EMA", mode: "lines", line: { color: "#f59e0b", width: 1.5 } },
                 { x: data.dates, y: data.close, name: ratioName.replace('_', '/'), mode: "lines", line: { color: "#3b82f6", width: 2.5 } }
@@ -2603,12 +2605,12 @@ async function init() {
                 <div class="lux-card p-3.5">
                     <div class="text-[11px] font-semibold text-slate-400 uppercase">Current Price</div>
                     <div class="text-xl font-bold text-white mt-1">$${m.close}</div>
-                    <div class="text-xs ${m.pct_1d >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold mt-0.5">${m.pct_1d >= 0 ? '+' : ''}${m.pct_1d}% (1D)</div>
+                    <div class="text-xs ${m.pct_1d >= 0 ? 'text-mint' : 'text-red-400'} font-semibold mt-0.5">${m.pct_1d >= 0 ? '+' : ''}${m.pct_1d}% (1D)</div>
                 </div>
                 <div class="lux-card p-3.5">
                     <div class="text-[11px] font-semibold text-slate-400 uppercase">50-Day EMA Trend</div>
                     <div class="text-xl font-bold text-white mt-1">$${m.ema50 || m.sma50 || m.close}</div>
-                    <div class="text-xs ${(m.dist_ema50 ?? m.dist_sma50) >= 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold mt-0.5">${(m.dist_ema50 ?? m.dist_sma50) >= 0 ? '+' : ''}${m.dist_ema50 ?? m.dist_sma50}% vs 50EMA</div>
+                    <div class="text-xs ${(m.dist_ema50 ?? m.dist_sma50) >= 0 ? 'text-mint' : 'text-red-400'} font-semibold mt-0.5">${(m.dist_ema50 ?? m.dist_sma50) >= 0 ? '+' : ''}${m.dist_ema50 ?? m.dist_sma50}% vs 50EMA</div>
                 </div>
                 <div class="lux-card p-3.5">
                     <div class="text-[11px] font-semibold text-slate-400 uppercase">ATH Drawdown</div>
@@ -2628,7 +2630,7 @@ async function init() {
                 <div class="text-xs text-slate-400 mb-2"><b>Historical Sample Size:</b> ${edge.sample_size || 0} instances matched in last 20 years</div>
                 <div class="text-xs text-slate-200 flex flex-wrap gap-4 mb-1">
                     <span>5-Day Win Rate: <b>${edge.win_rate_5d || 0}%</b></span>
-                    <span>20-Day Win Rate: <b class="text-emerald-400 font-bold">${edge.win_rate_20d || 0}%</b></span>
+                    <span>20-Day Win Rate: <b class="text-mint font-bold">${edge.win_rate_20d || 0}%</b></span>
                     <span>60-Day Win Rate: <b>${edge.win_rate_60d || 0}%</b></span>
                 </div>
                 <div class="text-xs text-slate-400">
@@ -2638,10 +2640,10 @@ async function init() {
 
             // Synchronized Plotly Subplot (Row 1: Price & EMAs, Row 2: Drawdown Curve)
             const tracePrice = { x: data.dates, y: data.close, name: "Close Price", type: "scatter", mode: "lines", line: { color: "#ffffff", width: 2 }, yaxis: 'y' };
-            const traceEMA20 = { x: data.dates, y: data.ema20, name: "20 EMA (Red)", type: "scatter", mode: "lines", line: { color: "#f6465d", width: 1.5 }, yaxis: 'y' };
+            const traceEMA20 = { x: data.dates, y: data.ema20, name: "20 EMA (Red)", type: "scatter", mode: "lines", line: { color: "#FF2E55", width: 1.5 }, yaxis: 'y' };
             const traceEMA50 = { x: data.dates, y: data.ema50, name: "50 EMA (Amber)", type: "scatter", mode: "lines", line: { color: "#f59e0b", width: 1.5 }, yaxis: 'y' };
             const traceEMA200 = { x: data.dates, y: data.ema200, name: "200 EMA (Blue)", type: "scatter", mode: "lines", line: { color: "#3b82f6", width: 2 }, yaxis: 'y' };
-            const traceDD = { x: data.dates, y: data.drawdown_ath, name: "ATH Drawdown (%)", type: "scatter", mode: "lines", fill: "tozeroy", fillcolor: "rgba(239, 68, 68, 0.15)", line: { color: "#f6465d", width: 1.5 }, yaxis: 'y2' };
+            const traceDD = { x: data.dates, y: data.drawdown_ath, name: "ATH Drawdown (%)", type: "scatter", mode: "lines", fill: "tozeroy", fillcolor: "rgba(239, 68, 68, 0.15)", line: { color: "#FF2E55", width: 1.5 }, yaxis: 'y2' };
 
             const layout = {
                 plot_bgcolor: "#0D0F14",
@@ -2669,12 +2671,12 @@ async function init() {
             const subEl = document.getElementById('optionsRecHeaderSubtitle');
 
             if (side === 'Buy') {
-                if (btnBuy) btnBuy.className = "px-3 py-1 rounded font-bold transition bg-emerald-500/20 text-emerald-400";
+                if (btnBuy) btnBuy.className = "px-3 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30";
                 if (btnSell) btnSell.className = "px-3 py-1 rounded font-bold transition text-slate-400";
                 if (titleEl) titleEl.innerHTML = `Top Recommended Cheap IV Contracts Across Different Expirations`;
                 if (subEl) subEl.innerText = "Guaranteed multi-expiry diversity: Evaluates term cheapness (IV/HV), Ask-Edge (edge after crossing the spread to buy at Ask), and liquidity.";
             } else {
-                if (btnSell) btnSell.className = "px-3 py-1 rounded font-bold transition bg-rose-500/20 text-rose-400";
+                if (btnSell) btnSell.className = "px-3 py-1 rounded font-bold transition bg-cherry/20 text-cherry border border-cherry/30";
                 if (btnBuy) btnBuy.className = "px-3 py-1 rounded font-bold transition text-slate-400";
                 if (titleEl) titleEl.innerHTML = `Top Recommended Overpriced Premium Sells (Bid Edge)`;
                 if (subEl) subEl.innerText = "Harvest elevated premium: Evaluates rich term IV (IV/HV), Bid-Edge (edge after crossing spread to sell at Bid), and downside cushion.";
@@ -2687,10 +2689,10 @@ async function init() {
             const btnBull = document.getElementById('btnOptBullish');
             const btnBear = document.getElementById('btnOptBearish');
             if (dir === 'Bullish') {
-                btnBull.className = "px-3 py-1 rounded font-bold transition bg-emerald-500/20 text-emerald-400";
+                btnBull.className = "px-3 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30";
                 btnBear.className = "px-3 py-1 rounded font-bold transition text-slate-400";
             } else {
-                btnBear.className = "px-3 py-1 rounded font-bold transition bg-rose-500/20 text-rose-400";
+                btnBear.className = "px-3 py-1 rounded font-bold transition bg-cherry/20 text-cherry border border-cherry/30";
                 btnBull.className = "px-3 py-1 rounded font-bold transition text-slate-400";
             }
             loadOptionsDesk();
@@ -2723,7 +2725,7 @@ async function init() {
                     <div class="lux-card p-3.5">
                         <div class="text-[11px] font-semibold text-slate-400 uppercase">Spot Price</div>
                         <div class="text-xl font-bold text-white mt-1">$${spot.toFixed(2)}</div>
-                        <div class="text-[11px] text-emerald-400 font-semibold mt-0.5">${ticker} Live Underlying</div>
+                        <div class="text-[11px] text-mint font-semibold mt-0.5">${ticker} Live Underlying</div>
                     </div>
                     <div class="lux-card p-3.5">
                         <div class="text-[11px] font-semibold text-slate-400 uppercase">10D Realized Vol</div>
@@ -2735,14 +2737,14 @@ async function init() {
                         <div class="text-xl font-bold text-white mt-1">${h.HV_20 || 20}%</div>
                         <div class="text-[11px] text-slate-400 mt-0.5">Short-Term Baseline</div>
                     </div>
-                    <div class="lux-card p-3.5 border-l-2 border-emerald-500">
-                        <div class="text-[11px] font-semibold text-emerald-400 uppercase">30D Clean HV</div>
-                        <div class="text-xl font-bold text-emerald-400 mt-1">${h.HV_30_clean || h.HV_30 || 20}%</div>
+                    <div class="lux-card p-3.5 border-l-2 border-mint">
+                        <div class="text-[11px] font-semibold text-mint uppercase">30D Clean HV</div>
+                        <div class="text-xl font-bold text-mint mt-1">${h.HV_30_clean || h.HV_30 || 20}%</div>
                         <div class="text-[11px] text-slate-400 mt-0.5">De-Jumped (Winsorized)</div>
                     </div>
                     <div class="lux-card p-3.5">
                         <div class="text-[11px] font-semibold text-slate-400 uppercase">Earnings / Event</div>
-                        <div class="text-base font-bold ${data.next_earnings ? 'text-amber-400' : 'text-slate-300'} mt-1 truncate">${earns}</div>
+                        <div class="text-base font-bold ${data.next_earnings ? 'text-mint' : 'text-slate-300'} mt-1 truncate">${earns}</div>
                         <div class="text-[11px] text-slate-400 mt-0.5">${data.next_earnings ? 'Binary Event Risk' : 'No Single Report'}</div>
                     </div>
                 `;
@@ -2757,57 +2759,57 @@ async function init() {
                         const cType = isCall ? 'Call' : 'Put';
                         
                         let hTag = 'Tactical (10–21d)';
-                        let badgeColor = 'text-sky-400';
-                        if (p.DTE > 70) { hTag = 'Quarterly (75d+)'; badgeColor = 'text-emerald-400'; }
-                        else if (p.DTE > 45) { hTag = 'Core Monthly (60d)'; badgeColor = 'text-amber-400'; }
-                        else if (p.DTE > 22) { hTag = 'Fast Swing (25–45d)'; badgeColor = 'text-purple-400'; }
+                        let badgeColor = 'text-mint';
+                        if (p.DTE > 70) { hTag = 'Quarterly (75d+)'; badgeColor = 'text-mint'; }
+                        else if (p.DTE > 45) { hTag = 'Core Monthly (60d)'; badgeColor = 'text-mint'; }
+                        else if (p.DTE > 22) { hTag = 'Fast Swing (25–45d)'; badgeColor = 'text-mint'; }
 
                         const evTag = p.Spans_Earnings ? 'Spans Earnings' : 'Inter-Earnings';
-                        const evColor = p.Spans_Earnings ? 'bg-amber-500/15 text-amber-400' : 'bg-sky-500/10 text-sky-400';
+                        const evColor = p.Spans_Earnings ? 'bg-cherry/15 text-cherry' : 'bg-mint/10 text-mint';
                         const spreadBadge = p.Spread_Quality || '🟢 Tight';
 
                         let edgeVal, edgeColor, edgeSign, ivVal, actionHtml, extraHtml, pickBadge, wingHtml = '';
                         
                         if (isBuy) {
                             edgeVal = p.Ask_Edge !== undefined ? p.Ask_Edge : 0;
-                            edgeColor = edgeVal >= 0 ? 'text-emerald-400' : 'text-amber-400';
+                            edgeColor = edgeVal >= 0 ? 'text-mint' : 'text-cherry';
                             edgeSign = edgeVal >= 0 ? '+' : '';
                             ivVal = (p.Ask_IV_Pct !== undefined ? p.Ask_IV_Pct : p.IV_Pct).toFixed(1);
                             const beVal = isCall ? (p.strike + p.ask) : Math.max(p.strike - p.ask, 0.01);
                             const beDiff = ((beVal / spot) - 1) * 100;
-                            pickBadge = `<span class="bg-emerald-500/15 text-emerald-400 text-[10px] px-2 py-0.5 rounded font-bold">Pick #${idx + 1} • Buy</span>`;
-                            actionHtml = `<div>Ask (Cost): <b class="text-emerald-400">$${p.ask.toFixed(2)}</b> ($${Math.round(p.ask * 100)}/ct)</div>`;
+                            pickBadge = `<span class="bg-mint/15 text-mint text-[10px] px-2 py-0.5 rounded font-bold">Pick #${idx + 1} • Buy</span>`;
+                            actionHtml = `<div>Ask (Cost): <b class="text-mint">$${p.ask.toFixed(2)}</b> ($${Math.round(p.ask * 100)}/ct)</div>`;
                             extraHtml = `<div>Breakeven: <b class="text-slate-200">$${beVal.toFixed(2)} (${beDiff >= 0 ? '+' : ''}${beDiff.toFixed(1)}%)</b> • ${spreadBadge}</div>`;
                         } else {
                             edgeVal = p.Bid_Edge !== undefined ? p.Bid_Edge : 0;
-                            edgeColor = edgeVal >= 0 ? 'text-emerald-400' : 'text-amber-400';
+                            edgeColor = edgeVal >= 0 ? 'text-mint' : 'text-cherry';
                             edgeSign = edgeVal >= 0 ? '+' : '';
                             ivVal = (p.Bid_IV_Pct !== undefined ? p.Bid_IV_Pct : p.IV_Pct).toFixed(1);
                             const cushionPct = (Math.abs(p.strike - spot) / spot) * 100;
-                            pickBadge = `<span class="bg-rose-500/15 text-rose-400 text-[10px] px-2 py-0.5 rounded font-bold">Pick #${idx + 1} • Sell</span>`;
-                            actionHtml = `<div>Bid (Credit): <b class="text-emerald-400">$${p.bid.toFixed(2)}</b> ($${Math.round(p.bid * 100)}/ct collected)</div>`;
+                            pickBadge = `<span class="bg-cherry/15 text-cherry text-[10px] px-2 py-0.5 rounded font-bold">Pick #${idx + 1} • Sell</span>`;
+                            actionHtml = `<div>Bid (Credit): <b class="text-mint">$${p.bid.toFixed(2)}</b> ($${Math.round(p.bid * 100)}/ct collected)</div>`;
                             extraHtml = `<div>Safety Cushion: <b class="text-slate-200">${cushionPct.toFixed(1)}% buffer</b> • ${spreadBadge}</div>`;
                             
                             if (p.Wing_Strike) {
                                 wingHtml = `
                                 <div class="mt-2.5 p-2 bg-white/[0.02] border border-dashed border-white/10 rounded text-[10.5px]">
-                                    <div class="text-sky-300 font-semibold flex items-center justify-between">
+                                    <div class="text-mint font-semibold flex items-center justify-between">
                                         <span>Hedged Spread Wing:</span>
                                         <span class="text-white font-mono">+$${Number(p.Wing_Strike).toFixed(0)} ${cType}</span>
                                     </div>
                                     <div class="text-slate-300 mt-1 flex justify-between">
-                                        <span>Net Credit: <b class="text-emerald-400">$${Number(p.Net_Credit).toFixed(2)}</b> ($${Math.round(p.Net_Credit*100)}/ct)</span>
+                                        <span>Net Credit: <b class="text-mint">$${Number(p.Net_Credit).toFixed(2)}</b> ($${Math.round(p.Net_Credit*100)}/ct)</span>
                                         <span>Max Risk: <b>$${Number(p.Max_Risk).toFixed(2)}</b></span>
                                     </div>
                                     <div class="text-slate-400 text-[10px] mt-0.5 text-right">
-                                        Return on Risk: <b class="text-emerald-400 font-mono">${Number(p.RoR_Pct).toFixed(1)}%</b>
+                                        Return on Risk: <b class="text-mint font-mono">${Number(p.RoR_Pct).toFixed(1)}%</b>
                                     </div>
                                 </div>`;
                             }
                         }
 
                         return `
-                        <div class="lux-card p-4 border border-white/5 hover:border-emerald-500/40 transition">
+                        <div class="lux-card p-4 border border-white/5 hover:border-mint/40 transition">
                             <div class="flex justify-between items-center mb-1">
                                 <span class="text-base font-extrabold text-white">$${p.strike.toFixed(0)} ${cType}</span>
                                 ${pickBadge}
@@ -2818,7 +2820,7 @@ async function init() {
                             </div>
                             <div class="bg-white/[0.03] p-2 rounded-lg flex justify-between items-center text-xs mb-3">
                                 <span class="text-slate-200"><b>${p.Expiration}</b> (${p.DTE}d)</span>
-                                <span class="text-[11px] ${p.Within_1_Sigma ? 'text-emerald-400' : 'text-slate-400'}">${p.Within_1_Sigma ? 'In 1σ' : 'Out 1σ'}</span>
+                                <span class="text-[11px] ${p.Within_1_Sigma ? 'text-mint' : 'text-slate-400'}">${p.Within_1_Sigma ? 'In 1σ' : 'Out 1σ'}</span>
                             </div>
                             <div class="grid grid-cols-2 gap-2 text-xs mb-3">
                                 <div><span class="text-slate-400 text-[11px]">${isBuy ? 'Ask IV:' : 'Bid IV:'}</span> <b class="text-white">${ivVal}%</b></div>
@@ -2875,14 +2877,14 @@ async function init() {
                         type: 'scatter',
                         mode: 'markers+text',
                         marker: {
-                            color: isBuy ? '#0ecb81' : '#FF2E55',
+                            color: isBuy ? '#00F5A0' : '#FF2E55',
                             size: 16,
                             symbol: 'circle',
                             line: { color: '#ffffff', width: 2.5 }
                         },
                         text: (s.top_strikes || []).map(st => isBuy ? `🟢 Buy $${st}` : `🔴 Sell $${st}`),
                         textposition: 'bottom center',
-                        textfont: { color: isBuy ? '#0ecb81' : '#FF2E55', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
+                        textfont: { color: isBuy ? '#00F5A0' : '#FF2E55', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
                         hovertemplate: isBuy ? '<b>🟢 VALUE BUY STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>' : '<b>🔴 PREMIUM SELL STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>'
                     };
 
@@ -2909,7 +2911,7 @@ async function init() {
                 }
 
             } catch (err) {
-                kpiRow.innerHTML = `<div class="col-span-full text-xs text-rose-400 bg-rose-500/10 p-3 rounded-lg border border-rose-500/20">Error loading options desk: ${err.message}</div>`;
+                kpiRow.innerHTML = `<div class="col-span-full text-xs text-cherry bg-cherry/10 p-3 rounded-lg border border-cherry/20">Error loading options desk: ${err.message}</div>`;
                 cardsContainer.innerHTML = '';
             }
         }

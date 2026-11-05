@@ -204,10 +204,10 @@ def apply_dark_theme(fig, height=360, title=None):
 def style_table_status(val):
     if not isinstance(val, str):
         return ""
-    if any(w in val for w in ["Alert", "Bearish", "Explosion", "Overbought", "Upside"]):
-        return "color: #ef4444; font-weight: 700;"
-    if any(w in val for w in ["Healthy", "Bullish", "Squeeze", "Support", "Bounce", "Downside"]):
-        return "color: #10b981; font-weight: 700;"
+    if any(w in val for w in ["Alert", "Bearish", "Explosion", "Overbought", "Upside", "Fading"]):
+        return "color: #FF2E55; font-weight: 700;"
+    if any(w in val for w in ["Healthy", "Bullish", "Squeeze", "Support", "Bounce", "Downside", "Confirmed"]):
+        return "color: #00F5A0; font-weight: 700;"
     return "color: #94a3b8;"
 
 # ----------------- SIDEBAR CONTROLS & DESK STATUS -----------------
@@ -638,13 +638,13 @@ with tab1:
         e_val = baskets.get("Energy", baskets.get("Energy (XLE)", 0.0))
 
         def fmt_b(val):
-            col_b = "#0ecb81" if val >= 0 else "#f6465d"
+            col_b = "#00F5A0" if val >= 0 else "#FF2E55"
             sign_b = "+" if val >= 0 else ""
             return f'<span style="font-size:16px; font-weight:800; color:{col_b};">{sign_b}{val:.2f}%</span>'
 
         flow_card_html = (
-            '<div class="metric-card-lux" style="height:100%; border-top:3px solid #3b82f6;">'
-            '<div style="font-size:11px; font-weight:700; color:#3b82f6; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">5-Day Sector Velocity Baskets</div>'
+            '<div class="metric-card-lux" style="height:100%; border-top:3px solid #00F5A0;">'
+            '<div style="font-size:11px; font-weight:700; color:#00F5A0; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">5-Day Sector Velocity Baskets</div>'
             '<div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:8px; text-align:center;">'
             f'<div><div style="font-size:11px; color:#64748b;">Growth</div>{fmt_b(g_val)}</div>'
             f'<div><div style="font-size:11px; color:#64748b;">Cyclical</div>{fmt_b(c_val)}</div>'
@@ -1109,7 +1109,7 @@ with tab4:
     with col_chart1:
         st.markdown("#### 60-Day Normalized Return (% Change)")
         fig_norm = go.Figure()
-        palette = ["#f59e0b", "#0ecb81", "#3b82f6", "#ec4899", "#8b5cf6", "#06b6d4", "#f97316"]
+        palette = ["#f59e0b", "#00F5A0", "#3b82f6", "#ec4899", "#8b5cf6", "#06b6d4", "#f97316"]
         for idx, ticker in enumerate(MAG_7):
             df_t = load_ticker_data(ticker)
             if len(df_t) >= 60:
@@ -1127,7 +1127,7 @@ with tab4:
         tickers = [r["Ticker"] for r in mag7_rows]
         rv20s = [r["20D Realized Vol (%)"] for r in mag7_rows]
         rv60s = [r["60D Realized Vol (%)"] for r in mag7_rows]
-        fig_vol.add_trace(go.Bar(name="20D Realized Vol", x=tickers, y=rv20s, marker_color="#f59e0b"))
+        fig_vol.add_trace(go.Bar(name="20D Realized Vol", x=tickers, y=rv20s, marker_color="#00F5A0"))
         fig_vol.add_trace(go.Bar(name="60D Realized Vol", x=tickers, y=rv60s, marker_color="#475569"))
         apply_dark_theme(fig_vol, height=350)
         fig_vol.update_layout(barmode="group", yaxis_title="Annualized Vol (%)")
@@ -1198,7 +1198,7 @@ with tab5:
         display_dict = {k: baskets[k] for k in display_keys if k in baskets}
         basket_df = pd.DataFrame(list(display_dict.items()), columns=["Basket", "5D Return (%)"])
         fig_b = px.bar(basket_df, x="5D Return (%)", y="Basket", orientation="h", color="5D Return (%)",
-                       color_continuous_scale="RdYlGn")
+                       color_continuous_scale=[[0, "#FF2E55"], [0.5, "#1B212D"], [1, "#00F5A0"]])
         apply_dark_theme(fig_b, height=280)
         fig_b.update_layout(coloraxis_showscale=False)
         st.plotly_chart(fig_b, use_container_width=True)
@@ -1206,7 +1206,7 @@ with tab5:
     with col_b2:
         basket_card_html = (
             '<div class="metric-card-lux" style="height:100%;">'
-            '<div style="font-size:12px; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Basket Composition & Velocity</div>'
+            '<div style="font-size:12px; font-weight:700; color:#00F5A0; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Basket Composition & Velocity</div>'
             '<div style="font-size:12.5px; color:#cbd5e1; line-height:1.55;">'
             '<div style="margin-bottom:6px;"><b style="color:#ffffff;">• Growth:</b> XLK (Tech), SMH (Semis), XLC (Comms), XLY (Cons Disc)</div>'
             '<div style="margin-bottom:6px;"><b style="color:#ffffff;">• Cyclicals:</b> XLF (Financials), XLI (Industrials), XLB (Materials)</div>'
@@ -1238,8 +1238,8 @@ with tab6:
         sub_ratio = ratio_df.iloc[-500:].copy()
 
         fig_r = go.Figure()
-        fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["Upper2"], line=dict(color="rgba(239, 68, 68, 0.4)", dash="dot"), name="+2σ Extreme"))
-        fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["Lower2"], line=dict(color="rgba(16, 185, 129, 0.4)", dash="dot"), name="-2σ Extreme"))
+        fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["Upper2"], line=dict(color="rgba(255, 46, 85, 0.7)", dash="dot"), name="+2σ Extreme"))
+        fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["Lower2"], line=dict(color="rgba(0, 245, 160, 0.7)", dash="dot"), name="-2σ Extreme"))
         fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["EMA20"], line=dict(color="#06b6d4", width=1.5), name="20-Day EMA"))
         fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["EMA50"], line=dict(color="#f59e0b", width=1.5), name="50-Day EMA"))
         fig_r.add_trace(go.Scatter(x=sub_ratio["Date"], y=sub_ratio["Close"], line=dict(color="#3b82f6", width=2.5), name=ratio_choice.replace("_", "/")))
@@ -1277,7 +1277,7 @@ if False:
             f'<p style="color:#94a3b8; font-size:13px; margin:0 0 6px 0;"><b>Historical Sample Size:</b> {edge.get("sample_size")} instances matched in last 20 years</p>'
             f'<p style="font-size:13.5px; color:#f1f5f9; margin:0 0 6px 0;">'
             f'• <b>5-Day Win Rate:</b> {edge.get("win_rate_5d")}% &nbsp;|&nbsp; '
-            f'• <b>20-Day Win Rate:</b> <span style="color:#10b981; font-weight:700;">{edge.get("win_rate_20d")}%</span> &nbsp;|&nbsp; '
+            f'• <b>20-Day Win Rate:</b> <span style="color:#00F5A0; font-weight:700;">{edge.get("win_rate_20d")}%</span> &nbsp;|&nbsp; '
             f'• <b>60-Day Win Rate:</b> {edge.get("win_rate_60d")}%'
             f'</p>'
             f'<p style="font-size:13px; color:#94a3b8; margin:0;">'
@@ -1320,7 +1320,7 @@ if False:
 
         # Row 1: Daily Price & EMAs
         fig_combined.add_trace(go.Scatter(x=t_sub["Date"], y=t_sub["Close"], name="Close Price", line=dict(color="#ffffff", width=2)), row=1, col=1)
-        fig_combined.add_trace(go.Scatter(x=t_sub["Date"], y=t_sub["EMA20"], name="20 EMA (Red)", line=dict(color="#f6465d", width=1.75)), row=1, col=1)
+        fig_combined.add_trace(go.Scatter(x=t_sub["Date"], y=t_sub["EMA20"], name="20 EMA (Red)", line=dict(color="#FF2E55", width=1.75)), row=1, col=1)
         fig_combined.add_trace(go.Scatter(x=t_sub["Date"], y=t_sub["EMA50"], name="50 EMA (Amber)", line=dict(color="#f59e0b", width=1.75)), row=1, col=1)
         fig_combined.add_trace(go.Scatter(x=t_sub["Date"], y=t_sub["EMA200"], name="200 EMA (Blue)", line=dict(color="#3b82f6", width=2)), row=1, col=1)
 
@@ -1330,7 +1330,7 @@ if False:
             y=t_sub["Drawdown_ATH"],
             fill="tozeroy",
             fillcolor="rgba(239, 68, 68, 0.15)",
-            line=dict(color="#f6465d", width=1.5),
+            line=dict(color="#FF2E55", width=1.5),
             name="ATH Drawdown (%)"
         ), row=2, col=1)
 

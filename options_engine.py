@@ -738,7 +738,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                         badge_color = "#e3b341"
                     else:
                         h_tag = "Quarterly (75d+)"
-                        badge_color = "#39d353"
+                        badge_color = "#00F5A0"
 
                     event_str = "Spans Earnings" if rec.get('Spans_Earnings') else "Inter-Earnings (Safe)"
                     event_bg = "rgba(234, 179, 8, 0.15)" if rec.get('Spans_Earnings') else "rgba(56, 189, 248, 0.1)"
@@ -748,12 +748,12 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
 
                     if side_clean == "Sell":
                         edge_val = rec.get('Bid_Edge', 0)
-                        b_color = "#39d353" if edge_val >= 0 else "#eab308"
+                        b_color = "#00F5A0" if edge_val >= 0 else "#eab308"
                         b_sign = "+" if edge_val >= 0 else ""
                         bid_p = rec.get('bid', 0)
                         cushion = abs(rec['strike'] - spot_price) / spot_price * 100.0
                         pick_badge = f"<span style='background: rgba(255, 46, 85, 0.15); color: #FF2E55; font-size: 0.72rem; padding: 2px 7px; border-radius: 6px; font-weight: 600;'>Pick #{i+1} • Sell</span>"
-                        action_html = f"<div>Bid (Credit): <b style='color: #39d353;'>${bid_p:.2f}</b> ($<b>{bid_p*100:.0f}</b>/ct collected)</div>"
+                        action_html = f"<div>Bid (Credit): <b style='color: #00F5A0;'>${bid_p:.2f}</b> ($<b>{bid_p*100:.0f}</b>/ct collected)</div>"
                         edge_html = f"<div><span style='color: #8b949e;'>Bid Edge:</span> <b style='color: {b_color};'>{b_sign}{edge_val:.2f}%</b></div>"
                         iv_html = f"<div><span style='color: #8b949e;'>Bid IV:</span> <b>{rec.get('Bid_IV_Pct', rec['IV_Pct']):.1f}%</b></div>"
                         extra_html = f"<div>Safety Cushion: <b>{cushion:.1f}% buffer</b> | {spread_badge}</div>"
@@ -763,17 +763,17 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                             net_cr = rec.get('Net_Credit', 0)
                             max_rk = rec.get('Max_Risk', 0)
                             ror = rec.get('RoR_Pct', 0)
-                            wing_box = f"<div style='margin-top:6px; padding:6px; background:rgba(255,255,255,0.03); border-radius:6px; border:1px dashed #30363d; font-size:0.75rem;'><b>Hedged Spread Wing</b>: +${wing_k:.0f} {c_type}<br>Credit: <b>${net_cr:.2f}</b> | Max Risk: <b>${max_rk:.2f}</b> | RoR: <b style='color:#39d353;'>{ror:.1f}%</b></div>"
+                            wing_box = f"<div style='margin-top:6px; padding:6px; background:rgba(255,255,255,0.03); border-radius:6px; border:1px dashed #30363d; font-size:0.75rem;'><b>Hedged Spread Wing</b>: +${wing_k:.0f} {c_type}<br>Credit: <b>${net_cr:.2f}</b> | Max Risk: <b>${max_rk:.2f}</b> | RoR: <b style='color:#00F5A0;'>{ror:.1f}%</b></div>"
                         else:
                             wing_box = ""
                     else:
                         edge_val = rec.get('Ask_Edge', 0)
-                        b_color = "#39d353" if edge_val >= 0 else "#eab308"
+                        b_color = "#00F5A0" if edge_val >= 0 else "#eab308"
                         b_sign = "+" if edge_val >= 0 else ""
                         be_val = rec['strike'] + rec['ask'] if is_call_rec else rec['strike'] - rec['ask']
                         be_diff = ((be_val / spot_price) - 1) * 100
-                        pick_badge = f"<span style='background: rgba(57, 211, 83, 0.15); color: #39d353; font-size: 0.72rem; padding: 2px 7px; border-radius: 6px; font-weight: 600;'>Pick #{i+1} • Buy</span>"
-                        action_html = f"<div>Ask (Purchase): <b style='color: #39d353;'>${rec['ask']:.2f}</b> ($<b>{rec['ask']*100:.0f}</b>/ct)</div>"
+                        pick_badge = f"<span style='background: rgba(0, 245, 160, 0.15); color: #00F5A0; font-size: 0.72rem; padding: 2px 7px; border-radius: 6px; font-weight: 600;'>Pick #{i+1} • Buy</span>"
+                        action_html = f"<div>Ask (Purchase): <b style='color: #00F5A0;'>${rec['ask']:.2f}</b> ($<b>{rec['ask']*100:.0f}</b>/ct)</div>"
                         edge_html = f"<div><span style='color: #8b949e;'>Ask Edge:</span> <b style='color: {b_color};'>{b_sign}{edge_val:.2f}%</b></div>"
                         iv_html = f"<div><span style='color: #8b949e;'>Ask IV:</span> <b>{rec.get('Ask_IV_Pct', rec['IV_Pct']):.1f}%</b></div>"
                         extra_html = f"<div>Breakeven: <b>${be_val:.2f} ({be_diff:+.1f}%)</b> | {spread_badge}</div>"
@@ -903,7 +903,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         rec_texts = [f"🔴 Sell ${s:.0f}" for s in top_strikes['strike']]
         hover_template = "<b>🔴 RECOMMENDED OVERPRICED SELL</b><br>Strike: $%{x:.2f}<br>Market IV: %{y:.2f}%<extra></extra>"
     else:
-        marker_color = '#10b981'
+        marker_color = '#00F5A0'
         trace_label = '🟢 Recommended Buy Strikes (Ask Edge)'
         rec_texts = [f"🟢 Buy ${s:.0f}" for s in top_strikes['strike']]
         hover_template = "<b>🟢 RECOMMENDED VALUE BUY</b><br>Strike: $%{x:.2f}<br>Market IV: %{y:.2f}%<extra></extra>"
@@ -949,7 +949,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                 spread_badge = s_row.get('Spread_Quality', '🟢 Tight')
                 if side_clean == "Sell":
                     edge_val = s_row.get('Bid_Edge', 0)
-                    b_color = "#39d353" if edge_val >= 0 else "#eab308"
+                    b_color = "#00F5A0" if edge_val >= 0 else "#eab308"
                     b_sign = "+" if edge_val >= 0 else ""
                     bid_p = s_row.get('bid', 0)
                     cushion = abs(s_row['strike'] - spot_price) / spot_price * 100.0
@@ -959,7 +959,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                         net_cr = s_row.get('Net_Credit', 0)
                         max_rk = s_row.get('Max_Risk', 0)
                         ror = s_row.get('RoR_Pct', 0)
-                        wing_box = f"<div style='margin-top:6px; padding:6px; background:rgba(255,255,255,0.03); border-radius:6px; border:1px dashed #30363d; font-size:0.75rem;'><b>Hedged Spread Wing</b>: +${wing_k:.0f} {c_type}<br>Credit: <b>${net_cr:.2f}</b> | Max Risk: <b>${max_rk:.2f}</b> | RoR: <b style='color:#39d353;'>{ror:.1f}%</b></div>"
+                        wing_box = f"<div style='margin-top:6px; padding:6px; background:rgba(255,255,255,0.03); border-radius:6px; border:1px dashed #30363d; font-size:0.75rem;'><b>Hedged Spread Wing</b>: +${wing_k:.0f} {c_type}<br>Credit: <b>${net_cr:.2f}</b> | Max Risk: <b>${max_rk:.2f}</b> | RoR: <b style='color:#00F5A0;'>{ror:.1f}%</b></div>"
                     else:
                         wing_box = ""
                         
@@ -973,7 +973,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                             <div>Bid IV: <b>{s_row['Bid_IV_Pct']:.1f}%</b></div>
                             <div>Bid Edge: <b style="color: {b_color};">{b_sign}{edge_val:.2f}%</b></div>
                             <div>Delta: <b>{s_row['Est_Delta']:.2f}</b></div>
-                            <div>Bid Credit: <b style="color: #39d353;">${bid_p:.2f}</b></div>
+                            <div>Bid Credit: <b style="color: #00F5A0;">${bid_p:.2f}</b></div>
                         </div>
                         <div style="font-size: 0.78rem; color: #8b949e; border-top: 1px solid #21262d; padding-top: 6px;">
                             Mid: ${s_row['Mid_Price']:.2f} | Buffer: <b>{cushion:.1f}%</b> | {spread_badge}
@@ -983,7 +983,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                     """, unsafe_allow_html=True)
                 else:
                     edge_val = s_row.get('Ask_Edge', 0)
-                    b_color = "#39d353" if edge_val >= 0 else "#eab308"
+                    b_color = "#00F5A0" if edge_val >= 0 else "#eab308"
                     b_sign = "+" if edge_val >= 0 else ""
                     be_val = s_row['strike'] + s_row['ask'] if is_call_rec else s_row['strike'] - s_row['ask']
                     be_diff = ((be_val / spot_price) - 1) * 100
@@ -991,13 +991,13 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                     <div style="background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px; margin-bottom: 10px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                             <span style="font-size: 1.15rem; font-weight: 700; color: #f0f6fc;">${s_row['strike']:.0f} {c_type}</span>
-                            <span style="background: rgba(57, 211, 83, 0.15); color: #39d353; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; font-weight: 600;">#{i+1} • Buy</span>
+                            <span style="background: rgba(0, 245, 160, 0.15); color: #00F5A0; font-size: 0.72rem; padding: 2px 6px; border-radius: 4px; font-weight: 600;">#{i+1} • Buy</span>
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 0.82rem; margin-bottom: 8px;">
                             <div>Ask IV: <b>{s_row['Ask_IV_Pct']:.1f}%</b></div>
                             <div>Ask Edge: <b style="color: {b_color};">{b_sign}{edge_val:.2f}%</b></div>
                             <div>Delta: <b>{s_row['Est_Delta']:.2f}</b></div>
-                            <div>Ask Cost: <b style="color: #39d353;">${s_row['ask']:.2f}</b></div>
+                            <div>Ask Cost: <b style="color: #00F5A0;">${s_row['ask']:.2f}</b></div>
                         </div>
                         <div style="font-size: 0.78rem; color: #8b949e; border-top: 1px solid #21262d; padding-top: 6px;">
                             Mid: ${s_row['Mid_Price']:.2f} | Breakeven: <b>${be_val:.2f} ({be_diff:+.1f}%)</b> | {spread_badge}
