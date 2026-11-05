@@ -260,7 +260,7 @@ def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Quer
             return {"error": f"Live options data not available for {t_up}"}
             
         chains_list = term_df.to_dict('records')
-        picks = scan_cross_chain_recommendations(t_up, chains_list, spot_price, direction=dir_clean, side=side_clean)
+        picks, ranked_chain = scan_cross_chain_recommendations(t_up, chains_list, spot_price, direction=dir_clean, side=side_clean, return_all=True)
         
         valid_exps = [str(e) for e in term_df['Expiration'].tolist()]
         if expiration and expiration in valid_exps:
@@ -354,6 +354,7 @@ def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Quer
             "expirations": expirations_list,
             "selected_expiration": chosen_exp,
             "picks": picks,
+            "ranked_chain": ranked_chain,
             "smile": smile_payload
         })
     except Exception as e:
@@ -1310,6 +1311,43 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </div>
 
                 <div id="optionsSmileChart" style="height: 440px;"></div>
+
+                <!-- Whole-Chain Tiered Discount Scanner Table -->
+                <div class="mt-6 border-t border-white/10 pt-5">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                        <div>
+                            <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                                <span>Whole-Chain Value Scanner: Top Discounted Contracts</span>
+                                <span id="chainDiscountBadge" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-mint/15 text-mint border border-mint/20">Ranked by Edge</span>
+                            </h4>
+                            <p class="text-xs text-slate-400 mt-0.5">Scans all expirations across the volatility surface to rank contracts with the highest mathematical edge surviving the spread.</p>
+                        </div>
+                        <div class="text-xs text-slate-400 hidden sm:flex items-center gap-2">
+                            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-mint"></span> Tier 1 Prime</span>
+                            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-sky-400"></span> Tier 2 High</span>
+                            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-purple-400"></span> Tier 3 Selective</span>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto rounded-lg border border-white/10 bg-[#0b0d12]">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-white/[0.03] text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/10">
+                                <tr>
+                                    <th class="py-2.5 px-3">Tier / Rank</th>
+                                    <th class="py-2.5 px-3">Expiration (DTE)</th>
+                                    <th class="py-2.5 px-3">Strike</th>
+                                    <th class="py-2.5 px-3" id="thChainCost">Ask Cost</th>
+                                    <th class="py-2.5 px-3">Market IV</th>
+                                    <th class="py-2.5 px-3">OI (Vol)</th>
+                                    <th class="py-2.5 px-3" id="thChainEdge">Ask Edge</th>
+                                    <th class="py-2.5 px-3">Delta</th>
+                                </tr>
+                            </thead>
+                            <tbody id="optionsChainDiscountTbody" class="divide-y divide-white/5">
+                                <tr><td colspan="8" class="text-center py-4 text-slate-500">Loading whole-chain candidates...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -3030,10 +3068,55 @@ async function init() {
                     renderSmileChart(data.smile, CURRENT_OPTIONS_DIR, isBuy, spot);
                 }
 
+                // Render Whole-Chain Tiered Discount Table
+                renderWholeChainTable(data.ranked_chain, isBuy);
+
             } catch (err) {
                 kpiRow.innerHTML = `<div class="col-span-full text-xs text-cherry bg-cherry/10 p-3 rounded-lg border border-cherry/20">Error loading options desk: ${err.message}</div>`;
                 cardsContainer.innerHTML = '';
             }
+        }
+
+        function renderWholeChainTable(ranked_chain, isBuy) {
+            const tbody = document.getElementById("optionsChainDiscountTbody");
+            const costTh = document.getElementById("thChainCost");
+            const edgeTh = document.getElementById("thChainEdge");
+            if (costTh) costTh.innerText = isBuy ? "Ask Cost" : "Bid Credit";
+            if (edgeTh) edgeTh.innerText = isBuy ? "Ask Edge" : "Bid Edge";
+
+            if (!tbody) return;
+            if (!ranked_chain || ranked_chain.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-slate-500">No active chain contracts found.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = ranked_chain.map(r => {
+                const tierBadge = r.tier_num === 1 
+                    ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/15 text-mint border border-mint/20">Tier 1 • Prime</span>'
+                    : (r.tier_num === 2 
+                        ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/15 text-sky-400 border border-sky-500/20">Tier 2 • High</span>'
+                        : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/20">Tier 3 • Selective</span>');
+
+                const edgeVal = isBuy ? r.ask_edge : r.bid_edge;
+                const edgeSign = edgeVal >= 0 ? "+" : "";
+                const edgeColor = edgeVal >= 0 ? "text-mint font-bold" : "text-slate-300";
+                const costVal = isBuy ? r.ask_cost : r.bid_cost;
+                const costStr = "$" + costVal.toFixed(2);
+                const oiStr = r.oi > 0 ? r.oi.toLocaleString() : '<span class="text-slate-500">0</span> <span class="text-[10px] text-slate-400">(' + r.volume.toLocaleString() + ' vol)</span>';
+                const deltaStr = Math.abs(r.delta).toFixed(2) + "Δ";
+                const earnBadge = r.spans_earnings ? '<span class="ml-1 text-[9px] px-1.5 py-0.5 rounded bg-cherry/15 text-cherry font-semibold">Earn</span>' : "";
+
+                return '<' + 'tr class="hover:bg-white/[0.02] transition border-b border-white/5 last:border-0">' +
+                    '<td class="py-2.5 px-3 flex items-center gap-2"><span class="text-slate-500 font-mono text-[11px]">#' + r.rank + '</span>' + tierBadge + '</td>' +
+                    '<td class="py-2.5 px-3 font-semibold text-white whitespace-nowrap">' + r.expiration + ' <span class="text-slate-400 text-[11px] font-normal">(' + r.dte + 'd)</span>' + earnBadge + '</td>' +
+                    '<td class="py-2.5 px-3 font-bold text-white whitespace-nowrap">$' + Math.round(r.strike) + ' ' + r.type + '</td>' +
+                    '<td class="py-2.5 px-3 font-mono font-medium text-white whitespace-nowrap">' + costStr + '</td>' +
+                    '<td class="py-2.5 px-3 font-mono text-slate-300">' + r.iv.toFixed(1) + '%</td>' +
+                    '<td class="py-2.5 px-3 font-mono text-slate-300 whitespace-nowrap">' + oiStr + '</td>' +
+                    '<td class="py-2.5 px-3 font-mono ' + edgeColor + ' whitespace-nowrap">' + edgeSign + edgeVal.toFixed(2) + '%</td>' +
+                    '<td class="py-2.5 px-3 font-mono text-slate-300">' + deltaStr + '</td>' +
+                    '</tr>';
+            }).join("");
         }
 
         function renderSmileChart(s, direction, isBuy, spot) {

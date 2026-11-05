@@ -672,7 +672,7 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
 
 # ----------------- CROSS-CHAIN RECOMMENDATION SCANNER -----------------
 @st_cache
-def scan_cross_chain_recommendations(ticker_symbol, cheap_expirations_list, spot_price, direction="Bullish", side="Buy"):
+def scan_cross_chain_recommendations(ticker_symbol, cheap_expirations_list, spot_price, direction="Bullish", side="Buy", return_all=False):
     """
     Scans across date chains simultaneously.
     If side == 'Buy': identifies underpriced contracts surviving the Ask spread.
@@ -735,7 +735,7 @@ def scan_cross_chain_recommendations(ticker_symbol, cheap_expirations_list, spot
                 all_candidates.append(cand)
                 
     if not all_candidates:
-        return []
+        return ([], []) if return_all else []
         
     df_cands = pd.DataFrame(all_candidates).sort_values('Cross_Chain_Score', ascending=False)
     
@@ -750,6 +750,39 @@ def scan_cross_chain_recommendations(ticker_symbol, cheap_expirations_list, spot
             break
             
     diverse_picks = sorted(diverse_picks, key=lambda x: x['DTE'])
+
+    # Format Whole-Chain Tiered Discount Table (Top 10–12 across the whole chain)
+    sort_key = 'Ask_Edge' if side_clean == 'Buy' else 'Bid_Edge'
+    df_sorted = df_cands.sort_values([sort_key, 'Effective_Liquidity'], ascending=[False, False]).reset_index(drop=True)
+    
+    ranked_table = []
+    for i, row in df_sorted.head(10).iterrows():
+        tier_num = 1 if i < 3 else (2 if i < 7 else 3)
+        tier_label = 'Tier 1 • Prime' if tier_num == 1 else ('Tier 2 • High' if tier_num == 2 else 'Tier 3 • Selective')
+        is_call_rec = (direction == "Bullish") if side_clean == "Buy" else (direction == "Bearish")
+        c_type = "Call" if is_call_rec else "Put"
+        
+        ranked_table.append({
+            'rank': int(i + 1),
+            'tier': tier_label,
+            'tier_num': tier_num,
+            'expiration': str(row['Expiration']),
+            'dte': int(row['DTE']),
+            'strike': float(row['strike']),
+            'type': c_type,
+            'ask_cost': round(float(row.get('ask', 0)), 2),
+            'bid_cost': round(float(row.get('bid', 0)), 2),
+            'iv': round(float(row.get('IV_Pct', 0)), 1),
+            'oi': int(row.get('openInterest', 0)) if pd.notnull(row.get('openInterest')) else 0,
+            'volume': int(row.get('volume', 0)) if pd.notnull(row.get('volume')) else 0,
+            'ask_edge': round(float(row.get('Ask_Edge', 0)), 2),
+            'bid_edge': round(float(row.get('Bid_Edge', 0)), 2),
+            'delta': round(float(row.get('Est_Delta', 0)), 2),
+            'spans_earnings': bool(row.get('Spans_Earnings', False))
+        })
+
+    if return_all:
+        return diverse_picks, ranked_table
     return diverse_picks
 
 # ----------------- STREAMLIT UI RENDER FUNCTION -----------------
@@ -849,7 +882,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
 
         with st.spinner("Scanning volatility smiles and skew across date chains..."):
             chains_list = chains_df.to_dict('records')
-            cross_recommendations = scan_cross_chain_recommendations(selected_ticker, chains_list, spot_price, direction=dir_clean, side=side_clean)
+            cross_recommendations, ranked_chain = scan_cross_chain_recommendations(selected_ticker, chains_list, spot_price, direction=dir_clean, side=side_clean, return_all=True)
 
         if cross_recommendations:
             rec_cols = st.columns(len(cross_recommendations))
@@ -1228,6 +1261,30 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
     )
     
     st.plotly_chart(fig, use_container_width=True)
+
+    # ----------------- WHOLE-CHAIN TIERED DISCOUNT SCANNER TABLE -----------------
+    if 'ranked_chain' in locals() and ranked_chain:
+        st.markdown("#### Whole-Chain Value Scanner: Top Discounted Contracts")
+        st.caption("Scans across all expiration cycles simultaneously to rank contracts with the greatest mathematical edge surviving the spread.")
+        
+        table_rows = []
+        for r in ranked_chain:
+            cost_label = f"${r['ask_cost']:.2f}" if side_clean == "Buy" else f"${r['bid_cost']:.2f}"
+            edge_val = r['ask_edge'] if side_clean == "Buy" else r['bid_edge']
+            edge_label = f"{edge_val:+.2f}%"
+            earn_flag = "⚠️ Spans Earn" if r['spans_earnings'] else "Safe"
+            table_rows.append({
+                "Tier": r['tier'],
+                "Date (DTE)": f"{r['expiration']} ({r['dte']}d)",
+                "Strike": f"${r['strike']:.0f} {r['type']}",
+                "Ask Cost" if side_clean == "Buy" else "Bid Credit": cost_label,
+                "Market IV": f"{r['iv']:.1f}%",
+                "OI (Vol)": f"{r['oi']:,} ({r['volume']:,} v)",
+                "Ask Edge" if side_clean == "Buy" else "Bid Edge": edge_label,
+                "Delta": f"{abs(r['delta']):.2f}Δ",
+                "Event": earn_flag
+            })
+        st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
 
     # ----------------- SECTION C: SINGLE DATE STRIKE RECOMMENDATIONS -----------------
     if "Single Expiration Focus" in rec_mode or not top_strikes.empty:
