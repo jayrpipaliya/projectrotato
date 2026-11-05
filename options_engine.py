@@ -765,8 +765,14 @@ def scan_cross_chain_recommendations(ticker_symbol, cheap_expirations_list, spot
     for i, row in df_sorted.head(10).iterrows():
         tier_num = 1 if i < 3 else (2 if i < 7 else 3)
         tier_label = 'Tier 1 • Prime' if tier_num == 1 else ('Tier 2 • High' if tier_num == 2 else 'Tier 3 • Selective')
-        is_call_rec = (direction == "Bullish") if side_clean == "Buy" else (direction == "Bearish")
-        c_type = "Call" if is_call_rec else "Put"
+        # Determine Call vs Put from symbol, delta, and direction
+        sym = str(row.get('contractSymbol', ''))
+        if len(sym) >= 9 and sym[-9] in ['C', 'P']:
+            c_type = "Call" if sym[-9] == 'C' else "Put"
+        elif pd.notnull(row.get('Est_Delta')):
+            c_type = "Call" if float(row['Est_Delta']) > 0 else "Put"
+        else:
+            c_type = "Call" if ("Call" in str(direction) or str(direction) == "Bullish") else "Put"
         
         ranked_table.append({
             'rank': int(i + 1),
@@ -1166,7 +1172,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
 
     # Effective Ask IV / Bid IV Execution Overlay (filtered to active tradable moneyness)
     is_buy = (side_clean == "Buy")
-    if dir_clean == "Bullish":
+    if "Call" in dir_clean or dir_clean == "Bullish":
         exec_mask = (target_df['strike'] >= spot_price * 0.95) & (target_df['strike'] <= spot_price * 1.15)
     else:
         exec_mask = (target_df['strike'] <= spot_price * 1.05) & (target_df['strike'] >= spot_price * 0.85)
