@@ -643,7 +643,7 @@ HTML_CONTENT = """<!DOCTYPE html>
           <svg class="w-3.5 h-3.5 text-mint" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
           </svg>
-          <span class="font-medium text-emerald-400">Gemini Key Active</span>
+          <span id="aiGlobalStatusText" class="font-medium text-emerald-400">Gemini Key Active</span>
         </button>
 
         <!-- Desk Active & Date Pill -->
@@ -1164,13 +1164,28 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         function updateApiKeyUI() {
             const statusEl = document.getElementById('aiGlobalStatusText');
+            const key = USER_API_KEY || '';
+            const topInput = document.getElementById('topApiKeyInput');
+            if (topInput && key) topInput.value = key;
+            const sideInput = document.getElementById('sidebarApiKey');
+            if (sideInput && key) sideInput.value = key;
             if (statusEl) {
-                if (USER_API_KEY) {
-                    statusEl.innerText = 'Gemini AI Active (Custom)';
-                } else {
-                    statusEl.innerText = 'Gemini AI Active';
-                }
+                statusEl.innerText = key ? 'Gemini Key Active' : 'Gemini Key Active (Default)';
             }
+        }
+
+        function saveTopApiKey() {
+            const input = document.getElementById('topApiKeyInput');
+            const key = input ? input.value.trim() : '';
+            if (key) {
+                USER_API_KEY = key;
+                localStorage.setItem('rotato_gemini_key', key);
+            } else {
+                USER_API_KEY = '';
+                localStorage.removeItem('rotato_gemini_key');
+            }
+            updateApiKeyUI();
+            init();
         }
 
         function saveSidebarApiKey() {
@@ -1202,13 +1217,19 @@ HTML_CONTENT = """<!DOCTYPE html>
         }
 
         async function triggerDataSync() {
-            const btn = document.getElementById('syncBtn');
-            const spinner = document.getElementById('syncSpinner');
-            const btnText = document.getElementById('syncBtnText');
+            const hBtn = document.getElementById('headerSyncBtn');
+            const hSpinner = document.getElementById('headerSyncSpinner');
+            const hBtnText = document.getElementById('headerSyncBtnText');
+            const sBtn = document.getElementById('syncBtn');
+            const sSpinner = document.getElementById('syncSpinner');
+            const sBtnText = document.getElementById('syncBtnText');
 
-            if (btn) btn.disabled = true;
-            if (spinner) spinner.classList.remove('hidden');
-            if (btnText) btnText.innerText = 'Syncing...';
+            if (hBtn) hBtn.disabled = true;
+            if (sBtn) sBtn.disabled = true;
+            if (hSpinner) hSpinner.classList.remove('hidden');
+            if (sSpinner) sSpinner.classList.remove('hidden');
+            if (hBtnText) hBtnText.innerText = 'Syncing...';
+            if (sBtnText) sBtnText.innerText = 'Syncing...';
 
             try {
                 const res = await fetch('/api/sync-data', {
@@ -1221,36 +1242,35 @@ HTML_CONTENT = """<!DOCTYPE html>
                     throw new Error(`Sync returned HTTP ${res.status}`);
                 }
 
-                const data = await res.json();
+                const marketRes = await fetch('/api/market-data');
+                DATA = await marketRes.json();
 
-                // Update session date badge
-                const sessionBadge = document.getElementById('sessionDateBadge');
-                if (sessionBadge && data.last_date) {
-                    sessionBadge.innerText = 'Prices: ' + data.last_date;
-                }
-
-                // Refresh market data
-                const mRes = await fetch('/api/market-data');
-                DATA = await mRes.json();
                 renderBenchmarks();
                 renderMacroBarometers();
                 renderBriefingBaskets();
-                renderFilamentHeroCards();
 
-                if (btnText) btnText.innerText = '✓ Synced!';
+                if (hBtnText) hBtnText.innerText = '✓ Synced!';
+                if (sBtnText) sBtnText.innerText = '✓ Synced!';
                 setTimeout(() => {
-                    if (btnText) btnText.innerText = 'Sync Feeds';
-                    if (btn) btn.disabled = false;
-                    if (spinner) spinner.classList.add('hidden');
+                    if (hBtnText) hBtnText.innerText = 'Sync Market Feeds';
+                    if (sBtnText) sBtnText.innerText = 'Sync from YFinance';
+                    if (hBtn) hBtn.disabled = false;
+                    if (sBtn) sBtn.disabled = false;
+                    if (hSpinner) hSpinner.classList.add('hidden');
+                    if (sSpinner) sSpinner.classList.add('hidden');
                 }, 2000);
 
             } catch (err) {
                 console.error("Data sync error:", err);
-                if (btnText) btnText.innerText = 'Sync Error';
+                if (hBtnText) hBtnText.innerText = 'Sync Error';
+                if (sBtnText) sBtnText.innerText = 'Sync Error';
                 setTimeout(() => {
-                    if (btnText) btnText.innerText = 'Sync Feeds';
-                    if (btn) btn.disabled = false;
-                    if (spinner) spinner.classList.add('hidden');
+                    if (hBtnText) hBtnText.innerText = 'Sync Market Feeds';
+                    if (sBtnText) sBtnText.innerText = 'Sync from YFinance';
+                    if (hBtn) hBtn.disabled = false;
+                    if (sBtn) sBtn.disabled = false;
+                    if (hSpinner) hSpinner.classList.add('hidden');
+                    if (sSpinner) sSpinner.classList.add('hidden');
                 }, 2500);
             }
         }
@@ -1635,37 +1655,37 @@ async function init() {
                     sub2: `Large-Cap Core Benchmark`
                 },
                 { 
-                    ticker: "QQQ", name: "NASDAQ 100", 
+                    ticker: "QQQ", name: "Nasdaq 100", 
                     price: b.QQQ?.close || 0, pct1d: b.QQQ?.pct_1d || 0, pct5d: b.QQQ?.pct_5d || 0,
                     sub1: `ATH DD: <span class="${(b.QQQ?.drawdown_ath || 0) < 0 ? 'text-cherry' : 'text-slate-300'} font-medium">${b.QQQ?.drawdown_ath || 0}%</span> • 5D: <span class="${(b.QQQ?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(b.QQQ?.pct_5d || 0) >= 0 ? '+' : ''}${b.QQQ?.pct_5d || 0}%</span>`,
                     sub2: `Tech Growth Benchmark`
                 },
                 { 
-                    ticker: "IWM", name: "RUSSELL 2000", 
+                    ticker: "IWM", name: "Russell 2000", 
                     price: b.IWM?.close || 0, pct1d: b.IWM?.pct_1d || 0, pct5d: b.IWM?.pct_5d || 0,
                     sub1: `ATH DD: <span class="${(b.IWM?.drawdown_ath || 0) < 0 ? 'text-cherry' : 'text-slate-300'} font-medium">${b.IWM?.drawdown_ath || 0}%</span> • 5D: <span class="${(b.IWM?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(b.IWM?.pct_5d || 0) >= 0 ? '+' : ''}${b.IWM?.pct_5d || 0}%</span>`,
                     sub2: `Small-Cap Value Benchmark`
                 },
                 { 
-                    ticker: "GLD", name: "GOLD TRUST", 
+                    ticker: "GLD", name: "Gold Trust", 
                     price: macro.GLD?.close || 0, pct1d: macro.GLD?.pct_1d || 0, pct5d: macro.GLD?.pct_5d || 0,
                     sub1: `5D: <span class="${(macro.GLD?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(macro.GLD?.pct_5d || 0) >= 0 ? '+' : ''}${Number(macro.GLD?.pct_5d || 0).toFixed(2)}%</span> • 20D: <span class="font-medium text-slate-300">${Number(macro.GLD?.pct_20d || 0).toFixed(2)}%</span>`,
                     sub2: `Safe Haven • Debasement Hedge`
                 },
                 { 
-                    ticker: "TLT", name: "20Y TREASURIES", 
+                    ticker: "TLT", name: "20Y Treasuries", 
                     price: macro.TLT?.close || 0, pct1d: macro.TLT?.pct_1d || 0, pct5d: macro.TLT?.pct_5d || 0,
                     sub1: `5D: <span class="${(macro.TLT?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(macro.TLT?.pct_5d || 0) >= 0 ? '+' : ''}${Number(macro.TLT?.pct_5d || 0).toFixed(2)}%</span> • 20D: <span class="font-medium text-slate-300">${Number(macro.TLT?.pct_20d || 0).toFixed(2)}%</span>`,
                     sub2: `Duration • Real Yield Pressure`
                 },
                 { 
-                    ticker: "IBIT", name: "BITCOIN TRUST", 
+                    ticker: "IBIT", name: "Bitcoin Trust", 
                     price: macro.IBIT?.close || 0, pct1d: macro.IBIT?.pct_1d || 0, pct5d: macro.IBIT?.pct_5d || 0,
                     sub1: `5D: <span class="${(macro.IBIT?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(macro.IBIT?.pct_5d || 0) >= 0 ? '+' : ''}${Number(macro.IBIT?.pct_5d || 0).toFixed(2)}%</span> • 20D: <span class="font-medium text-slate-300">${Number(macro.IBIT?.pct_20d || 0).toFixed(2)}%</span>`,
                     sub2: `High-Beta Liquidity Barometer`
                 },
                 { 
-                    ticker: "USO", name: "CRUDE OIL", 
+                    ticker: "USO", name: "Crude Oil", 
                     price: macro.USO?.close || 0, pct1d: macro.USO?.pct_1d || 0, pct5d: macro.USO?.pct_5d || 0,
                     sub1: `5D: <span class="${(macro.USO?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(macro.USO?.pct_5d || 0) >= 0 ? '+' : ''}${Number(macro.USO?.pct_5d || 0).toFixed(2)}%</span> • 20D: <span class="font-medium text-slate-300">${Number(macro.USO?.pct_20d || 0).toFixed(2)}%</span>`,
                     sub2: `Energy & Inflation Input Cost`
@@ -1685,23 +1705,25 @@ async function init() {
                 const sparkEndY = is5dPos ? 6 : 13;
 
                 html += `
-                    <div class="stealth-card p-3.5 space-y-2">
-                        <div class="flex items-center justify-between">
-                            <div class="text-xs font-bold text-slate-200">${c.ticker} <span class="text-slate-500 font-normal">• ${c.name}</span></div>
-                            <span class="${badgeClass} px-1.5 py-0.5 rounded text-[11px] font-semibold tabular-num">${sign}${Number(p1d).toFixed(2)}%</span>
+                    <div class="stealth-card p-3 space-y-1.5 overflow-hidden">
+                        <div class="flex items-center justify-between gap-1 overflow-hidden">
+                            <div class="text-[11px] font-bold text-slate-200 whitespace-nowrap truncate shrink pr-1" title="${c.ticker} • ${c.name}">
+                                ${c.ticker} <span class="text-slate-400 font-normal">• ${c.name}</span>
+                            </div>
+                            <span class="${badgeClass} px-1.5 py-0.5 rounded text-[10.5px] font-semibold tabular-num shrink-0">${sign}${Number(p1d).toFixed(2)}%</span>
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-xl font-bold text-white tracking-tight tabular-num">$${Number(c.price || 0).toFixed(2)}</span>
-                            <div class="w-14 h-5 flex items-center" title="${c.ticker} 5-Day Trend (${p5d >= 0 ? '+' : ''}${Number(p5d).toFixed(2)}%)">
+                            <div class="w-14 h-5 flex items-center shrink-0" title="${c.ticker} 5-Day Trend (${p5d >= 0 ? '+' : ''}${Number(p5d).toFixed(2)}%)">
                                 <svg class="w-full h-full overflow-visible" viewBox="0 0 56 20">
                                     <path d="${sparkPath}" fill="none" stroke="${sparkColor}" stroke-width="1.5" stroke-linecap="round" />
                                     <circle cx="54" cy="${sparkEndY}" r="2" fill="${sparkColor}" />
                                 </svg>
                             </div>
                         </div>
-                        <div class="pt-1.5 border-t border-stealth-border/70 space-y-0.5 text-[11px] tabular-num text-slate-400">
-                            <div>${c.sub1}</div>
-                            <div class="text-slate-500 truncate">${c.sub2}</div>
+                        <div class="pt-1.5 border-t border-stealth-border/70 space-y-0.5 text-[10.5px] tabular-num text-slate-400">
+                            <div class="whitespace-nowrap overflow-hidden text-ellipsis">${c.sub1}</div>
+                            <div class="text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis">${c.sub2}</div>
                         </div>
                     </div>
                 `;

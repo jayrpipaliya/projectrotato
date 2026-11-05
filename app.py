@@ -210,7 +210,7 @@ def style_table_status(val):
         return "color: #10b981; font-weight: 700;"
     return "color: #94a3b8;"
 
-# ----------------- TOP BRAND & DESK HEADER (FILAMENT STYLE) -----------------
+# ----------------- TOP BRAND & DESK HEADER (STEALTH STYLE) -----------------
 col_h1, col_h2 = st.columns([3.5, 1.5])
 with col_h1:
     st.markdown('''
@@ -308,15 +308,15 @@ def render_stealth_benchmark_card(ticker, name, price, pct_1d, sub1, sub2, pct_5
     spark_path = "M 2 15 Q 16 12, 28 8 T 42 10 T 54 6" if pct_5d >= 0 else "M 2 7 Q 15 4, 28 13 T 44 10 T 54 13"
     spark_end = 6 if pct_5d >= 0 else 13
     return f'''
-    <div class="stealth-card" style="padding:12px; display:flex; flex-direction:column; justify-content:space-between; height:100%;">
+    <div class="stealth-card" style="padding:10px 12px; display:flex; flex-direction:column; justify-content:space-between; height:100%; overflow:hidden;">
         <div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                <span style="font-size:12px; font-weight:700; color:#f1f5f9;">{ticker} <span style="font-weight:normal; color:#64748b;">• {name}</span></span>
-                <span class="{badge_cls}" style="padding:1px 6px; font-size:11px; border-radius:4px;">{sign}{pct_1d:.2f}%</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:4px; overflow:hidden;">
+                <span style="font-size:11px; font-weight:700; color:#f1f5f9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{ticker} • {name}">{ticker} <span style="font-weight:normal; color:#94a3b8;">• {name}</span></span>
+                <span class="{badge_cls} tabular-num" style="padding:1px 5px; font-size:10px; border-radius:4px; flex-shrink:0;">{sign}{pct_1d:.2f}%</span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span class="tabular-num" style="font-size:19px; font-weight:800; color:#ffffff;">${price:,.2f}</span>
-                <div style="width:52px; height:18px;">
+                <div style="width:52px; height:18px; flex-shrink:0;">
                     <svg viewBox="0 0 56 20" style="width:100%; height:100%; overflow:visible;">
                         <path d="{spark_path}" fill="none" stroke="{spark_col}" stroke-width="1.5" stroke-linecap="round" />
                         <circle cx="54" cy="{spark_end}" r="2" fill="{spark_col}" />
@@ -324,8 +324,8 @@ def render_stealth_benchmark_card(ticker, name, price, pct_1d, sub1, sub2, pct_5
                 </div>
             </div>
         </div>
-        <div style="margin-top:8px; padding-top:6px; border-top:1px solid #1B212D; font-size:11px; color:#94a3b8; display:flex; flex-direction:column; gap:2px;" class="tabular-num">
-            <div>{sub1}</div>
+        <div style="margin-top:8px; padding-top:6px; border-top:1px solid #1B212D; font-size:10.5px; color:#94a3b8; display:flex; flex-direction:column; gap:2px;" class="tabular-num">
+            <div style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{sub1}</div>
             <div style="font-size:10px; color:#64748b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{sub2}</div>
         </div>
     </div>
