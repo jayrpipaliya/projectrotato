@@ -285,16 +285,16 @@ def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Quer
                         next_exp_name = str(next_row['Expiration'])
                         next_atm = float(next_row['ATM_IV'])
                         curr_atm = float(metrics.get('atm_iv', next_atm))
-                        t_slope = round(curr_atm - next_atm, 1)
+                        t_slope = round(next_atm - curr_atm, 1)
                         dt = pd.Timestamp(next_exp_name)
                         short_date = dt.strftime("%b %d")
                         metrics['term_slope'] = t_slope
                         if abs(t_slope) <= 0.3:
                             metrics['term_slope_text'] = f"Term flat vs {short_date}"
                         elif t_slope > 0:
-                            metrics['term_slope_text'] = f"Inverted (+{t_slope:.1f} pts vs {short_date})"
+                            metrics['term_slope_text'] = f"Near expiry cheap vs next (vs {short_date})"
                         else:
-                            metrics['term_slope_text'] = f"Contango ({t_slope:.1f} pts vs {short_date})"
+                            metrics['term_slope_text'] = f"Inverted / Backwardation (vs {short_date})"
                     else:
                         metrics['term_slope'] = 0.0
                         metrics['term_slope_text'] = "Front cycle"
@@ -397,16 +397,16 @@ def api_options_smile(ticker: str, expiration: str = Query(...), direction: str 
                         next_exp_name = str(next_row['Expiration'])
                         next_atm = float(next_row['ATM_IV'])
                         curr_atm = float(metrics.get('atm_iv', next_atm))
-                        t_slope = round(curr_atm - next_atm, 1)
+                        t_slope = round(next_atm - curr_atm, 1)
                         dt = pd.Timestamp(next_exp_name)
                         short_date = dt.strftime("%b %d")
                         metrics['term_slope'] = t_slope
                         if abs(t_slope) <= 0.3:
                             metrics['term_slope_text'] = f"Term flat vs {short_date}"
                         elif t_slope > 0:
-                            metrics['term_slope_text'] = f"Inverted (+{t_slope:.1f} pts vs {short_date})"
+                            metrics['term_slope_text'] = f"Near expiry cheap vs next (vs {short_date})"
                         else:
-                            metrics['term_slope_text'] = f"Contango ({t_slope:.1f} pts vs {short_date})"
+                            metrics['term_slope_text'] = f"Inverted / Backwardation (vs {short_date})"
         except Exception:
             metrics['term_slope'] = 0.0
             metrics['term_slope_text'] = "N/A"

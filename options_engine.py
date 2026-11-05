@@ -627,7 +627,7 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
             'skew_10d_text': skew_10d_text,
             'skew_slope': skew_slope,
             'skew_slope_text': "IV pts per 1% of strike",
-            'total_contracts': int(len(calls) + len(puts))
+            'total_contracts': int(len(chain.calls) + len(chain.puts)) if ('chain' in locals() and hasattr(chain, 'calls')) else int(len(calls) + len(puts))
         }
         structural_markers = {
             'atm': {'strike': atm_strike, 'iv': atm_iv},
