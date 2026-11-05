@@ -3341,7 +3341,7 @@ async function init() {
                 traces.push(traceSpreadLine);
             }
 
-            // 7. Execution Overlay: Recommended Value Strikes (Clean "Buy $xxx" without green circle emoji)
+            // 7. Execution Overlay: Recommended Value Strikes (Clean number only, e.g. "295")
             if (s.top_strikes && s.top_strikes.length > 0) {
                 traces.push({
                     x: s.top_strikes,
@@ -3355,7 +3355,7 @@ async function init() {
                         symbol: 'circle',
                         line: { color: '#ffffff', width: 2.5 }
                     },
-                    text: s.top_strikes.map(st => isBuy ? `Buy $${st}` : `Sell $${st}`),
+                    text: s.top_strikes.map(st => `${st}`),
                     textposition: 'bottom center',
                     textfont: { color: isBuy ? '#00F5A0' : '#FF2E55', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
                     hovertemplate: isBuy ? '<b>VALUE BUY STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>' : '<b>PREMIUM SELL STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>'

@@ -1155,16 +1155,15 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         annotation_font_color="rgba(56, 189, 248, 0.4)"
     )
 
-    # Highlight Top Recommended Strikes (clean "Buy $xxx" / "Sell $xxx")
+    # Highlight Top Recommended Strikes (clean number only, e.g. "295")
+    rec_texts = [f"{s:g}" for s in top_strikes['strike']]
     if side_clean == "Sell":
         marker_color = '#FF2E55'
         trace_label = 'Recommended Sell Strikes (Bid Edge)'
-        rec_texts = [f"Sell ${s:.0f}" for s in top_strikes['strike']]
         hover_template = "<b>RECOMMENDED PREMIUM SELL</b><br>Strike: $%{x:.2f}<br>Market IV: %{y:.2f}%<extra></extra>"
     else:
         marker_color = '#00F5A0'
         trace_label = 'Recommended Buy Strikes (Ask Edge)'
-        rec_texts = [f"Buy ${s:.0f}" for s in top_strikes['strike']]
         hover_template = "<b>RECOMMENDED VALUE BUY</b><br>Strike: $%{x:.2f}<br>Market IV: %{y:.2f}%<extra></extra>"
 
     fig.add_trace(go.Scatter(
