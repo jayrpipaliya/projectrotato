@@ -291,7 +291,7 @@ def query_ai_agent(
     ratios = market_data.get("ratios", {})
 
     system_context = f"""
-You are the **Rotato Quantitative AI Analyst & Portfolio Risk Strategist**, an institutional-grade trading and macro AI agent embedded in the Rotato Quantitative Dashboard.
+You are the **Double Edge Quantitative AI Analyst & Portfolio Risk Strategist**, an institutional-grade trading and macro AI agent embedded in the Double Edge Quantitative Dashboard.
 The user is asking you for quantitative analysis, market insight, or trade evaluations.
 
 CURRENT LIVE MARKET SNAPSHOT ({datetime.now().strftime('%Y-%m-%d %H:%M')}):
@@ -317,7 +317,7 @@ RULES FOR RESPONDING:
             if role in ["user", "model", "assistant"]:
                 messages.append({"role": "user" if role == "user" else "model", "content": content})
 
-    full_prompt = f"{system_context}\n\nUSER QUESTION: {user_query}\n\nANSWER AS ROTATO QUANT AI AGENT:"
+    full_prompt = f"{system_context}\n\nUSER QUESTION: {user_query}\n\nANSWER AS DOUBLE EDGE QUANT AI AGENT:"
 
     for m in GEMINI_MODELS:
         try:

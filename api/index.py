@@ -31,7 +31,7 @@ except Exception:
 
 DEFAULT_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
 
-app = FastAPI(title="Rotato Quantitative Market Intelligence Desk")
+app = FastAPI(title="Double Edge Quantitative Market Intelligence Desk")
 
 def clean_json(obj):
     return json.loads(json.dumps(obj, default=lambda x: int(x) if isinstance(x, np.integer) else float(x) if isinstance(x, np.floating) else str(x)))
@@ -458,7 +458,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rotato // Stealth Quantitative Macro Desk</title>
+  <title>Double Edge // Stealth Quantitative Macro Desk</title>
   
   <!-- Inter Google Font with full weights -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -697,11 +697,11 @@ HTML_CONTENT = """<!DOCTYPE html>
       <!-- Brand Logo Header -->
       <div class="flex items-center space-x-3 pb-2">
         <div class="w-9 h-9 rounded-lg bg-stealth-900 border border-stealth-border flex items-center justify-center font-bold text-lg text-white shadow-[0_0_15px_rgba(0,245,160,0.15)] relative shrink-0">
-          <span class="text-white font-extrabold">R</span>
+          <span class="text-white font-extrabold text-xs">DE</span>
           <span class="w-1.5 h-1.5 rounded-full bg-mint absolute top-1.5 right-1.5 shadow-[0_0_6px_#00F5A0]"></span>
         </div>
         <div>
-          <h1 class="font-bold text-base tracking-tight text-white leading-tight">Rotato</h1>
+          <h1 class="font-bold text-base tracking-tight text-white leading-tight">Double Edge</h1>
           <p class="text-[11px] text-slate-500 font-medium">Stealth Macro Desk</p>
         </div>
       </div>

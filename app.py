@@ -29,7 +29,7 @@ importlib.reload(options_engine)
 from options_engine import render_options_vol_page
 
 st.set_page_config(
-    page_title="Rotato | Quantitative Macro & Equity Desk",
+    page_title="Double Edge | Quantitative Macro & Equity Desk",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -214,11 +214,11 @@ def style_table_status(val):
 with st.sidebar:
     st.markdown('''
         <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
-            <div style="width:34px; height:34px; border-radius:8px; background:#0D0F14; border:1px solid #1B212D; display:flex; align-items:center; justify-content:center; font-weight:800; color:#ffffff; font-size:16px; position:relative;">
-                R<span style="position:absolute; top:3px; right:3px; width:6px; height:6px; border-radius:50%; background:#00F5A0; box-shadow:0 0 6px #00F5A0;"></span>
+            <div style="width:34px; height:34px; border-radius:8px; background:#0D0F14; border:1px solid #1B212D; display:flex; align-items:center; justify-content:center; font-weight:800; color:#ffffff; font-size:13px; position:relative;">
+                DE<span style="position:absolute; top:3px; right:3px; width:6px; height:6px; border-radius:50%; background:#00F5A0; box-shadow:0 0 6px #00F5A0;"></span>
             </div>
             <div>
-                <div style="font-size:16px; font-weight:700; color:#ffffff; line-height:1.2;">Rotato</div>
+                <div style="font-size:16px; font-weight:700; color:#ffffff; line-height:1.2;">Double Edge</div>
                 <div style="font-size:11px; color:#64748b; font-weight:500;">Stealth Macro Desk</div>
             </div>
         </div>
