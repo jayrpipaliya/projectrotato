@@ -664,12 +664,12 @@ with tab1:
 
     if llm_summary:
         st.markdown(
-            f'<div class="metric-card-lux" style="border:1px solid rgba(245, 158, 11, 0.35); background:linear-gradient(180deg, #13161f 0%, #0d0e13 100%); margin-bottom:14px;">'
+            f'<div class="metric-card-lux" style="border:1px solid rgba(0, 245, 160, 0.35); background:linear-gradient(180deg, #13161f 0%, #0d0e13 100%); margin-bottom:14px;">'
             f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px;">'
             f'<div style="display:flex; align-items:center; gap:8px;">'
-            f'<span style="font-size:13px; font-weight:800; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px;">Institutional Daily Market Intelligence Briefing</span>'
+            f'<span style="font-size:13px; font-weight:800; color:#00F5A0; text-transform:uppercase; letter-spacing:0.5px;">Institutional Daily Market Intelligence Briefing</span>'
             f'</div>'
-            f'<span class="pill-amber" style="font-size:11px; font-weight:700;">{engine_source}</span>'
+            f'<span class="pill-green" style="font-size:11px; font-weight:700;">{engine_source}</span>'
             f'</div>'
             f'</div>',
             unsafe_allow_html=True
@@ -687,15 +687,15 @@ with tab1:
             st.markdown(llm_summary)
     else:
         synth_html = (
-            f'<div class="metric-card-lux" style="border:1px solid rgba(245, 158, 11, 0.3);">'
+            f'<div class="metric-card-lux" style="border:1px solid rgba(0, 245, 160, 0.3);">'
             f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">'
-            f'<span style="font-size:12px; font-weight:700; color:#f59e0b; text-transform:uppercase; letter-spacing:0.5px;">Institutional Executive Synthesis</span>'
-            f'<span class="pill-amber" style="font-size:11px;">{engine_source}</span>'
+            f'<span style="font-size:12px; font-weight:700; color:#00F5A0; text-transform:uppercase; letter-spacing:0.5px;">Institutional Executive Synthesis</span>'
+            f'<span class="pill-green" style="font-size:11px;">{engine_source}</span>'
             f'</div>'
             f'<div style="font-size:13.5px; color:#cbd5e1; line-height:1.6;">'
             f'<div style="margin-bottom:8px;"><b style="color:#ffffff;">• Regime Mechanics:</b> <span style="color:#94a3b8;">{regime_detail}</span></div>'
             f'<div style="margin-bottom:8px;"><b style="color:#ffffff;">• Cross-Asset Flow:</b> <span style="color:#94a3b8;">{macro_reading}</span></div>'
-            f'<div style="margin-bottom:8px;"><b style="color:#ef4444;">• Desk Risk Warning:</b> <span style="color:#94a3b8;">Monitor mega-cap breadth concentration (SPY/RSP at 5-year highs). Avoid front-running unconfirmed dip buys on broken distribution names.</span></div>'
+            f'<div style="margin-bottom:8px;"><b style="color:#FF2E55;">• Desk Risk Warning:</b> <span style="color:#94a3b8;">Monitor mega-cap breadth concentration (SPY/RSP at 5-year highs). Avoid front-running unconfirmed dip buys on broken distribution names.</span></div>'
             f'</div>'
             f'<div style="margin-top:12px; font-size:12px; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:8px;">'
             f'<i>Tip: Ensure your Gemini API Key is active in the sidebar to generate full daily macro briefings and activate the AI Agent.</i>'

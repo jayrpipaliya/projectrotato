@@ -501,12 +501,16 @@ HTML_CONTENT = """<!DOCTYPE html>
       background: rgba(255, 46, 85, 0.05);
     }
     .synth-body li.card-risk {
-      border-left: 3px solid #f59e0b;
-      background: rgba(245, 158, 11, 0.05);
+      border-left: 3px solid #FF2E55;
+      background: rgba(255, 46, 85, 0.05);
     }
     .synth-body li.card-macro {
-      border-left: 3px solid #38bdf8;
-      background: rgba(56, 189, 248, 0.05);
+      border-left: 3px solid #00F5A0;
+      background: rgba(0, 245, 160, 0.05);
+    }
+    .synth-body li.card-neutral {
+      border-left: 3px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.02);
     }
     .synth-body h4 {
       font-size: 12px;
@@ -1960,9 +1964,9 @@ async function init() {
             for (let i = 0; i < buttons.length; i++) {
                 const btn = buttons[i];
                 if (btn.id === 'synthPill-' + key) {
-                    btn.className = 'synth-nav-pill px-3 py-1 rounded-lg text-xs font-bold bg-amber-500 text-black shadow-sm transition';
+                    btn.className = 'synth-nav-pill px-3 py-1 rounded-md text-xs font-bold bg-mint text-stealth-950 shadow-[0_0_12px_rgba(0,245,160,0.3)] transition';
                 } else {
-                    btn.className = 'synth-nav-pill px-3 py-1 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition';
+                    btn.className = 'synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 border border-stealth-border transition';
                 }
             }
             const cards = document.querySelectorAll('.synth-section-card');
@@ -1985,10 +1989,10 @@ async function init() {
             let metaHtml = '';
             
             const configs = [
-                { key: 'macro', icon: '', title: 'Macro Regime & Cross-Asset Liquidity', badge: 'AI Macro Liquidity', border: 'border-sky-500/30', bg: 'from-[#0b1322] to-[#080d17]', titleColor: 'text-sky-400' },
-                { key: 'sectors', icon: '', title: 'Sector Velocity & Breadth Concentration Dynamics', badge: 'AI Sector Dynamics', border: 'border-purple-500/30', bg: 'from-[#140e24] to-[#0b0814]', titleColor: 'text-purple-400' },
-                { key: 'setups', icon: '', title: 'Actionable Setups & Trade Confluence', badge: 'AI Confluence Setups', border: 'border-emerald-500/30', bg: 'from-[#091a14] to-[#06100d]', titleColor: 'text-emerald-400' },
-                { key: 'risk', icon: '', title: 'Desk Game Plan & Tactical Risk Boundaries', badge: 'AI Tactical Boundaries', border: 'border-amber-500/30', bg: 'from-[#1a140a] to-[#100d07]', titleColor: 'text-amber-400' }
+                { key: 'macro', icon: '', title: 'Macro Regime & Cross-Asset Liquidity', badge: 'AI Macro Liquidity', border: 'border-mint/30', bg: 'from-[#00F5A0]/5 to-transparent', titleColor: 'text-mint', isCherry: false },
+                { key: 'sectors', icon: '', title: 'Sector Velocity & Breadth Concentration Dynamics', badge: 'AI Sector Dynamics', border: 'border-mint/30', bg: 'from-[#00F5A0]/5 to-transparent', titleColor: 'text-mint', isCherry: false },
+                { key: 'setups', icon: '', title: 'Actionable Setups & Trade Confluence', badge: 'AI Confluence Setups', border: 'border-mint/30', bg: 'from-[#00F5A0]/5 to-transparent', titleColor: 'text-mint', isCherry: false },
+                { key: 'risk', icon: '', title: 'Desk Game Plan & Tactical Risk Boundaries', badge: 'AI Tactical Boundaries', border: 'border-cherry/30', bg: 'from-[#FF2E55]/5 to-transparent', titleColor: 'text-cherry', isCherry: true }
             ];
             
             let secIdx = 0;
@@ -2004,9 +2008,9 @@ async function init() {
                     const dateMatch = chunk.match(/\\*\\*Date:\\*\\*\\s*([^\\n*]+)/);
                     const dateStr = dateMatch ? dateMatch[1].trim() : '';
                     metaHtml = '<div class="p-3 mb-3 rounded-xl bg-white/[0.02] border border-white/5 flex flex-wrap justify-between items-center gap-2 text-xs">' +
-                               '<div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span class="font-bold text-slate-200">Daily Institutional Macro Intelligence</span>' +
-                               (dateStr ? '<span class="text-slate-500">•</span><span class="text-amber-400 font-mono">' + dateStr + '</span>' : '') +
-                               '</div><span class="text-[11px] text-amber-400 font-bold uppercase tracking-wider bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded">100% AI Synthesized</span></div>';
+                               '<div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-mint animate-pulse"></span><span class="font-bold text-slate-200">Daily Institutional Macro Intelligence</span>' +
+                               (dateStr ? '<span class="text-slate-500">•</span><span class="text-mint font-mono">' + dateStr + '</span>' : '') +
+                               '</div><span class="text-[11px] text-mint font-bold uppercase tracking-wider bg-mint/10 border border-mint/25 px-2 py-0.5 rounded">100% AI Synthesized</span></div>';
                     continue;
                 }
                 
@@ -2022,23 +2026,28 @@ async function init() {
                 
                 parsed = parsed.replace(new RegExp('<li>([\\s\\S]*?)<\\/li>', 'g'), function(m, inner) {
                     const low = inner.toLowerCase();
-                    let cls = '';
-                    if (low.indexOf('long') >= 0 || low.indexOf('bid') >= 0 || low.indexOf('continuation') >= 0 || low.indexOf('leading') >= 0 || low.indexOf('growth') >= 0) {
+                    let cls = 'card-neutral';
+                    if (low.indexOf('long') >= 0 || low.indexOf('bid') >= 0 || low.indexOf('continuation') >= 0 || low.indexOf('leading') >= 0 || low.indexOf('growth') >= 0 || low.indexOf('add risk') >= 0 || low.indexOf('capital deployment') >= 0) {
                         cls = 'card-long';
-                    } else if (low.indexOf('distribution') >= 0 || low.indexOf('trap') >= 0 || low.indexOf('fade') >= 0 || low.indexOf('warning') >= 0 || low.indexOf('avoid') >= 0 || low.indexOf('lagging') >= 0) {
+                    } else if (low.indexOf('distribution') >= 0 || low.indexOf('trap') >= 0 || low.indexOf('fade') >= 0 || low.indexOf('warning') >= 0 || low.indexOf('avoid') >= 0 || low.indexOf('lagging') >= 0 || low.indexOf('invalidation') >= 0 || low.indexOf('hedge') >= 0 || low.indexOf('trim') >= 0 || low.indexOf('portfolio defense') >= 0) {
                         cls = 'card-warn';
-                    } else if (low.indexOf('invalidation') >= 0 || low.indexOf('add risk') >= 0 || low.indexOf('hedge') >= 0 || low.indexOf('trim') >= 0 || low.indexOf('parameter') >= 0) {
-                        cls = 'card-risk';
                     } else if (low.indexOf('tlt') >= 0 || low.indexOf('gld') >= 0 || low.indexOf('uso') >= 0 || low.indexOf('ibit') >= 0 || low.indexOf('treasur') >= 0 || low.indexOf('gold') >= 0 || low.indexOf('crude') >= 0) {
                         cls = 'card-macro';
                     }
                     return '<li class="' + cls + '">' + inner + '</li>';
                 });
                 
+                const synthBadge = cfg.isCherry
+                    ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-cherry/10 border border-cherry/25 text-cherry uppercase">AI Synthesized</span>'
+                    : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/10 border border-mint/25 text-mint uppercase">AI Synthesized</span>';
+                const catBadge = cfg.isCherry
+                    ? '<span class="px-2 py-0.5 rounded text-[10.5px] font-bold bg-cherry/10 border border-cherry/25 text-cherry uppercase">' + cfg.badge + '</span>'
+                    : '<span class="px-2 py-0.5 rounded text-[10.5px] font-bold bg-mint/10 border border-mint/25 text-mint uppercase">' + cfg.badge + '</span>';
+
                 cardsHtml += '<div class="synth-section-card lux-card p-4 sm:p-5 mb-4 border ' + cfg.border + ' bg-gradient-to-b ' + cfg.bg + '" data-section="' + cfg.key + '">' +
                              '<div class="flex flex-wrap justify-between items-center gap-2 pb-3 mb-3 border-b border-white/5">' +
-                             '<div class="flex items-center gap-2.5"><span class="text-lg">' + cfg.icon + '</span><span class="text-sm font-extrabold ' + cfg.titleColor + ' uppercase tracking-wider">' + firstLine + '</span></div>' +
-                             '<div class="flex items-center gap-1.5"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 border border-amber-500/20 text-amber-400 uppercase">AI Synthesized</span><span class="px-2 py-0.5 rounded text-[10.5px] font-bold bg-white/5 border border-white/10 text-slate-300 uppercase">' + cfg.badge + '</span></div></div>' +
+                             '<div class="flex items-center gap-2.5"><span class="text-sm font-extrabold ' + cfg.titleColor + ' uppercase tracking-wider">' + firstLine + '</span></div>' +
+                             '<div class="flex items-center gap-1.5">' + synthBadge + catBadge + '</div></div>' +
                              '<div class="synth-body space-y-2 text-xs sm:text-sm text-slate-300 leading-relaxed">' + parsed + '</div></div>';
             }
             return metaHtml + cardsHtml;
