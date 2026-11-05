@@ -705,7 +705,7 @@ HTML_CONTENT = """<!DOCTYPE html>
           <span>AI Quant Agent</span>
         </button>
         <button onclick="switchTab('tab2')" id="btn-tab2" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
-          AI Trade Ideas
+          Automated Trade Ideas
         </button>
         <button onclick="switchTab('tab3')" id="btn-tab3" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Confirmation & Confluence
@@ -862,10 +862,10 @@ HTML_CONTENT = """<!DOCTYPE html>
           </div>
         </div>
 
-        <!-- Tab 2: AI Trade Ideas -->
+        <!-- Tab 2: Automated Trade Ideas -->
         <div id="tab2" class="tab-pane hidden">
             <div class="bg-white/[0.03] border border-white/5 rounded-xl p-3 mb-4 text-xs text-slate-400">
-                <b class="text-amber-500">Strict Confluence Rules:</b> Green conviction scores (+15 to +100) are reserved strictly for <b>Long Setups</b>. Red conviction scores (-15 to -100) are strictly flagged for <b>Distribution Fades or De-risking</b> to protect portfolio equity.
+                <b class="text-mint font-semibold">Strict Confluence Rules:</b> Green conviction scores (+15 to +100) are reserved strictly for <b>Long Setups</b>. Red conviction scores (-15 to -100) are strictly flagged for <b>Distribution Fades or De-risking</b> to protect portfolio equity.
             </div>
             <div id="tradeCardsContainer" class="grid grid-cols-1 xl:grid-cols-2 gap-3">
                 <div class="text-xs text-slate-400">Loading high-probability trade setups...</div>
@@ -1288,7 +1288,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         const TAB_NAMES = {
             'tab1': 'Daily Macro Briefing',
             'tab_agent': 'Interactive AI Quant Agent',
-            'tab2': 'AI Trade Ideas Desk',
+            'tab2': 'Automated Trade Ideas Desk',
             'tab3': 'Confirmation & Confluence Radar',
             'tab4': 'Mag 7 Granular Diagnostics',
             'tab5': 'Indexes & Sector Money Flow',

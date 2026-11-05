@@ -587,7 +587,7 @@ st.markdown("<div style='margin-bottom:12px;'></div>", unsafe_allow_html=True)
 tab1, tab_agent, tab2, tab3, tab4, tab5, tab6, tab7, tab_options = st.tabs([
     "Daily AI Macro Briefing",
     "Interactive AI Quant Agent",
-    "AI Trade Ideas",
+    "Automated Trade Ideas",
     "Confirmation & Confluence Radar",
     "Mag 7 Deep Dive & Realized Vol",
     "Indexes & Sector Money Flow",
@@ -770,14 +770,14 @@ with tab_agent:
                 st.markdown(response_text)
                 st.session_state["agent_chat"].append({"role": "assistant", "content": response_text})
 
-# ================= TAB 2: AI TRADE IDEAS =================
+# ================= TAB 2: AUTOMATED TRADE IDEAS =================
 with tab2:
     st.subheader("Algorithmic High-Probability Trade Setups")
     st.caption("Filtered by 7-Layer Confluence and 20-Year Historical Backtest Odds")
 
     st.markdown(
         '<div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:10px 14px; margin-bottom:18px; font-size:12.5px; color:#94a3b8;">'
-        '<b style="color:#f59e0b;">Strict Confluence Rules:</b> '
+        '<b style="color:#00F5A0;">Strict Confluence Rules:</b> '
         'Green conviction scores (+15 to +100) are reserved strictly for <b>Long Setups</b>. '
         'Red conviction scores (-15 to -100) are strictly flagged for <b>Distribution Fades or De-risking</b> to protect portfolio equity. '
         'Orderly dip buys require low relative volume and intact moving average support.'
