@@ -869,7 +869,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
     ))
     
     # Market Strikes Scatter
-    trace_color = '#00d2ff' if dir_clean == "Bullish" else '#f78166'
+    trace_color = '#00F5A0' if dir_clean == "Bullish" else '#FF2E55'
     fig.add_trace(go.Scatter(
         x=target_df['strike'], y=target_df['IV_Pct'],
         mode='markers',

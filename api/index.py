@@ -246,7 +246,7 @@ def api_ticker(ticker: str, horizon: str = Query("All Historical Data")):
     })
 
 @app.get("/api/options/{ticker}")
-def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Query("Buy")):
+def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Query("Buy"), expiration: str = Query(None)):
     try:
         t_up = ticker.upper()
         dir_clean = "Bullish" if "Bullish" in str(direction) else "Bearish"
@@ -261,8 +261,13 @@ def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Quer
         chains_list = term_df.to_dict('records')
         picks = scan_cross_chain_recommendations(t_up, chains_list, spot_price, direction=dir_clean, side=side_clean)
         
-        top_exp = term_df.iloc[0]['Expiration']
-        smile = analyze_smile_and_skew(t_up, top_exp, spot_price, direction=dir_clean, side=side_clean)
+        valid_exps = [str(e) for e in term_df['Expiration'].tolist()]
+        if expiration and expiration in valid_exps:
+            chosen_exp = expiration
+        else:
+            chosen_exp = valid_exps[0]
+            
+        smile = analyze_smile_and_skew(t_up, chosen_exp, spot_price, direction=dir_clean, side=side_clean)
         smile_payload = None
         if smile:
             target_df = smile['target_df']
@@ -271,7 +276,7 @@ def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Quer
             x_strikes_smooth = spot_price * np.exp(k_smooth)
             top_edges = smile['top_strikes']['Bid_Edge'] if side_clean == 'Sell' else smile['top_strikes']['Ask_Edge']
             smile_payload = {
-                "expiration": top_exp,
+                "expiration": chosen_exp,
                 "dte": smile['dte'],
                 "exp_move": round(smile['exp_move'], 2),
                 "model_strikes": [round(float(s), 2) for s in x_strikes_smooth],
@@ -286,6 +291,18 @@ def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Quer
                 "top_strikes_edge": [round(float(e), 2) for e in top_edges]
             }
             
+        expirations_list = [
+            {
+                "expiration": str(row['Expiration']),
+                "dte": int(row['DTE']),
+                "atm_iv": round(float(row.get('ATM_IV', 0)), 1),
+                "iv_hv_ratio": round(float(row.get('IV_HV_Ratio', 1.0)), 2),
+                "exp_move_pct": round(float(row.get('Expected_Move_Pct', 0)), 1),
+                "exp_move_dollars": round(float(row.get('Expected_Move', 0)), 2)
+            }
+            for _, row in term_df.iterrows()
+        ]
+            
         return clean_json({
             "ticker": t_up,
             "direction": dir_clean,
@@ -294,8 +311,61 @@ def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Quer
             "next_earnings": next_earnings.strftime("%b %d, %Y") if next_earnings else None,
             "hvs": hvs,
             "term_chains": chains_list[:8],
+            "expirations": expirations_list,
+            "selected_expiration": chosen_exp,
             "picks": picks,
             "smile": smile_payload
+        })
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/options/{ticker}/smile")
+def api_options_smile(ticker: str, expiration: str = Query(...), direction: str = Query("Bullish"), side: str = Query("Buy"), spot: float = Query(None)):
+    try:
+        t_up = ticker.upper()
+        dir_clean = "Bullish" if "Bullish" in str(direction) else "Bearish"
+        side_clean = "Sell" if "Sell" in str(side) else "Buy"
+        from options_engine import analyze_smile_and_skew
+        spot_price = spot
+        if spot_price is None or spot_price <= 0:
+            df_hist = load_ticker_data(t_up)
+            if not df_hist.empty:
+                spot_price = float(df_hist['Close'].iloc[-1])
+            else:
+                import yfinance as yf
+                t = yf.Ticker(t_up)
+                spot_price = float(t.fast_info.last_price or t.fast_info.previous_close)
+                
+        smile = analyze_smile_and_skew(t_up, expiration, spot_price, direction=dir_clean, side=side_clean)
+        if not smile:
+            return {"error": f"Could not construct volatility smile for {expiration}"}
+            
+        target_df = smile['target_df']
+        k_smooth = np.linspace(target_df['Log_Moneyness'].min(), target_df['Log_Moneyness'].max(), 50)
+        y_smooth = np.polyval(smile['poly_coeffs_k'], k_smooth)
+        x_strikes_smooth = spot_price * np.exp(k_smooth)
+        top_edges = smile['top_strikes']['Bid_Edge'] if side_clean == 'Sell' else smile['top_strikes']['Ask_Edge']
+        
+        return clean_json({
+            "ticker": t_up,
+            "direction": dir_clean,
+            "side": side_clean,
+            "spot_price": round(spot_price, 2),
+            "smile": {
+                "expiration": expiration,
+                "dte": smile['dte'],
+                "exp_move": round(smile['exp_move'], 2),
+                "model_strikes": [round(float(s), 2) for s in x_strikes_smooth],
+                "model_iv": [round(float(iv), 2) for iv in y_smooth],
+                "market_strikes": [round(float(s), 2) for s in target_df['strike']],
+                "market_iv": [round(float(iv), 2) for iv in target_df['IV_Pct']],
+                "market_ask_iv": [round(float(iv), 2) for iv in target_df['Ask_IV_Pct']],
+                "market_bid_iv": [round(float(iv), 2) for iv in target_df['Bid_IV_Pct']],
+                "top_strikes": [round(float(s), 2) for s in smile['top_strikes']['strike']],
+                "top_strikes_iv": [round(float(iv), 2) for iv in smile['top_strikes']['IV_Pct']],
+                "top_strikes_delta": [round(float(d), 2) for d in smile['top_strikes'].get('Est_Delta', [0]*len(smile['top_strikes']))],
+                "top_strikes_edge": [round(float(e), 2) for e in top_edges]
+            }
         })
     except Exception as e:
         return {"error": str(e)}
@@ -1140,12 +1210,19 @@ HTML_CONTENT = """<!DOCTYPE html>
 
             <!-- Volatility Smile & Skew Inspector Chart -->
             <div class="lux-card p-4 mb-4">
-                <div class="flex justify-between items-center mb-3">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
                     <div>
                         <h4 class="text-sm font-bold text-white flex items-center gap-1.5">
                             Volatility Smile & Fitted Asymmetric Skew Curve
                         </h4>
                         <p class="text-[11px] text-slate-400" id="optionsSmileSubtitle">Showing nearest active expiration chain, degree-3 log-moneyness skew, and 1σ expected move boundary</p>
+                    </div>
+                    <!-- Expiration Date Slicer / Selector -->
+                    <div class="flex items-center gap-2">
+                        <label for="optionsExpSelect" class="text-xs font-bold text-slate-400 whitespace-nowrap">Expiration Date:</label>
+                        <select id="optionsExpSelect" onchange="onExpirationChange(this.value)" class="bg-[#0b0d12] text-xs font-semibold text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-mint min-w-[210px]">
+                            <option value="">Nearest Active Chain</option>
+                        </select>
                     </div>
                 </div>
                 <div id="optionsSmileChart" style="height: 420px;"></div>
@@ -2662,6 +2739,9 @@ async function init() {
 
         let CURRENT_OPTIONS_DIR = "Bullish";
         let CURRENT_OPTIONS_SIDE = "Buy";
+        let CURRENT_OPTIONS_EXPIRATION = "";
+        let CURRENT_OPTIONS_SPOT = 0;
+        let CURRENT_OPTIONS_TICKER = "QQQ";
 
         function setOptionsSide(side) {
             CURRENT_OPTIONS_SIDE = side;
@@ -2708,7 +2788,9 @@ async function init() {
             cardsContainer.innerHTML = `<div class="col-span-full py-8 text-center text-xs text-slate-500 animate-pulse">Calculating ${isBuy ? 'Ask-IV inversion' : 'Bid-IV premium'} and log-moneyness skew curve...</div>`;
 
             try {
-                const res = await fetch(`/api/options/${ticker}?direction=${encodeURIComponent(CURRENT_OPTIONS_DIR)}&side=${encodeURIComponent(CURRENT_OPTIONS_SIDE)}`);
+                CURRENT_OPTIONS_TICKER = ticker;
+                const expParam = CURRENT_OPTIONS_EXPIRATION ? `&expiration=${encodeURIComponent(CURRENT_OPTIONS_EXPIRATION)}` : '';
+                const res = await fetch(`/api/options/${ticker}?direction=${encodeURIComponent(CURRENT_OPTIONS_DIR)}&side=${encodeURIComponent(CURRENT_OPTIONS_SIDE)}${expParam}`);
                 const data = await res.json();
                 if (data.error) {
                     kpiRow.innerHTML = `<div class="col-span-full text-xs text-amber-400 bg-amber-500/10 p-3 rounded-lg border border-amber-500/20">${data.error}</div>`;
@@ -2840,79 +2922,123 @@ async function init() {
                     }).join('');
                 }
 
+                CURRENT_OPTIONS_SPOT = spot;
+                CURRENT_OPTIONS_EXPIRATION = data.selected_expiration || (data.smile ? data.smile.expiration : '');
+
+                // Populate Expiration Date Slicer
+                const expSelect = document.getElementById('optionsExpSelect');
+                if (expSelect && data.expirations && data.expirations.length > 0) {
+                    expSelect.innerHTML = data.expirations.map(exp => `
+                        <option value="${exp.expiration}" ${exp.expiration === CURRENT_OPTIONS_EXPIRATION ? 'selected' : ''}>
+                            ${exp.expiration}  |  ${exp.dte}d DTE  |  ATM IV: ${exp.atm_iv}%  |  ±$${exp.exp_move_dollars}
+                        </option>
+                    `).join('');
+                }
+
                 // Render Smile Chart
                 if (data.smile) {
-                    const s = data.smile;
-                    document.getElementById('optionsSmileSubtitle').innerText = 
-                        `Showing ${s.expiration} (${s.dte}d DTE) | Market 1σ Expected Move: ±$${s.exp_move} | ${isBuy ? 'Buy Side (Ask Edge)' : 'Sell Side (Bid Edge)'}`;
-
-                    const traceModel = {
-                        x: s.model_strikes, y: s.model_iv,
-                        name: 'Model Fair Skew (Asymmetric Cubic)',
-                        type: 'scatter', mode: 'lines',
-                        line: { color: '#94a3b8', width: 2, dash: 'dash' }
-                    };
-                    const traceMarket = {
-                        x: s.market_strikes, y: s.market_iv,
-                        name: `${data.direction} Market Mid IV`,
-                        type: 'scatter', mode: 'markers',
-                        marker: { color: CURRENT_OPTIONS_DIR === 'Bullish' ? '#38bdf8' : '#f87171', size: 7, opacity: 0.8 }
-                    };
-                    const traceSpreadLine = isBuy ? {
-                        x: s.market_strikes, y: s.market_ask_iv,
-                        name: 'Effective Ask IV (Cost to Buy)',
-                        type: 'scatter', mode: 'lines',
-                        line: { color: 'rgba(234, 179, 8, 0.45)', width: 1.5 }
-                    } : {
-                        x: s.market_strikes, y: s.market_bid_iv,
-                        name: 'Effective Bid IV (Selling Price)',
-                        type: 'scatter', mode: 'lines',
-                        line: { color: 'rgba(56, 189, 248, 0.45)', width: 1.5 }
-                    };
-
-                    const traceHighlightStrikes = {
-                        x: s.top_strikes || [],
-                        y: s.top_strikes_iv || [],
-                        name: isBuy ? '🟢 Recommended Buy Strikes' : '🔴 Recommended Sell Strikes',
-                        type: 'scatter',
-                        mode: 'markers+text',
-                        marker: {
-                            color: isBuy ? '#00F5A0' : '#FF2E55',
-                            size: 16,
-                            symbol: 'circle',
-                            line: { color: '#ffffff', width: 2.5 }
-                        },
-                        text: (s.top_strikes || []).map(st => isBuy ? `🟢 Buy $${st}` : `🔴 Sell $${st}`),
-                        textposition: 'bottom center',
-                        textfont: { color: isBuy ? '#00F5A0' : '#FF2E55', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
-                        hovertemplate: isBuy ? '<b>🟢 VALUE BUY STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>' : '<b>🔴 PREMIUM SELL STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>'
-                    };
-
-                    const layout = {
-                        plot_bgcolor: "#0D0F14",
-                        paper_bgcolor: "#0D0F14",
-                        font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 11 },
-                        margin: { l: 45, r: 25, t: 30, b: 35 },
-                        xaxis: { title: "Strike Price ($)", gridcolor: "#1B212D" },
-                        yaxis: { title: "Implied Volatility (%)", gridcolor: "#1B212D" },
-                        legend: { orientation: "h", y: 1.12, x: 1, xanchor: "right" },
-                        shapes: [
-                            {
-                                type: 'line', x0: spot, x1: spot, y0: 0, y1: 1, yref: 'paper',
-                                line: { color: '#60a5fa', width: 1.5, dash: 'dot' }
-                            },
-                            {
-                                type: 'rect', x0: spot - s.exp_move, x1: spot + s.exp_move, y0: 0, y1: 1, yref: 'paper',
-                                fillcolor: 'rgba(96, 165, 250, 0.06)', line: { width: 0 }
-                            }
-                        ]
-                    };
-                    Plotly.newPlot('optionsSmileChart', [traceModel, traceMarket, traceSpreadLine, traceHighlightStrikes], layout, {responsive: true});
+                    renderSmileChart(data.smile, CURRENT_OPTIONS_DIR, isBuy, spot);
                 }
 
             } catch (err) {
                 kpiRow.innerHTML = `<div class="col-span-full text-xs text-cherry bg-cherry/10 p-3 rounded-lg border border-cherry/20">Error loading options desk: ${err.message}</div>`;
                 cardsContainer.innerHTML = '';
+            }
+        }
+
+        function renderSmileChart(s, direction, isBuy, spot) {
+            if (!s) return;
+            const subEl = document.getElementById('optionsSmileSubtitle');
+            if (subEl) {
+                subEl.innerText = `Showing ${s.expiration} (${s.dte}d DTE) | Market 1σ Expected Move: ±$${s.exp_move} | ${isBuy ? 'Buy Side (Ask Edge)' : 'Sell Side (Bid Edge)'}`;
+            }
+
+            const traceModel = {
+                x: s.model_strikes, y: s.model_iv,
+                name: 'Model Fair Skew (Asymmetric Cubic)',
+                type: 'scatter', mode: 'lines',
+                line: { color: '#94a3b8', width: 2, dash: 'dash' }
+            };
+            const traceMarket = {
+                x: s.market_strikes, y: s.market_iv,
+                name: `${direction} Market Mid IV`,
+                type: 'scatter', mode: 'markers',
+                marker: { color: direction === 'Bullish' ? '#00F5A0' : '#FF2E55', size: 7, opacity: 0.85 }
+            };
+            const traceSpreadLine = isBuy ? {
+                x: s.market_strikes, y: s.market_ask_iv,
+                name: 'Effective Ask IV (Cost to Buy)',
+                type: 'scatter', mode: 'lines',
+                line: { color: 'rgba(234, 179, 8, 0.55)', width: 1.5 }
+            } : {
+                x: s.market_strikes, y: s.market_bid_iv,
+                name: 'Effective Bid IV (Selling Price)',
+                type: 'scatter', mode: 'lines',
+                line: { color: 'rgba(0, 245, 160, 0.55)', width: 1.5 }
+            };
+
+            const traceHighlightStrikes = {
+                x: s.top_strikes || [],
+                y: s.top_strikes_iv || [],
+                name: isBuy ? '🟢 Recommended Buy Strikes' : '🔴 Recommended Sell Strikes',
+                type: 'scatter',
+                mode: 'markers+text',
+                marker: {
+                    color: isBuy ? '#00F5A0' : '#FF2E55',
+                    size: 16,
+                    symbol: 'circle',
+                    line: { color: '#ffffff', width: 2.5 }
+                },
+                text: (s.top_strikes || []).map(st => isBuy ? `🟢 Buy $${st}` : `🔴 Sell $${st}`),
+                textposition: 'bottom center',
+                textfont: { color: isBuy ? '#00F5A0' : '#FF2E55', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
+                hovertemplate: isBuy ? '<b>🟢 VALUE BUY STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>' : '<b>🔴 PREMIUM SELL STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>'
+            };
+
+            const layout = {
+                plot_bgcolor: "#0D0F14",
+                paper_bgcolor: "#0D0F14",
+                font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 11 },
+                margin: { l: 45, r: 25, t: 30, b: 35 },
+                xaxis: { title: "Strike Price ($)", gridcolor: "#1B212D" },
+                yaxis: { title: "Implied Volatility (%)", gridcolor: "#1B212D" },
+                legend: { orientation: "h", y: 1.12, x: 1, xanchor: "right" },
+                shapes: [
+                    {
+                        type: 'line', x0: spot, x1: spot, y0: 0, y1: 1, yref: 'paper',
+                        line: { color: '#00F5A0', width: 1.5, dash: 'dot' }
+                    },
+                    {
+                        type: 'rect', x0: spot - s.exp_move, x1: spot + s.exp_move, y0: 0, y1: 1, yref: 'paper',
+                        fillcolor: 'rgba(0, 245, 160, 0.05)', line: { width: 0 }
+                    }
+                ]
+            };
+            Plotly.newPlot('optionsSmileChart', [traceModel, traceMarket, traceSpreadLine, traceHighlightStrikes], layout, {responsive: true});
+        }
+
+        async function onExpirationChange(expDate) {
+            if (!expDate) return;
+            CURRENT_OPTIONS_EXPIRATION = expDate;
+            const ticker = CURRENT_OPTIONS_TICKER || document.getElementById('optionsTickerSelect').value || 'QQQ';
+            const subEl = document.getElementById('optionsSmileSubtitle');
+            if (subEl) {
+                subEl.innerHTML = `<span class="inline-block animate-spin text-mint font-mono">↻</span> Fetching live smile & fitted asymmetric skew for ${expDate}...`;
+            }
+
+            try {
+                const res = await fetch(`/api/options/${ticker}/smile?expiration=${encodeURIComponent(expDate)}&direction=${encodeURIComponent(CURRENT_OPTIONS_DIR)}&side=${encodeURIComponent(CURRENT_OPTIONS_SIDE)}&spot=${CURRENT_OPTIONS_SPOT || 0}`);
+                const data = await res.json();
+                if (data.error) {
+                    if (subEl) subEl.innerText = `Error: ${data.error}`;
+                    return;
+                }
+                if (data.smile) {
+                    const isBuy = CURRENT_OPTIONS_SIDE === 'Buy';
+                    renderSmileChart(data.smile, CURRENT_OPTIONS_DIR, isBuy, data.spot_price || CURRENT_OPTIONS_SPOT);
+                }
+            } catch (err) {
+                if (subEl) subEl.innerText = `Error loading skew: ${err.message}`;
             }
         }
 
