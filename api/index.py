@@ -715,7 +715,7 @@ HTML_CONTENT = """<!DOCTYPE html>
           Indexes & Sector Flow
         </button>
         <button onclick="switchTab('tab4')" id="btn-tab4" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
-          Magnificent 7 Flow
+          Magnificant 7 Flow
         </button>
         <button onclick="switchTab('tab6')" id="btn-tab6" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Synthetic Ratio Rotations
