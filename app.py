@@ -541,7 +541,7 @@ tab1, tab_agent, tab2, tab3, tab4, tab5, tab6, tab7, tab_options = st.tabs([
     "🔄 Indexes & Sector Money Flow",
     "📈 Key Ratio & Breadth Radar",
     "🔍 Single Ticker Explorer",
-    "🎯 Cheap IV & Strike Selector"
+    "🎯 Volatility Pricing"
 ])
 
 # ================= TAB 1: DAILY AI MACRO BRIEFING =================
@@ -1282,7 +1282,7 @@ with tab7:
 
         st.plotly_chart(fig_combined, use_container_width=True)
 
-# ================= TAB 9: CHEAP IV & STRIKE SELECTOR =================
+# ================= TAB 9: VOLATILITY PRICING =================
 with tab_options:
     render_options_vol_page(get_available_tickers(), load_ticker_data)
 

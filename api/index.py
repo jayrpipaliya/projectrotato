@@ -238,10 +238,11 @@ def api_ticker(ticker: str, horizon: str = Query("All Historical Data")):
     })
 
 @app.get("/api/options/{ticker}")
-def api_options(ticker: str, direction: str = Query("Bullish")):
+def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Query("Buy")):
     try:
         t_up = ticker.upper()
         dir_clean = "Bullish" if "Bullish" in str(direction) else "Bearish"
+        side_clean = "Sell" if "Sell" in str(side) else "Buy"
         from options_engine import compute_realized_volatilities, fetch_term_structure, scan_cross_chain_recommendations, analyze_smile_and_skew
         df_hist = load_ticker_data(t_up)
         hvs = compute_realized_volatilities(df_hist, ticker_symbol=t_up)
@@ -249,17 +250,18 @@ def api_options(ticker: str, direction: str = Query("Bullish")):
         if term_df.empty or spot_price is None:
             return {"error": f"Live options data not available for {t_up}"}
             
-        cheap_chains = term_df.to_dict('records')
-        picks = scan_cross_chain_recommendations(t_up, cheap_chains, spot_price, direction=dir_clean)
+        chains_list = term_df.to_dict('records')
+        picks = scan_cross_chain_recommendations(t_up, chains_list, spot_price, direction=dir_clean, side=side_clean)
         
         top_exp = term_df.iloc[0]['Expiration']
-        smile = analyze_smile_and_skew(t_up, top_exp, spot_price, direction=dir_clean)
+        smile = analyze_smile_and_skew(t_up, top_exp, spot_price, direction=dir_clean, side=side_clean)
         smile_payload = None
         if smile:
             target_df = smile['target_df']
             k_smooth = np.linspace(target_df['Log_Moneyness'].min(), target_df['Log_Moneyness'].max(), 50)
             y_smooth = np.polyval(smile['poly_coeffs_k'], k_smooth)
             x_strikes_smooth = spot_price * np.exp(k_smooth)
+            top_edges = smile['top_strikes']['Bid_Edge'] if side_clean == 'Sell' else smile['top_strikes']['Ask_Edge']
             smile_payload = {
                 "expiration": top_exp,
                 "dte": smile['dte'],
@@ -269,19 +271,21 @@ def api_options(ticker: str, direction: str = Query("Bullish")):
                 "market_strikes": [round(float(s), 2) for s in target_df['strike']],
                 "market_iv": [round(float(iv), 2) for iv in target_df['IV_Pct']],
                 "market_ask_iv": [round(float(iv), 2) for iv in target_df['Ask_IV_Pct']],
+                "market_bid_iv": [round(float(iv), 2) for iv in target_df['Bid_IV_Pct']],
                 "top_strikes": [round(float(s), 2) for s in smile['top_strikes']['strike']],
                 "top_strikes_iv": [round(float(iv), 2) for iv in smile['top_strikes']['IV_Pct']],
                 "top_strikes_delta": [round(float(d), 2) for d in smile['top_strikes'].get('Est_Delta', [0]*len(smile['top_strikes']))],
-                "top_strikes_edge": [round(float(e), 2) for e in smile['top_strikes'].get('Ask_Edge', [0]*len(smile['top_strikes']))]
+                "top_strikes_edge": [round(float(e), 2) for e in top_edges]
             }
             
         return clean_json({
             "ticker": t_up,
             "direction": dir_clean,
+            "side": side_clean,
             "spot_price": round(spot_price, 2),
             "next_earnings": next_earnings.strftime("%b %d, %Y") if next_earnings else None,
             "hvs": hvs,
-            "term_chains": cheap_chains[:8],
+            "term_chains": chains_list[:8],
             "picks": picks,
             "smile": smile_payload
         })
@@ -712,7 +716,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         </button>
         <button onclick="switchTab('tab_options')" id="btn-tab_options" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0 flex items-center space-x-1.5">
           <span class="w-1.5 h-1.5 rounded-full bg-cherry shadow-[0_0_6px_#FF2E55]"></span>
-          <span>Cheap IV & Strikes</span>
+          <span>Volatility Pricing</span>
         </button>
       </nav>
 <!-- Tab Agent: Interactive AI Quant Agent -->
@@ -978,18 +982,18 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
         </div>
 
-        <!-- Tab Options: Cheap IV & Strike Selector -->
+        <!-- Tab Options: Volatility Pricing Desk -->
         <div id="tab_options" class="tab-pane hidden">
             <div class="lux-card p-5 mb-5 border border-emerald-500/20 bg-gradient-to-r from-emerald-950/20 via-[#0d1117] to-slate-900/40">
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                     <div>
                         <div class="flex items-center gap-2">
                             <span class="text-xl">🎯</span>
-                            <h2 class="text-lg font-black text-white tracking-wide">Institutional Cheap IV & Strike Selection Desk</h2>
+                            <h2 class="text-lg font-black text-white tracking-wide">Institutional Volatility Pricing Desk</h2>
                             <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Live Options Vol</span>
                         </div>
                         <p class="text-xs text-slate-400 mt-1 max-w-2xl">
-                            Institutional volatility architecture: De-jumps historical volatility to eliminate post-earnings distortions, scales calendar-to-trading annualization (sqrt(252/365)), models Asymmetric Log-Moneyness Skew, and executes Vega-based Ask-IV inversion.
+                            Institutional volatility architecture: Switch between <b>Buy Side (Ask Edge)</b> for underpriced cheap IV and <b>Sell Side (Bid Edge)</b> for overpriced premium harvesting. De-jumps historical volatility, models Asymmetric Log-Moneyness Skew, and executes full Bid/Ask spread inversion.
                         </p>
                     </div>
                     
@@ -1086,6 +1090,14 @@ HTML_CONTENT = """<!DOCTYPE html>
                         </div>
                         
                         <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Execution Side</label>
+                            <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="optionsSideGroup">
+                                <button onclick="setOptionsSide('Buy')" id="btnOptBuy" class="px-3 py-1 rounded font-bold transition bg-emerald-500/20 text-emerald-400">🟢 Buy (Ask Edge)</button>
+                                <button onclick="setOptionsSide('Sell')" id="btnOptSell" class="px-3 py-1 rounded font-bold transition text-slate-400">🔴 Sell (Bid Edge)</button>
+                            </div>
+                        </div>
+
+                        <div>
                             <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Direction</label>
                             <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="optionsDirGroup">
                                 <button onclick="setOptionsDirection('Bullish')" id="btnOptBullish" class="px-3 py-1 rounded font-bold transition bg-emerald-500/20 text-emerald-400">🟢 Bullish (Calls)</button>
@@ -1110,10 +1122,10 @@ HTML_CONTENT = """<!DOCTYPE html>
             <!-- Cross-Chain Recommendations Header -->
             <div class="flex justify-between items-center mb-3">
                 <div>
-                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2" id="optionsRecHeaderTitle">
                         <span>🏆</span> Top Recommended Cheap IV Contracts Across Different Expirations
                     </h3>
-                    <p class="text-[11px] text-slate-400">Guaranteed multi-expiry diversity: Evaluates term cheapness ($IV/HV$), Ask-Edge (edge after crossing the bid-ask spread), delta sweet-spot (~0.38), and liquidity.</p>
+                    <p class="text-[11px] text-slate-400" id="optionsRecHeaderSubtitle">Guaranteed multi-expiry diversity: Evaluates term pricing ($IV/HV$), execution edge (Ask-Edge or Bid-Edge), delta positioning, and liquidity.</p>
                 </div>
             </div>
 
@@ -1275,7 +1287,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             'tab5': 'Indexes & Sector Money Flow',
             'tab6': 'Key Ratio & Breadth Radar',
             'tab7': 'Single Ticker Explorer',
-            'tab_options': 'Cheap IV & Strike Selector'
+            'tab_options': 'Volatility Pricing'
         };
 
         function switchTab(tabId) {
@@ -1695,10 +1707,10 @@ async function init() {
                 html += `
                     <div class="stealth-card p-2.5 space-y-1.5 overflow-hidden">
                         <div class="flex items-center justify-between gap-1 overflow-hidden min-w-0">
-                            <div class="text-[9.5px] font-bold text-slate-200 whitespace-nowrap tracking-tight shrink-0 flex items-center gap-1" title="${c.ticker} • ${c.name}">
-                                <span>${c.ticker}</span><span class="text-slate-400 font-normal text-[8.5px] tracking-tight">• ${c.name}</span>
+                            <div class="text-[9px] font-bold text-slate-200 whitespace-nowrap tracking-tighter shrink-0 flex items-center gap-0.5" title="${c.ticker} • ${c.name}">
+                                <span>${c.ticker}</span><span class="text-slate-400 font-normal text-[8px] tracking-tighter">• ${c.name}</span>
                             </div>
-                            <span class="${badgeClass} px-1 py-0.5 rounded text-[8.5px] font-semibold tabular-num shrink-0">${sign}${Number(p1d).toFixed(2)}%</span>
+                            <span class="${badgeClass} px-1 py-0.5 rounded text-[8px] font-semibold tabular-num shrink-0">${sign}${Number(p1d).toFixed(2)}%</span>
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-xl font-bold text-white tracking-tight tabular-num">$${Number(c.price || 0).toFixed(2)}</span>
@@ -2579,6 +2591,28 @@ async function init() {
         }
 
         let CURRENT_OPTIONS_DIR = "Bullish";
+        let CURRENT_OPTIONS_SIDE = "Buy";
+
+        function setOptionsSide(side) {
+            CURRENT_OPTIONS_SIDE = side;
+            const btnBuy = document.getElementById('btnOptBuy');
+            const btnSell = document.getElementById('btnOptSell');
+            const titleEl = document.getElementById('optionsRecHeaderTitle');
+            const subEl = document.getElementById('optionsRecHeaderSubtitle');
+
+            if (side === 'Buy') {
+                if (btnBuy) btnBuy.className = "px-3 py-1 rounded font-bold transition bg-emerald-500/20 text-emerald-400";
+                if (btnSell) btnSell.className = "px-3 py-1 rounded font-bold transition text-slate-400";
+                if (titleEl) titleEl.innerHTML = `<span>🏆</span> Top Recommended Cheap IV Contracts Across Different Expirations`;
+                if (subEl) subEl.innerText = "Guaranteed multi-expiry diversity: Evaluates term cheapness (IV/HV), Ask-Edge (edge after crossing the spread to buy at Ask), and liquidity.";
+            } else {
+                if (btnSell) btnSell.className = "px-3 py-1 rounded font-bold transition bg-rose-500/20 text-rose-400";
+                if (btnBuy) btnBuy.className = "px-3 py-1 rounded font-bold transition text-slate-400";
+                if (titleEl) titleEl.innerHTML = `<span>🏆</span> Top Recommended Overpriced Premium Sells (Bid Edge)`;
+                if (subEl) subEl.innerText = "Harvest elevated premium: Evaluates rich term IV (IV/HV), Bid-Edge (edge after crossing spread to sell at Bid), and downside cushion.";
+            }
+            loadOptionsDesk();
+        }
 
         function setOptionsDirection(dir) {
             CURRENT_OPTIONS_DIR = dir;
@@ -2598,12 +2632,13 @@ async function init() {
             const ticker = document.getElementById('optionsTickerSelect').value || 'QQQ';
             const kpiRow = document.getElementById('optionsKpiRow');
             const cardsContainer = document.getElementById('optionsRecCards');
+            const isBuy = CURRENT_OPTIONS_SIDE === 'Buy';
             
-            kpiRow.innerHTML = `<div class="col-span-full py-4 text-center text-xs text-slate-400">Scanning live option chains, IV skew, and historical volatilities for <b>${ticker}</b>...</div>`;
-            cardsContainer.innerHTML = `<div class="col-span-full py-8 text-center text-xs text-slate-500 animate-pulse">Calculating Ask-IV inversion and log-moneyness skew curve...</div>`;
+            kpiRow.innerHTML = `<div class="col-span-full py-4 text-center text-xs text-slate-400">Scanning live option chains, IV skew, and historical volatilities for <b>${ticker}</b> (${CURRENT_OPTIONS_SIDE} Side)...</div>`;
+            cardsContainer.innerHTML = `<div class="col-span-full py-8 text-center text-xs text-slate-500 animate-pulse">Calculating ${isBuy ? 'Ask-IV inversion' : 'Bid-IV premium'} and log-moneyness skew curve...</div>`;
 
             try {
-                const res = await fetch(`/api/options/${ticker}?direction=${encodeURIComponent(CURRENT_OPTIONS_DIR)}`);
+                const res = await fetch(`/api/options/${ticker}?direction=${encodeURIComponent(CURRENT_OPTIONS_DIR)}&side=${encodeURIComponent(CURRENT_OPTIONS_SIDE)}`);
                 const data = await res.json();
                 if (data.error) {
                     kpiRow.innerHTML = `<div class="col-span-full text-xs text-amber-400 bg-amber-500/10 p-3 rounded-lg border border-amber-500/20">${data.error}</div>`;
@@ -2647,15 +2682,11 @@ async function init() {
                 // Render Recommendations Cards
                 const picks = data.picks || [];
                 if (picks.length === 0) {
-                    cardsContainer.innerHTML = `<div class="col-span-full text-center text-xs text-slate-400 py-6">No liquid cheap contracts identified matching criteria.</div>`;
+                    cardsContainer.innerHTML = `<div class="col-span-full text-center text-xs text-slate-400 py-6">No liquid ${isBuy ? 'cheap' : 'overpriced'} contracts identified matching criteria.</div>`;
                 } else {
                     cardsContainer.innerHTML = picks.map((p, idx) => {
-                        const isCall = CURRENT_OPTIONS_DIR === 'Bullish';
+                        const isCall = isBuy ? (CURRENT_OPTIONS_DIR === 'Bullish') : (CURRENT_OPTIONS_DIR === 'Bearish');
                         const cType = isCall ? 'Call' : 'Put';
-                        const edgeColor = p.Ask_Edge >= 0 ? 'text-emerald-400' : 'text-amber-400';
-                        const edgeSign = p.Ask_Edge >= 0 ? '+' : '';
-                        const beVal = isCall ? (p.strike + p.ask) : Math.max(p.strike - p.ask, 0.01);
-                        const beDiff = ((beVal / spot) - 1) * 100;
                         
                         let hTag = '⚡ Tactical (10–21d)';
                         let badgeColor = 'text-sky-400';
@@ -2665,12 +2696,53 @@ async function init() {
 
                         const evTag = p.Spans_Earnings ? '⚡ Spans Earnings' : '📅 Inter-Earnings';
                         const evColor = p.Spans_Earnings ? 'bg-amber-500/15 text-amber-400' : 'bg-sky-500/10 text-sky-400';
+                        const spreadBadge = p.Spread_Quality || '🟢 Tight';
+
+                        let edgeVal, edgeColor, edgeSign, ivVal, actionHtml, extraHtml, pickBadge, wingHtml = '';
+                        
+                        if (isBuy) {
+                            edgeVal = p.Ask_Edge !== undefined ? p.Ask_Edge : 0;
+                            edgeColor = edgeVal >= 0 ? 'text-emerald-400' : 'text-amber-400';
+                            edgeSign = edgeVal >= 0 ? '+' : '';
+                            ivVal = (p.Ask_IV_Pct !== undefined ? p.Ask_IV_Pct : p.IV_Pct).toFixed(1);
+                            const beVal = isCall ? (p.strike + p.ask) : Math.max(p.strike - p.ask, 0.01);
+                            const beDiff = ((beVal / spot) - 1) * 100;
+                            pickBadge = `<span class="bg-emerald-500/15 text-emerald-400 text-[10px] px-2 py-0.5 rounded font-bold">Pick #${idx + 1} • Buy</span>`;
+                            actionHtml = `<div>Ask (Cost): <b class="text-emerald-400">$${p.ask.toFixed(2)}</b> ($${Math.round(p.ask * 100)}/ct)</div>`;
+                            extraHtml = `<div>Breakeven: <b class="text-slate-200">$${beVal.toFixed(2)} (${beDiff >= 0 ? '+' : ''}${beDiff.toFixed(1)}%)</b> • ${spreadBadge}</div>`;
+                        } else {
+                            edgeVal = p.Bid_Edge !== undefined ? p.Bid_Edge : 0;
+                            edgeColor = edgeVal >= 0 ? 'text-emerald-400' : 'text-amber-400';
+                            edgeSign = edgeVal >= 0 ? '+' : '';
+                            ivVal = (p.Bid_IV_Pct !== undefined ? p.Bid_IV_Pct : p.IV_Pct).toFixed(1);
+                            const cushionPct = (Math.abs(p.strike - spot) / spot) * 100;
+                            pickBadge = `<span class="bg-rose-500/15 text-rose-400 text-[10px] px-2 py-0.5 rounded font-bold">Pick #${idx + 1} • Sell</span>`;
+                            actionHtml = `<div>Bid (Credit): <b class="text-emerald-400">$${p.bid.toFixed(2)}</b> ($${Math.round(p.bid * 100)}/ct collected)</div>`;
+                            extraHtml = `<div>Safety Cushion: <b class="text-slate-200">${cushionPct.toFixed(1)}% buffer</b> • ${spreadBadge}</div>`;
+                            
+                            if (p.Wing_Strike) {
+                                wingHtml = `
+                                <div class="mt-2.5 p-2 bg-white/[0.02] border border-dashed border-white/10 rounded text-[10.5px]">
+                                    <div class="text-sky-300 font-semibold flex items-center justify-between">
+                                        <span>🛡️ Hedged Spread Wing:</span>
+                                        <span class="text-white font-mono">+$${Number(p.Wing_Strike).toFixed(0)} ${cType}</span>
+                                    </div>
+                                    <div class="text-slate-300 mt-1 flex justify-between">
+                                        <span>Net Credit: <b class="text-emerald-400">$${Number(p.Net_Credit).toFixed(2)}</b> ($${Math.round(p.Net_Credit*100)}/ct)</span>
+                                        <span>Max Risk: <b>$${Number(p.Max_Risk).toFixed(2)}</b></span>
+                                    </div>
+                                    <div class="text-slate-400 text-[10px] mt-0.5 text-right">
+                                        Return on Risk: <b class="text-emerald-400 font-mono">${Number(p.RoR_Pct).toFixed(1)}%</b>
+                                    </div>
+                                </div>`;
+                            }
+                        }
 
                         return `
                         <div class="lux-card p-4 border border-white/5 hover:border-emerald-500/40 transition">
                             <div class="flex justify-between items-center mb-1">
                                 <span class="text-base font-extrabold text-white">$${p.strike.toFixed(0)} ${cType}</span>
-                                <span class="bg-emerald-500/15 text-emerald-400 text-[10px] px-2 py-0.5 rounded font-bold">Pick #${idx + 1}</span>
+                                ${pickBadge}
                             </div>
                             <div class="flex items-center gap-2 mb-2">
                                 <span class="text-[11px] font-semibold ${badgeColor}">${hTag}</span>
@@ -2681,16 +2753,17 @@ async function init() {
                                 <span class="text-[11px] ${p.Within_1_Sigma ? 'text-emerald-400' : 'text-slate-400'}">${p.Within_1_Sigma ? '🎯 In 1σ' : '🚀 Out 1σ'}</span>
                             </div>
                             <div class="grid grid-cols-2 gap-2 text-xs mb-3">
-                                <div><span class="text-slate-400 text-[11px]">Ask IV:</span> <b class="text-white">${p.Ask_IV_Pct.toFixed(1)}%</b></div>
+                                <div><span class="text-slate-400 text-[11px]">${isBuy ? 'Ask IV:' : 'Bid IV:'}</span> <b class="text-white">${ivVal}%</b></div>
                                 <div><span class="text-slate-400 text-[11px]">IV/HV:</span> <b class="text-white">${p.IV_HV_Ratio}x</b></div>
-                                <div><span class="text-slate-400 text-[11px]">Ask Edge:</span> <b class="${edgeColor}">${edgeSign}${p.Ask_Edge.toFixed(2)}%</b></div>
+                                <div><span class="text-slate-400 text-[11px]">${isBuy ? 'Ask Edge:' : 'Bid Edge:'}</span> <b class="${edgeColor}">${edgeSign}${edgeVal.toFixed(2)}%</b></div>
                                 <div><span class="text-slate-400 text-[11px]">Delta:</span> <b class="text-white">${p.Est_Delta.toFixed(2)}</b></div>
                             </div>
                             <div class="border-t border-white/5 pt-2 text-[11px] text-slate-400 space-y-0.5">
-                                <div>Ask (Cost): <b class="text-emerald-400">$${p.ask.toFixed(2)}</b> ($${Math.round(p.ask * 100)}/ct)</div>
+                                ${actionHtml}
                                 <div>Bid / Mid: $${p.bid.toFixed(2)} / $${p.Mid_Price.toFixed(2)}</div>
-                                <div>Breakeven: <b class="text-slate-200">$${beVal.toFixed(2)} (${beDiff >= 0 ? '+' : ''}${beDiff.toFixed(1)}%)</b></div>
+                                ${extraHtml}
                                 <div>Open Interest: <b class="text-slate-300">${(p.openInterest || 0).toLocaleString()}</b></div>
+                                ${wingHtml}
                             </div>
                         </div>
                         `;
@@ -2701,7 +2774,7 @@ async function init() {
                 if (data.smile) {
                     const s = data.smile;
                     document.getElementById('optionsSmileSubtitle').innerText = 
-                        `Showing ${s.expiration} (${s.dte}d DTE) | Market 1σ Expected Move: ±$${s.exp_move}`;
+                        `Showing ${s.expiration} (${s.dte}d DTE) | Market 1σ Expected Move: ±$${s.exp_move} | ${isBuy ? 'Buy Side (Ask Edge)' : 'Sell Side (Bid Edge)'}`;
 
                     const traceModel = {
                         x: s.model_strikes, y: s.model_iv,
@@ -2711,33 +2784,38 @@ async function init() {
                     };
                     const traceMarket = {
                         x: s.market_strikes, y: s.market_iv,
-                        name: `${data.direction} Market IV`,
+                        name: `${data.direction} Market Mid IV`,
                         type: 'scatter', mode: 'markers',
                         marker: { color: CURRENT_OPTIONS_DIR === 'Bullish' ? '#38bdf8' : '#f87171', size: 7, opacity: 0.8 }
                     };
-                    const traceAsk = {
+                    const traceSpreadLine = isBuy ? {
                         x: s.market_strikes, y: s.market_ask_iv,
-                        name: 'Effective Ask IV (Cost)',
+                        name: 'Effective Ask IV (Cost to Buy)',
                         type: 'scatter', mode: 'lines',
-                        line: { color: 'rgba(234, 179, 8, 0.4)', width: 1.5 }
+                        line: { color: 'rgba(234, 179, 8, 0.45)', width: 1.5 }
+                    } : {
+                        x: s.market_strikes, y: s.market_bid_iv,
+                        name: 'Effective Bid IV (Selling Price)',
+                        type: 'scatter', mode: 'lines',
+                        line: { color: 'rgba(56, 189, 248, 0.45)', width: 1.5 }
                     };
 
-                    const traceValueStrikes = {
+                    const traceHighlightStrikes = {
                         x: s.top_strikes || [],
                         y: s.top_strikes_iv || [],
-                        name: '🟢 Recommended Buy Strikes',
+                        name: isBuy ? '🟢 Recommended Buy Strikes' : '🔴 Recommended Sell Strikes',
                         type: 'scatter',
                         mode: 'markers+text',
                         marker: {
-                            color: '#0ecb81',
+                            color: isBuy ? '#0ecb81' : '#FF2E55',
                             size: 16,
                             symbol: 'circle',
                             line: { color: '#ffffff', width: 2.5 }
                         },
-                        text: (s.top_strikes || []).map(st => `🟢 Buy $${st}`),
+                        text: (s.top_strikes || []).map(st => isBuy ? `🟢 Buy $${st}` : `🔴 Sell $${st}`),
                         textposition: 'bottom center',
-                        textfont: { color: '#0ecb81', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
-                        hovertemplate: '<b>🟢 RECOMMENDED VALUE BUY</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>'
+                        textfont: { color: isBuy ? '#0ecb81' : '#FF2E55', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
+                        hovertemplate: isBuy ? '<b>🟢 VALUE BUY STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>' : '<b>🔴 PREMIUM SELL STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>'
                     };
 
                     const layout = {
@@ -2759,7 +2837,7 @@ async function init() {
                             }
                         ]
                     };
-                    Plotly.newPlot('optionsSmileChart', [traceModel, traceMarket, traceAsk, traceValueStrikes], layout, {responsive: true});
+                    Plotly.newPlot('optionsSmileChart', [traceModel, traceMarket, traceSpreadLine, traceHighlightStrikes], layout, {responsive: true});
                 }
 
             } catch (err) {
