@@ -1089,17 +1089,17 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         annotation_font_color="rgba(56, 189, 248, 0.4)"
     )
 
-    # Highlight Top Recommended Strikes
+    # Highlight Top Recommended Strikes (clean "Buy $xxx" / "Sell $xxx")
     if side_clean == "Sell":
         marker_color = '#FF2E55'
-        trace_label = '🔴 Recommended Sell Strikes (Bid Edge)'
-        rec_texts = [f"🔴 Sell ${s:.0f}" for s in top_strikes['strike']]
-        hover_template = "<b>🔴 RECOMMENDED OVERPRICED SELL</b><br>Strike: $%{x:.2f}<br>Market IV: %{y:.2f}%<extra></extra>"
+        trace_label = 'Recommended Sell Strikes (Bid Edge)'
+        rec_texts = [f"Sell ${s:.0f}" for s in top_strikes['strike']]
+        hover_template = "<b>RECOMMENDED PREMIUM SELL</b><br>Strike: $%{x:.2f}<br>Market IV: %{y:.2f}%<extra></extra>"
     else:
         marker_color = '#00F5A0'
-        trace_label = '🟢 Recommended Buy Strikes (Ask Edge)'
-        rec_texts = [f"🟢 Buy ${s:.0f}" for s in top_strikes['strike']]
-        hover_template = "<b>🟢 RECOMMENDED VALUE BUY</b><br>Strike: $%{x:.2f}<br>Market IV: %{y:.2f}%<extra></extra>"
+        trace_label = 'Recommended Buy Strikes (Ask Edge)'
+        rec_texts = [f"Buy ${s:.0f}" for s in top_strikes['strike']]
+        hover_template = "<b>RECOMMENDED VALUE BUY</b><br>Strike: $%{x:.2f}<br>Market IV: %{y:.2f}%<extra></extra>"
 
     fig.add_trace(go.Scatter(
         x=top_strikes['strike'], y=top_strikes['IV_Pct'],
@@ -1111,6 +1111,33 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         textfont=dict(color=marker_color, size=11, family="sans-serif"),
         hovertemplate=hover_template
     ))
+
+    # Calculate appropriate y-axis range focused on the active curve
+    core_ivs = []
+    if 'otm_put_curve' in smile_data and smile_data['otm_put_curve']['iv']:
+        core_ivs.extend(smile_data['otm_put_curve']['iv'])
+    if 'otm_call_curve' in smile_data and smile_data['otm_call_curve']['iv']:
+        core_ivs.extend(smile_data['otm_call_curve']['iv'])
+    if 'metrics' in smile_data and 'atm_iv' in smile_data['metrics']:
+        core_ivs.append(smile_data['metrics']['atm_iv'])
+    if not top_strikes.empty and 'IV_Pct' in top_strikes.columns:
+        core_ivs.extend(top_strikes['IV_Pct'].tolist())
+
+    y_axis_kwargs = dict(title="Implied Volatility (%)", gridcolor="#21262d", ticksuffix="%")
+    valid_ivs = [v for v in core_ivs if 4 < v < 120]
+    if valid_ivs:
+        min_iv = min(valid_ivs)
+        max_iv = max(valid_ivs)
+        pad = max((max_iv - min_iv) * 0.20, 2.0)
+        y_min = max(0, int(min_iv - pad))
+        y_max = int(max_iv + pad + 1)
+        if y_max - y_min < 6:
+            mid = (y_max + y_min) / 2
+            y_min = max(0, int(mid - 3.5))
+            y_max = int(mid + 3.5)
+        dtick = 2 if (y_max - y_min) <= 12 else 5
+        y_axis_kwargs['range'] = [y_min, y_max]
+        y_axis_kwargs['dtick'] = dtick
     
     fig.update_layout(
         template='plotly_dark',
@@ -1119,7 +1146,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         height=450,
         margin=dict(l=40, r=40, t=30, b=40),
         xaxis=dict(title="Strike Price ($)", gridcolor="#21262d"),
-        yaxis=dict(title="Implied Volatility (%)", gridcolor="#21262d"),
+        yaxis=y_axis_kwargs,
         legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5)
     )
     

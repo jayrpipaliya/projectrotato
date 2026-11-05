@@ -3222,12 +3222,12 @@ async function init() {
             };
             traces.push(traceSpreadLine);
 
-            // 7. Execution Overlay: Recommended Value Strikes
+            // 7. Execution Overlay: Recommended Value Strikes (Clean "Buy $xxx" without green circle emoji)
             if (s.top_strikes && s.top_strikes.length > 0) {
                 traces.push({
                     x: s.top_strikes,
                     y: s.top_strikes_iv,
-                    name: isBuy ? '🟢 Recommended Buy Strikes' : '🔴 Recommended Sell Strikes',
+                    name: isBuy ? 'Recommended Buy Strikes' : 'Recommended Sell Strikes',
                     type: 'scatter',
                     mode: 'markers+text',
                     marker: {
@@ -3236,11 +3236,55 @@ async function init() {
                         symbol: 'circle',
                         line: { color: '#ffffff', width: 2.5 }
                     },
-                    text: s.top_strikes.map(st => isBuy ? `🟢 Buy $${st}` : `🔴 Sell $${st}`),
+                    text: s.top_strikes.map(st => isBuy ? `Buy $${st}` : `Sell $${st}`),
                     textposition: 'bottom center',
                     textfont: { color: isBuy ? '#00F5A0' : '#FF2E55', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
-                    hovertemplate: isBuy ? '<b>🟢 VALUE BUY STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>' : '<b>🔴 PREMIUM SELL STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>'
+                    hovertemplate: isBuy ? '<b>VALUE BUY STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>' : '<b>PREMIUM SELL STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>'
                 });
+            }
+
+            // Calculate appropriate y-axis range focused on the curve and trading strikes
+            // Prevents deep OTM bid/ask spread artifacts (e.g. 50% IV) from compressing the smile curve
+            const coreIvs = [];
+            if (s.otm_put_curve && s.otm_put_curve.iv) coreIvs.push(...s.otm_put_curve.iv);
+            if (s.otm_call_curve && s.otm_call_curve.iv) coreIvs.push(...s.otm_call_curve.iv);
+            if (atmIvVal) coreIvs.push(atmIvVal);
+            if (s.top_strikes_iv) coreIvs.push(...s.top_strikes_iv);
+
+            // Include Effective Ask/Bid IV only within the tradable core region (inside 1.25x expected move)
+            if (s.market_strikes && (s.market_ask_iv || s.market_bid_iv)) {
+                const spreadIvs = isBuy ? s.market_ask_iv : s.market_bid_iv;
+                const maxDist = Math.max((s.exp_move || 30) * 1.25, (spot || 300) * 0.08);
+                s.market_strikes.forEach((stk, idx) => {
+                    if (spot && Math.abs(stk - spot) <= maxDist && spreadIvs[idx] > 0 && spreadIvs[idx] < 120) {
+                        coreIvs.push(spreadIvs[idx]);
+                    }
+                });
+            }
+
+            const yaxisConfig = { 
+                title: "Implied Volatility (%)", 
+                gridcolor: "#1B212D",
+                ticksuffix: "%"
+            };
+
+            const validIvs = coreIvs.filter(v => v > 4 && v < 120);
+            if (validIvs.length > 0) {
+                let minIv = Math.min(...validIvs);
+                let maxIv = Math.max(...validIvs);
+                let rangeSpan = maxIv - minIv;
+                let pad = Math.max(rangeSpan * 0.20, 2.0);
+                let yMin = Math.max(0, Math.floor(minIv - pad));
+                let yMax = Math.ceil(maxIv + pad);
+                // Ensure at least 6 points vertical span
+                if (yMax - yMin < 6) {
+                    const mid = (yMax + yMin) / 2;
+                    yMin = Math.max(0, Math.floor(mid - 3.5));
+                    yMax = Math.ceil(mid + 3.5);
+                }
+                const dtick = (yMax - yMin) <= 12 ? 2 : ((yMax - yMin) <= 24 ? 4 : 5);
+                yaxisConfig.range = [yMin, yMax];
+                yaxisConfig.dtick = dtick;
             }
 
             // Shapes & Annotations
@@ -3291,7 +3335,7 @@ async function init() {
                 font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 11 },
                 margin: { l: 45, r: 45, t: 30, b: 45 },
                 xaxis: { title: "Strike Price ($)", gridcolor: "#1B212D" },
-                yaxis: { title: "Implied Volatility (%)", gridcolor: "#1B212D" },
+                yaxis: yaxisConfig,
                 legend: { orientation: "h", y: -0.22, x: 0.5, xanchor: "center" },
                 shapes: shapes,
                 annotations: annotations
