@@ -88,6 +88,13 @@ def api_market_data():
     iwm_df = load_ticker_data("IWM")
     iwm_metrics = compute_all_metrics(iwm_df)
     
+    # 5-session (6-close) real price trajectory for smooth SVG sparklines
+    sparklines = {}
+    for sym in ["SPY", "QQQ", "IWM", "GLD", "TLT", "IBIT", "USO"]:
+        df_sym = load_ticker_data(sym)
+        if not df_sym.empty and "Close" in df_sym.columns:
+            sparklines[sym] = [round(float(c), 2) for c in df_sym["Close"].tail(6).tolist()]
+    
     last_date = "Today"
     if not spy_df.empty and "Date" in spy_df.columns:
         last_date = str(spy_df["Date"].iloc[-1]).split()[0]
@@ -99,6 +106,7 @@ def api_market_data():
             "QQQ": qqq_metrics,
             "IWM": iwm_metrics
         },
+        "sparklines": sparklines,
         "last_market_session": last_date,
         "available_tickers": get_available_tickers()
     })
@@ -580,7 +588,7 @@ HTML_CONTENT = """<!DOCTYPE html>
           <button onclick="triggerDataSync()" id="syncBtn" class="w-full py-2.5 px-3 rounded-lg bg-stealth-900 hover:bg-stealth-850 border border-stealth-border hover:border-mint/50 text-xs font-semibold text-slate-200 hover:text-white transition-all flex items-center justify-between group shadow-sm">
             <div class="flex items-center space-x-2.5">
               <div class="w-6 h-6 rounded-md bg-stealth-800 flex items-center justify-center text-mint group-hover:scale-105 transition-transform">
-                <span id="syncSpinner" class="hidden inline-block animate-spin">⚡</span>
+                <span id="syncSpinner" class="hidden inline-block animate-spin font-mono">↻</span>
                 <svg id="syncIconDefault" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                 </svg>
@@ -724,7 +732,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="lux-card p-5 mb-4">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-3 mb-4 border-b border-white/10 gap-3">
                     <div>
-                        <h2 class="text-lg font-bold text-white flex items-center gap-2"><span>🤖</span> Interactive Quant Analyst & Risk Officer</h2>
+                        <h2 class="text-lg font-bold text-white flex items-center gap-2">Interactive Quant Analyst & Risk Officer</h2>
                         <p class="text-xs text-slate-400">On-Demand AI Reasoning Across Live Regimes, Tickers, Confluences & Ratios</p>
                     </div>
                     <button onclick="clearAgentChat()" class="text-xs text-slate-400 hover:text-white px-3 py-1 rounded bg-white/5 border border-white/10 transition">Clear Chat</button>
@@ -734,16 +742,16 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Quick Desk Inquiries:</div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
                     <button onclick="sendQuickPrompt('Analyze todays Mag 7 divergence. Which tech leaders are showing institutional accumulation vs distribution, and what are the key invalidation levels?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
-                        🔍 <b>Mag 7 Divergence & Risks</b>
+                        <b>Mag 7 Divergence & Risks</b>
                     </button>
                     <button onclick="sendQuickPrompt('Based on the 5-day sector velocities, where is institutional smart money rotating right now? Which sector is leading?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
-                        🚀 <b>Sector Rotation Leaders</b>
+                        <b>Sector Rotation Leaders</b>
                     </button>
                     <button onclick="sendQuickPrompt('What are the biggest distribution traps and high-risk names on the desk today? Where should retail traders avoid dip buying?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
-                        ⚠️ <b>Top Distribution Warnings</b>
+                        <b>Top Distribution Warnings</b>
                     </button>
                     <button onclick="sendQuickPrompt('Give me the top 3 high-probability setups from todays confluence radar with exact entry rationale, targets, and stop-loss levels.')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
-                        🎯 <b>Best High-Conviction Setups</b>
+                        <b>Best High-Conviction Setups</b>
                     </button>
                 </div>
 
@@ -822,7 +830,7 @@ HTML_CONTENT = """<!DOCTYPE html>
           <div id="synthesisCard" class="stealth-card p-6 border border-stealth-border space-y-4">
             <div class="flex flex-wrap justify-between items-center gap-3 pb-3 border-b border-stealth-border">
               <div class="flex items-center space-x-2.5">
-                <span class="text-mint text-lg">🏛️</span>
+                <span class="w-2 h-2 rounded-full bg-mint"></span>
                 <div>
                   <span class="text-xs font-bold text-mint uppercase tracking-wider block">Institutional Executive Synthesis</span>
                   <span class="text-[11px] text-slate-400">Chief Quantitative Strategist & Portfolio Risk Intelligence</span>
@@ -838,16 +846,16 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="flex flex-wrap items-center gap-1.5 p-1.5 rounded-lg bg-stealth-950 border border-stealth-border">
               <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">Focus Pillar:</span>
               <button onclick="filterSynthesisSection('all')" id="synthPill-all" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-bold bg-mint text-stealth-950 shadow-sm transition">All 4 Pillars</button>
-              <button onclick="filterSynthesisSection('macro')" id="synthPill-macro" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">🌐 1. Macro Liquidity</button>
-              <button onclick="filterSynthesisSection('sectors')" id="synthPill-sectors" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">⚡ 2. Sector Velocity</button>
-              <button onclick="filterSynthesisSection('setups')" id="synthPill-setups" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">🎯 3. Setups & Traps</button>
-              <button onclick="filterSynthesisSection('risk')" id="synthPill-risk" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">🛡️ 4. Desk Game Plan</button>
+              <button onclick="filterSynthesisSection('macro')" id="synthPill-macro" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">1. Macro Liquidity</button>
+              <button onclick="filterSynthesisSection('sectors')" id="synthPill-sectors" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">2. Sector Velocity</button>
+              <button onclick="filterSynthesisSection('setups')" id="synthPill-setups" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">3. Setups & Traps</button>
+              <button onclick="filterSynthesisSection('risk')" id="synthPill-risk" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">4. Desk Game Plan</button>
             </div>
 
             <!-- Structured Synthesis Section Cards Container -->
             <div id="synthesisText" class="space-y-4">
               <div class="flex items-center space-x-2 text-slate-400 py-6 text-xs">
-                <span class="inline-block animate-spin text-mint">⚡</span>
+                <span class="inline-block animate-spin text-mint font-mono">↻</span>
                 <span>Synthesizing multi-factor institutional market intelligence...</span>
               </div>
             </div>
@@ -859,7 +867,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="bg-white/[0.03] border border-white/5 rounded-xl p-3 mb-4 text-xs text-slate-400">
                 <b class="text-amber-500">Strict Confluence Rules:</b> Green conviction scores (+15 to +100) are reserved strictly for <b>Long Setups</b>. Red conviction scores (-15 to -100) are strictly flagged for <b>Distribution Fades or De-risking</b> to protect portfolio equity.
             </div>
-            <div id="tradeCardsContainer" class="space-y-4">
+            <div id="tradeCardsContainer" class="grid grid-cols-1 xl:grid-cols-2 gap-3">
                 <div class="text-xs text-slate-400">Loading high-probability trade setups...</div>
             </div>
         </div>
@@ -988,7 +996,6 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                     <div>
                         <div class="flex items-center gap-2">
-                            <span class="text-xl">🎯</span>
                             <h2 class="text-lg font-black text-white tracking-wide">Institutional Volatility Pricing Desk</h2>
                             <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Live Options Vol</span>
                         </div>
@@ -1107,7 +1114,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
                         <div class="self-end">
                             <button onclick="loadOptionsDesk(true)" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg shadow-emerald-900/30 transition flex items-center gap-1.5">
-                                <span>⚡</span> Scan Chains
+                                Scan Chains
                             </button>
                         </div>
                     </div>
@@ -1123,7 +1130,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="flex justify-between items-center mb-3">
                 <div>
                     <h3 class="text-sm font-bold text-white flex items-center gap-2" id="optionsRecHeaderTitle">
-                        <span>🏆</span> Top Recommended Cheap IV Contracts Across Different Expirations
+                        Top Recommended Cheap IV Contracts Across Different Expirations
                     </h3>
                     <p class="text-[11px] text-slate-400" id="optionsRecHeaderSubtitle">Guaranteed multi-expiry diversity: Evaluates term pricing ($IV/HV$), execution edge (Ask-Edge or Bid-Edge), delta positioning, and liquidity.</p>
                 </div>
@@ -1139,7 +1146,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div class="flex justify-between items-center mb-3">
                     <div>
                         <h4 class="text-sm font-bold text-white flex items-center gap-1.5">
-                            <span>🔍</span> Volatility Smile & Fitted Asymmetric Skew Curve
+                            Volatility Smile & Fitted Asymmetric Skew Curve
                         </h4>
                         <p class="text-[11px] text-slate-400" id="optionsSmileSubtitle">Showing nearest active expiration chain, degree-3 log-moneyness skew, and 1σ expected move boundary</p>
                     </div>
@@ -1249,8 +1256,8 @@ HTML_CONTENT = """<!DOCTYPE html>
                 renderMacroBarometers();
                 renderBriefingBaskets();
 
-                if (hBtnText) hBtnText.innerText = '✓ Synced!';
-                if (sBtnText) sBtnText.innerText = '✓ Synced!';
+                if (hBtnText) hBtnText.innerText = 'Synced!';
+                if (sBtnText) sBtnText.innerText = 'Synced!';
                 setTimeout(() => {
                     if (hBtnText) hBtnText.innerText = 'Sync Market Feeds';
                     if (sBtnText) sBtnText.innerText = 'Sync from YFinance';
@@ -1589,7 +1596,7 @@ async function init() {
                 renderChatHistory();
             } catch (err) {
                 container.removeChild(loadingDiv);
-                AGENT_CHAT_HISTORY.push({ role: 'assistant', content: '⚠️ Error connecting to AI Agent: ' + err.message });
+                AGENT_CHAT_HISTORY.push({ role: 'assistant', content: 'Error connecting to AI Agent: ' + err.message });
                 renderChatHistory();
             }
         }
@@ -1637,6 +1644,44 @@ async function init() {
             if (sessionBadge) {
                 sessionBadge.innerText = 'Prices: ' + (DATA.last_market_session || '2026-10-27');
             }
+        }
+
+        function generateSmoothSparkline(prices, width = 56, height = 20, padX = 3, padY = 4) {
+            if (!prices || prices.length < 2) {
+                return { path: 'M 3 10 L 49 10', endX: 49, endY: 10 };
+            }
+            const n = prices.length;
+            const minP = Math.min(...prices);
+            const maxP = Math.max(...prices);
+            const rng = maxP - minP;
+            
+            const wAvail = width - padX * 2 - 4;
+            const hAvail = height - padY * 2;
+            
+            const pts = [];
+            for (let i = 0; i < n; i++) {
+                const x = padX + (i / (n - 1)) * wAvail;
+                const norm = rng > 1e-4 ? (prices[i] - minP) / rng : 0.5;
+                const y = (height - padY) - norm * hAvail;
+                pts.push({ x: Number(x.toFixed(1)), y: Number(y.toFixed(1)) });
+            }
+            
+            let d = `M ${pts[0].x} ${pts[0].y}`;
+            for (let i = 0; i < pts.length - 1; i++) {
+                const p0 = i > 0 ? pts[i - 1] : pts[i];
+                const p1 = pts[i];
+                const p2 = pts[i + 1];
+                const p3 = i + 2 < pts.length ? pts[i + 2] : pts[i + 1];
+                
+                const cp1x = Number((p1.x + (p2.x - p0.x) / 5.0).toFixed(1));
+                const cp1y = Number((p1.y + (p2.y - p0.y) / 5.0).toFixed(1));
+                const cp2x = Number((p2.x - (p3.x - p1.x) / 5.0).toFixed(1));
+                const cp2y = Number((p2.y - (p3.y - p1.y) / 5.0).toFixed(1));
+                
+                d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+            }
+            const endPt = pts[pts.length - 1];
+            return { path: d, endX: endPt.x, endY: endPt.y };
         }
 
         function renderBenchmarks() {
@@ -1701,8 +1746,20 @@ async function init() {
                 const p5d = c.pct5d || 0;
                 const is5dPos = p5d >= 0;
                 const sparkColor = is5dPos ? '#00F5A0' : '#FF2E55';
-                const sparkPath = is5dPos ? 'M 2 15 Q 16 12, 28 8 T 42 10 T 54 6' : 'M 2 7 Q 15 4, 28 13 T 44 10 T 54 13';
-                const sparkEndY = is5dPos ? 6 : 13;
+                
+                // Actual smooth 5-session price trajectory
+                const sparkData = (DATA.sparklines && DATA.sparklines[c.ticker]) ? DATA.sparklines[c.ticker] : null;
+                let sparkPath, sparkEndX, sparkEndY;
+                if (sparkData && sparkData.length >= 2) {
+                    const res = generateSmoothSparkline(sparkData);
+                    sparkPath = res.path;
+                    sparkEndX = res.endX;
+                    sparkEndY = res.endY;
+                } else {
+                    sparkPath = is5dPos ? 'M 3 15 Q 16 12, 28 8 T 42 10 T 50 6' : 'M 3 7 Q 15 4, 28 13 T 44 10 T 50 14';
+                    sparkEndX = 50;
+                    sparkEndY = is5dPos ? 6 : 14;
+                }
 
                 html += `
                     <div class="stealth-card p-2.5 space-y-1.5 overflow-hidden">
@@ -1717,7 +1774,7 @@ async function init() {
                             <div class="w-14 h-5 flex items-center shrink-0" title="${c.ticker} 5-Day Trend (${p5d >= 0 ? '+' : ''}${Number(p5d).toFixed(2)}%)">
                                 <svg class="w-full h-full overflow-visible" viewBox="0 0 56 20">
                                     <path d="${sparkPath}" fill="none" stroke="${sparkColor}" stroke-width="1.5" stroke-linecap="round" />
-                                    <circle cx="54" cy="${sparkEndY}" r="2" fill="${sparkColor}" />
+                                    <circle cx="${sparkEndX}" cy="${sparkEndY}" r="2" fill="${sparkColor}" />
                                 </svg>
                             </div>
                         </div>
@@ -1745,15 +1802,15 @@ async function init() {
                     sigma: spy_rsp.z_score_50d || 0,
                     state: spy_rsp.actionable_state || "Broad Breadth Expansion",
                     pct5d: spy_rsp.pct_5d || 0,
-                    action: "Equal-Weight RSP Outperforming"
+                    action: spy_rsp.action_text || "Equal-Weight RSP Outperforming"
                 },
                 {
                     ticker: "QQQ / RSP", name: "Tech Breadth", subtitle: "Tech Beta vs Broad Market",
                     value: qqq_rsp.current || 0,
                     sigma: qqq_rsp.z_score_50d || 0,
-                    state: qqq_rsp.actionable_state || "Range-Bound Ratio",
+                    state: qqq_rsp.actionable_state || "Broadening Beyond Mega-Tech",
                     pct5d: qqq_rsp.pct_5d || 0,
-                    action: "Broadening Beyond Mega-Tech"
+                    action: qqq_rsp.action_text || "Broadening Beyond Mega-Tech"
                 },
                 {
                     ticker: "IWM / QQQ", name: "Small vs Tech", subtitle: "Small-Cap vs Mega-Cap Tech",
@@ -1761,7 +1818,7 @@ async function init() {
                     sigma: iwm_qqq.z_score_50d || 0,
                     state: iwm_qqq.actionable_state || "Aggressive Small-Cap Momentum",
                     pct5d: iwm_qqq.pct_5d || 0,
-                    action: "Small-Cap Alpha Acceleration"
+                    action: iwm_qqq.action_text || "Small-Cap Alpha Acceleration"
                 }
             ];
 
@@ -1786,7 +1843,7 @@ async function init() {
                 const stLower = (c.state || '').toLowerCase();
                 if (stLower.includes('range') || stLower.includes('neutral') || stLower.includes('consolidat')) {
                     statusPillClass = 'text-xs text-slate-300 font-semibold bg-stealth-850 px-2 py-0.5 rounded border border-stealth-border';
-                } else if (stLower.includes('risk-off') || stLower.includes('bear') || stLower.includes('narrow')) {
+                } else if (stLower.includes('risk-off') || stLower.includes('bear') || stLower.includes('narrow') || stLower.includes('oversold') || stLower.includes('washout') || stLower.includes('overextend') || stLower.includes('peaking')) {
                     statusPillClass = 'text-xs text-cherry font-semibold bg-cherry/10 px-2 py-0.5 rounded border border-cherry/20';
                 }
 
@@ -1877,7 +1934,7 @@ async function init() {
             if (synthBox) {
                 synthBox.innerHTML = `
                     <div class="flex items-center gap-2 text-slate-400 py-3 text-xs">
-                        <span class="inline-block animate-spin text-amber-400">⚡</span>
+                        <span class="inline-block animate-spin text-amber-400 font-mono">↻</span>
                         <span>AI Quant Strategist synthesizing live market regimes & setups...</span>
                     </div>
                 `;
@@ -1940,10 +1997,10 @@ async function init() {
             let metaHtml = '';
             
             const configs = [
-                { key: 'macro', icon: '🌐', title: 'Macro Regime & Cross-Asset Liquidity', badge: 'AI Macro Liquidity', border: 'border-sky-500/30', bg: 'from-[#0b1322] to-[#080d17]', titleColor: 'text-sky-400' },
-                { key: 'sectors', icon: '⚡', title: 'Sector Velocity & Breadth Concentration Dynamics', badge: 'AI Sector Dynamics', border: 'border-purple-500/30', bg: 'from-[#140e24] to-[#0b0814]', titleColor: 'text-purple-400' },
-                { key: 'setups', icon: '🎯', title: 'Actionable Setups & Trade Confluence', badge: 'AI Confluence Setups', border: 'border-emerald-500/30', bg: 'from-[#091a14] to-[#06100d]', titleColor: 'text-emerald-400' },
-                { key: 'risk', icon: '🛡️', title: 'Desk Game Plan & Tactical Risk Boundaries', badge: 'AI Tactical Boundaries', border: 'border-amber-500/30', bg: 'from-[#1a140a] to-[#100d07]', titleColor: 'text-amber-400' }
+                { key: 'macro', icon: '', title: 'Macro Regime & Cross-Asset Liquidity', badge: 'AI Macro Liquidity', border: 'border-sky-500/30', bg: 'from-[#0b1322] to-[#080d17]', titleColor: 'text-sky-400' },
+                { key: 'sectors', icon: '', title: 'Sector Velocity & Breadth Concentration Dynamics', badge: 'AI Sector Dynamics', border: 'border-purple-500/30', bg: 'from-[#140e24] to-[#0b0814]', titleColor: 'text-purple-400' },
+                { key: 'setups', icon: '', title: 'Actionable Setups & Trade Confluence', badge: 'AI Confluence Setups', border: 'border-emerald-500/30', bg: 'from-[#091a14] to-[#06100d]', titleColor: 'text-emerald-400' },
+                { key: 'risk', icon: '', title: 'Desk Game Plan & Tactical Risk Boundaries', badge: 'AI Tactical Boundaries', border: 'border-amber-500/30', bg: 'from-[#1a140a] to-[#100d07]', titleColor: 'text-amber-400' }
             ];
             
             let secIdx = 0;
@@ -2042,26 +2099,25 @@ async function init() {
                     <div class="synth-section-card lux-card p-5 border border-amber-500/20 bg-amber-950/10 space-y-4">
                         <div class="flex items-center justify-between pb-3 border-b border-white/5">
                             <div class="flex items-center gap-2 text-amber-400 font-bold text-xs uppercase tracking-wider">
-                                <span class="animate-pulse">⚡</span>
                                 <span>AI Institutional Synthesis Engine (Pillars 1 to 4)</span>
                             </div>
                             <span class="pill-amber text-[10.5px] font-bold">Awaiting AI Briefing</span>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                             <div class="p-3.5 rounded-xl bg-black/20 border border-sky-500/20 space-y-1.5">
-                                <div class="text-sky-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5"><span>🌐</span> Pillar 1: Macro Liquidity</div>
+                                <div class="text-sky-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5">Pillar 1: Macro Liquidity</div>
                                 <div class="text-slate-300">${AI_DATA.regime_title || "Synthesizing yields, gold, oil & crypto liquidity..."}</div>
                             </div>
                             <div class="p-3.5 rounded-xl bg-black/20 border border-purple-500/20 space-y-1.5">
-                                <div class="text-purple-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5"><span>⚡</span> Pillar 2: Sector Velocity</div>
+                                <div class="text-purple-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5">Pillar 2: Sector Velocity</div>
                                 <div class="text-slate-300">Tracking 5D capital rotation across Growth, Cyclicals, Defensives & Breadth...</div>
                             </div>
                             <div class="p-3.5 rounded-xl bg-black/20 border border-emerald-500/20 space-y-1.5">
-                                <div class="text-emerald-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5"><span>🎯</span> Pillar 3: Actionable Setups</div>
+                                <div class="text-emerald-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5">Pillar 3: Actionable Setups</div>
                                 <div class="text-slate-300">Filtering algorithmic high-conviction long bids & distribution traps...</div>
                             </div>
                             <div class="p-3.5 rounded-xl bg-black/20 border border-amber-500/20 space-y-1.5">
-                                <div class="text-amber-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5"><span>🛡️</span> Pillar 4: Tactical Game Plan</div>
+                                <div class="text-amber-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5">Pillar 4: Tactical Game Plan</div>
                                 <div class="text-slate-300">Formulating allocation zones, portfolio hedges & hard invalidation triggers...</div>
                             </div>
                         </div>
@@ -2081,7 +2137,7 @@ async function init() {
             if (!AI_DATA) {
                 container.innerHTML = `
                     <div class="flex items-center gap-2 text-slate-400 py-4 text-xs">
-                        <span class="inline-block animate-spin text-amber-400">⚡</span>
+                        <span class="inline-block animate-spin text-amber-400 font-mono">↻</span>
                         <span>Filtering algorithmic high-probability trade setups...</span>
                     </div>
                 `;
@@ -2094,75 +2150,86 @@ async function init() {
             let html = '';
             cards.forEach(t => {
                     const dir = t.direction || "LONG";
-                    const pill = dir.includes("LONG") ? 'pill-green' : (dir.includes("SHORT") || dir.includes("FADE") ? 'pill-red' : 'pill-amber');
-                    const execPill = t.execution_pill || (dir.includes("LONG") ? 'pill-green' : 'pill-amber');
+                    const isLong = dir.includes("LONG") || dir.includes("DIP");
+                    const borderCol = isLong ? '#00F5A0' : '#FF2E55';
+                    const pill = isLong ? 'badge-mint' : 'badge-cherry';
+                    const isCaution = /EXTENDED|TRAP|DO NOT|AWAIT|FADE|RISK/i.test(t.execution_state || '');
+                    const execPill = isCaution ? 'badge-cherry' : 'badge-mint';
+                    const extCol = (t.extension_metric && (t.extension_metric.includes('-') || isCaution)) ? 'text-cherry' : 'text-mint';
+                    const payoffPill = isLong ? 'badge-mint' : 'badge-cherry';
+                    const entryBg = isLong ? 'from-mint/10 to-transparent border-mint/25' : 'from-cherry/10 to-transparent border-cherry/25';
+                    const entryCol = isLong ? 'text-mint' : 'text-cherry';
+
                     html += `
-                        <div class="lux-card p-4 sm:p-5 border-l-4" style="border-left-color: ${t.card_color || '#0ecb81'}">
-                            <div class="flex flex-wrap justify-between items-center gap-2 pb-3 mb-3 border-b border-white/5">
-                                <div class="flex flex-wrap items-center gap-2.5">
-                                    <span class="text-2xl font-black text-white">${t.ticker}</span>
-                                    <span class="${pill} px-2.5 py-0.5 rounded text-xs font-bold">${t.direction}</span>
-                                    <span class="text-xs font-semibold text-slate-400">${t.type_label}</span>
-                                    ${t.execution_state ? `<span class="${execPill} px-2.5 py-0.5 rounded text-[11px] font-bold tracking-wide">${t.execution_state}</span>` : ''}
+                        <div class="lux-card p-3 sm:p-3.5 border-l-4 flex flex-col justify-between h-full" style="border-left-color: ${borderCol}">
+                            <div>
+                                <div class="flex flex-wrap justify-between items-center gap-1.5 pb-2 mb-2 border-b border-white/5">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <span class="text-lg font-black text-white">${t.ticker}</span>
+                                        <span class="${pill} px-2 py-0.5 rounded text-[10px] font-bold">${t.direction}</span>
+                                        <span class="text-[11px] font-semibold text-slate-400">${t.type_label}</span>
+                                        ${t.execution_state ? `<span class="${execPill} px-2 py-0.5 rounded text-[10px] font-bold tracking-wide">${t.execution_state}</span>` : ''}
+                                    </div>
+                                    <div class="flex items-center gap-1.5 text-[10px]">
+                                        <span class="text-slate-500 uppercase">Conviction:</span>
+                                        <span class="${pill} px-2 py-0.5 rounded font-bold text-[10.5px]">Score: ${t.score} (${t.bias_label})</span>
+                                    </div>
                                 </div>
-                                <div class="flex items-center gap-2 text-xs">
-                                    <span class="text-slate-500 uppercase">Conviction:</span>
-                                    <span class="${pill} px-2 py-0.5 rounded font-bold">Score: ${t.score} (${t.bias_label})</span>
+
+                                <!-- Market Price vs Optimized R:R Banner -->
+                                <div class="flex flex-wrap items-center justify-between gap-1.5 p-1.5 px-2 mb-2 rounded-lg bg-white/[0.02] border border-white/5 text-[11px]">
+                                    <div class="flex items-center gap-1.5 flex-wrap">
+                                        <span class="text-slate-400">Print:</span>
+                                        <span class="font-bold text-white">${t.current_price || t.entry}</span>
+                                        <span class="text-slate-600">|</span>
+                                        <span class="text-slate-400">20 EMA Ext:</span>
+                                        <span class="font-mono ${extCol}">${t.extension_metric || 'At Support'}</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-slate-500 uppercase text-[9.5px]">Payoff:</span>
+                                        <span class="${payoffPill} px-2 py-0.5 rounded text-[10.5px] font-extrabold tracking-wide">${t.risk_reward || '1 : 3.0 R:R'}</span>
+                                    </div>
+                                </div>
+
+                                <!-- 4-Box Execution Strategy 2x2 Grid -->
+                                <div class="grid grid-cols-2 gap-2 mb-2">
+                                    <div class="bg-gradient-to-b ${entryBg} p-2 rounded-lg border">
+                                        <div class="text-[9px] font-bold ${entryCol} uppercase tracking-wider">Optimal Limit Entry</div>
+                                        <div class="text-sm font-extrabold text-white mt-0.5">${t.optimal_entry_zone || t.entry}</div>
+                                        <div class="text-[9px] text-slate-400 mt-0.5">${t.optimal_entry_label || '20 EMA Support Zone'}</div>
+                                    </div>
+                                    <div class="bg-white/[0.02] p-2 rounded-lg border border-white/5">
+                                        <div class="text-[9px] font-bold text-slate-300 uppercase tracking-wider">Breakout Trigger</div>
+                                        <div class="text-xs font-bold text-white mt-0.5 leading-snug">${t.breakout_trigger || 'Above 5D Pivot'}</div>
+                                        <div class="text-[9px] text-slate-400 mt-0.5">Momentum Confirmation</div>
+                                    </div>
+                                    <div class="bg-gradient-to-b from-cherry/10 to-transparent p-2 rounded-lg border border-cherry/25">
+                                        <div class="text-[9px] font-bold text-cherry uppercase tracking-wider">Stop Invalidation</div>
+                                        <div class="text-sm font-extrabold text-cherry mt-0.5">${t.stop} <span class="text-[10px] font-normal text-rose-300">(${t.stop_pct})</span></div>
+                                        <div class="text-[9px] text-slate-400 mt-0.5">Below Structural Support</div>
+                                    </div>
+                                    <div class="bg-gradient-to-b from-mint/10 to-transparent p-2 rounded-lg border border-mint/25">
+                                        <div class="text-[9px] font-bold text-mint uppercase tracking-wider">Profit Targets</div>
+                                        <div class="text-sm font-extrabold text-mint mt-0.5">${t.target1} <span class="text-[10px] font-normal text-emerald-300">(${t.target1_pct})</span></div>
+                                        <div class="text-[9px] text-slate-400 mt-0.5">Runner: ${t.target2} (${t.target2_pct})</div>
+                                    </div>
+                                </div>
+
+                                <!-- Execution Rule Directive -->
+                                <div class="p-2 rounded-lg bg-black/40 border border-white/5 text-[10.5px] text-slate-300 mb-2 leading-snug">
+                                    <div><b class="${isLong ? 'text-mint' : 'text-cherry'}">Desk Directive:</b> ${t.execution_desc || 'Bidding the structural liquidity band rather than market buying at extended highs.'}</div>
                                 </div>
                             </div>
 
-                            <!-- Market Price vs Optimized R:R Banner -->
-                            <div class="flex flex-wrap items-center justify-between gap-2 p-2.5 mb-3 rounded-lg bg-white/[0.02] border border-white/5 text-xs">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-slate-400">Current Print:</span>
-                                    <span class="font-bold text-white">${t.current_price || t.entry}</span>
-                                    <span class="text-slate-500">|</span>
-                                    <span class="text-slate-400">Moving Avg Extension:</span>
-                                    <span class="font-mono ${t.extension_metric && t.extension_metric.includes('+') ? 'text-amber-400' : 'text-slate-300'}">${t.extension_metric || 'At Support'}</span>
+                            <div>
+                                <div class="bg-white/[0.02] p-1.5 px-2 rounded-lg border border-white/5 text-[10.5px] text-slate-400 flex flex-wrap justify-between gap-1">
+                                    <span>Win Rate: <b class="text-mint font-bold">${t.win_rate}</b> (N=${t.sample_size})</span>
+                                    <span>Alpha: <b class="${isLong ? 'text-mint' : 'text-cherry'} font-bold">${t.median_alpha}</b></span>
+                                    <span><b>Confirmations:</b> ${t.confirmations}</span>
                                 </div>
-                                <div class="flex items-center gap-2">
-                                    <span class="text-slate-500 uppercase text-[10px]">Optimized Payoff:</span>
-                                    <span class="pill-amber px-2.5 py-0.5 rounded text-xs font-black tracking-wide">${t.risk_reward || '1 : 3.0 R:R'}</span>
+                                <div class="text-[11px] text-slate-300 mt-1.5 leading-snug">
+                                    <b class="text-white">Desk Rationale:</b> ${t.thesis}
                                 </div>
-                            </div>
-
-                            <!-- 4-Box Execution Strategy Grid -->
-                            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-                                <div class="bg-gradient-to-b from-amber-500/10 to-transparent p-3 rounded-xl border border-amber-500/25">
-                                    <div class="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Optimal Limit Entry</div>
-                                    <div class="text-base font-extrabold text-white mt-0.5">${t.optimal_entry_zone || t.entry}</div>
-                                    <div class="text-[10px] text-slate-400 mt-1">${t.optimal_entry_label || '20 EMA Support Zone'}</div>
-                                </div>
-                                <div class="bg-white/[0.02] p-3 rounded-xl border border-white/5">
-                                    <div class="text-[10px] font-bold text-sky-400 uppercase tracking-wider">Breakout Trigger</div>
-                                    <div class="text-sm font-bold text-white mt-0.5 leading-snug">${t.breakout_trigger || 'Above 5D Pivot'}</div>
-                                    <div class="text-[10px] text-slate-400 mt-1">Momentum Confirmation</div>
-                                </div>
-                                <div class="bg-gradient-to-b from-red-500/10 to-transparent p-3 rounded-xl border border-red-500/25">
-                                    <div class="text-[10px] font-bold text-red-400 uppercase tracking-wider">Stop Invalidation</div>
-                                    <div class="text-base font-extrabold text-red-400 mt-0.5">${t.stop} <span class="text-xs font-normal text-red-300">(${t.stop_pct})</span></div>
-                                    <div class="text-[10px] text-slate-400 mt-1">Below Structural Support</div>
-                                </div>
-                                <div class="bg-gradient-to-b from-emerald-500/10 to-transparent p-3 rounded-xl border border-emerald-500/25">
-                                    <div class="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Profit Targets</div>
-                                    <div class="text-base font-extrabold text-emerald-400 mt-0.5">${t.target1} <span class="text-xs font-normal text-emerald-300">(${t.target1_pct})</span></div>
-                                    <div class="text-[10px] text-slate-400 mt-1">Runner: ${t.target2} (${t.target2_pct})</div>
-                                </div>
-                            </div>
-
-                            <!-- Execution Rule Directive -->
-                            <div class="p-2.5 rounded-lg bg-black/40 border border-white/5 text-xs text-slate-300 mb-3 flex items-start gap-2">
-                                <span class="text-amber-400 text-sm leading-none mt-0.5">💡</span>
-                                <div><b class="text-amber-400">Desk Execution Directive:</b> ${t.execution_desc || 'Bidding the structural liquidity band rather than market buying at extended highs.'}</div>
-                            </div>
-
-                            <div class="bg-white/[0.02] p-2.5 rounded-lg border border-white/5 text-xs text-slate-400 flex flex-wrap justify-between gap-2">
-                                <span>20Y Win Rate: <b class="text-emerald-400 font-bold">${t.win_rate}</b> (N=${t.sample_size})</span>
-                                <span>Median 20D Alpha: <b class="text-amber-400 font-bold">${t.median_alpha}</b></span>
-                                <span><b>Confirmations:</b> ${t.confirmations}</span>
-                            </div>
-                            <div class="text-xs text-slate-300 mt-2.5 leading-relaxed">
-                                <b class="text-white">Desk Rationale:</b> ${t.thesis}
                             </div>
                         </div>
                     `;
@@ -2603,12 +2670,12 @@ async function init() {
             if (side === 'Buy') {
                 if (btnBuy) btnBuy.className = "px-3 py-1 rounded font-bold transition bg-emerald-500/20 text-emerald-400";
                 if (btnSell) btnSell.className = "px-3 py-1 rounded font-bold transition text-slate-400";
-                if (titleEl) titleEl.innerHTML = `<span>🏆</span> Top Recommended Cheap IV Contracts Across Different Expirations`;
+                if (titleEl) titleEl.innerHTML = `Top Recommended Cheap IV Contracts Across Different Expirations`;
                 if (subEl) subEl.innerText = "Guaranteed multi-expiry diversity: Evaluates term cheapness (IV/HV), Ask-Edge (edge after crossing the spread to buy at Ask), and liquidity.";
             } else {
                 if (btnSell) btnSell.className = "px-3 py-1 rounded font-bold transition bg-rose-500/20 text-rose-400";
                 if (btnBuy) btnBuy.className = "px-3 py-1 rounded font-bold transition text-slate-400";
-                if (titleEl) titleEl.innerHTML = `<span>🏆</span> Top Recommended Overpriced Premium Sells (Bid Edge)`;
+                if (titleEl) titleEl.innerHTML = `Top Recommended Overpriced Premium Sells (Bid Edge)`;
                 if (subEl) subEl.innerText = "Harvest elevated premium: Evaluates rich term IV (IV/HV), Bid-Edge (edge after crossing spread to sell at Bid), and downside cushion.";
             }
             loadOptionsDesk();
@@ -2688,13 +2755,13 @@ async function init() {
                         const isCall = isBuy ? (CURRENT_OPTIONS_DIR === 'Bullish') : (CURRENT_OPTIONS_DIR === 'Bearish');
                         const cType = isCall ? 'Call' : 'Put';
                         
-                        let hTag = '⚡ Tactical (10–21d)';
+                        let hTag = 'Tactical (10–21d)';
                         let badgeColor = 'text-sky-400';
-                        if (p.DTE > 70) { hTag = '🛡️ Quarterly (75d+)'; badgeColor = 'text-emerald-400'; }
-                        else if (p.DTE > 45) { hTag = '🎯 Core Monthly (60d)'; badgeColor = 'text-amber-400'; }
-                        else if (p.DTE > 22) { hTag = '🚀 Fast Swing (25–45d)'; badgeColor = 'text-purple-400'; }
+                        if (p.DTE > 70) { hTag = 'Quarterly (75d+)'; badgeColor = 'text-emerald-400'; }
+                        else if (p.DTE > 45) { hTag = 'Core Monthly (60d)'; badgeColor = 'text-amber-400'; }
+                        else if (p.DTE > 22) { hTag = 'Fast Swing (25–45d)'; badgeColor = 'text-purple-400'; }
 
-                        const evTag = p.Spans_Earnings ? '⚡ Spans Earnings' : '📅 Inter-Earnings';
+                        const evTag = p.Spans_Earnings ? 'Spans Earnings' : 'Inter-Earnings';
                         const evColor = p.Spans_Earnings ? 'bg-amber-500/15 text-amber-400' : 'bg-sky-500/10 text-sky-400';
                         const spreadBadge = p.Spread_Quality || '🟢 Tight';
 
@@ -2724,7 +2791,7 @@ async function init() {
                                 wingHtml = `
                                 <div class="mt-2.5 p-2 bg-white/[0.02] border border-dashed border-white/10 rounded text-[10.5px]">
                                     <div class="text-sky-300 font-semibold flex items-center justify-between">
-                                        <span>🛡️ Hedged Spread Wing:</span>
+                                        <span>Hedged Spread Wing:</span>
                                         <span class="text-white font-mono">+$${Number(p.Wing_Strike).toFixed(0)} ${cType}</span>
                                     </div>
                                     <div class="text-slate-300 mt-1 flex justify-between">
@@ -2749,8 +2816,8 @@ async function init() {
                                 <span class="text-[10px] px-1.5 py-0.5 rounded ${evColor}">${evTag}</span>
                             </div>
                             <div class="bg-white/[0.03] p-2 rounded-lg flex justify-between items-center text-xs mb-3">
-                                <span class="text-slate-200">📅 <b>${p.Expiration}</b> (${p.DTE}d)</span>
-                                <span class="text-[11px] ${p.Within_1_Sigma ? 'text-emerald-400' : 'text-slate-400'}">${p.Within_1_Sigma ? '🎯 In 1σ' : '🚀 Out 1σ'}</span>
+                                <span class="text-slate-200"><b>${p.Expiration}</b> (${p.DTE}d)</span>
+                                <span class="text-[11px] ${p.Within_1_Sigma ? 'text-emerald-400' : 'text-slate-400'}">${p.Within_1_Sigma ? 'In 1σ' : 'Out 1σ'}</span>
                             </div>
                             <div class="grid grid-cols-2 gap-2 text-xs mb-3">
                                 <div><span class="text-slate-400 text-[11px]">${isBuy ? 'Ask IV:' : 'Bid IV:'}</span> <b class="text-white">${ivVal}%</b></div>

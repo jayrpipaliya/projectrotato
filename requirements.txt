@@ -2,8 +2,6 @@ fastapi
 uvicorn
 pandas
 numpy
-plotly
 python-dotenv
 yfinance
 google-genai
-matplotlib

@@ -14,7 +14,10 @@ import math
 import pandas as pd
 import numpy as np
 import yfinance as yf
-import plotly.graph_objects as go
+try:
+    import plotly.graph_objects as go
+except Exception:
+    go = None
 from concurrent.futures import ThreadPoolExecutor
 
 try:
@@ -242,11 +245,11 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
                 vrp_ratio = round(atm_iv_trading / fair_vrp_iv, 2) if fair_vrp_iv > 0 else 1.0
 
                 if spans_earnings:
-                    event_tag = "⚡ Spans Earnings (Contains Event Jump)"
+                    event_tag = "Spans Earnings (Contains Event Jump)"
                     is_cheap = (ratio <= 1.25)
-                    status = f"🟡 Event Cycle ({ratio}x {h_label})"
+                    status = f"Event Cycle ({ratio}x {h_label})"
                 else:
-                    event_tag = "📅 Inter-Earnings (No IV Crush Risk)"
+                    event_tag = "Inter-Earnings (No IV Crush Risk)"
                     if vrp_ratio < 0.92:
                         status = f"🟢 High Discount ({vrp_ratio}x VRP)"
                         is_cheap = True
@@ -410,7 +413,7 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
             if sp <= 5.0:
                 return "🟢 Tight"
             elif sp <= 15.0:
-                return "🟡 Fair"
+                return "Fair"
             else:
                 return "🔴 Wide"
         target_df['Spread_Quality'] = target_df['Spread_Pct'].apply(classify_spread)
@@ -559,7 +562,7 @@ def scan_cross_chain_recommendations(ticker_symbol, cheap_expirations_list, spot
         exp = exp_dict['Expiration']
         dte = exp_dict['DTE']
         term_ratio = exp_dict.get('IV_HV_Ratio', 1.0)
-        event_tag = exp_dict.get('Event_Tag', '📅 Inter-Earnings')
+        event_tag = exp_dict.get('Event_Tag', 'Inter-Earnings')
         spans_earnings = exp_dict.get('Spans_Earnings', False)
         
         res = analyze_smile_and_skew(ticker_symbol, exp, spot_price, direction=direction, side=side_clean)
@@ -627,7 +630,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
     <div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
                 padding: 1.25rem 1.75rem; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 1.5rem;">
         <h2 style="margin: 0; color: #f8fafc; font-size: 1.6rem; font-weight: 700;">
-            🎯 Institutional Volatility Pricing Desk
+            Institutional Volatility Pricing Desk
         </h2>
         <p style="margin: 0.35rem 0 0 0; color: #94a3b8; font-size: 0.95rem;">
             Institutional volatility architecture: Switch between <b>Buy Side (Ask Edge)</b> for underpriced cheap IV and <b>Sell Side (Bid Edge)</b> for overpriced premium harvesting. De-jumps historical volatility, models Asymmetric Log-Moneyness Skew, and executes full Bid/Ask spread inversion.
@@ -698,8 +701,8 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
     rec_mode = st.radio(
         "Recommendation Horizon Scope:",
         [
-            "🌐 Cross-Chain Scanner (Recommends Different Expiration Dates & Strikes)",
-            "📅 Single Expiration Focus (Recommends Strikes for One Selected Date)"
+            "Cross-Chain Scanner (Recommends Different Expiration Dates & Strikes)",
+            "Single Expiration Focus (Recommends Strikes for One Selected Date)"
         ],
         horizontal=True
     )
@@ -707,10 +710,10 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
     # ----------------- SECTION A: MULTI-DATE CROSS-CHAIN PICKS -----------------
     if "Cross-Chain" in rec_mode:
         if side_clean == "Sell":
-            st.markdown("### 🏆 Top Recommended Overpriced Premium Sells (Bid Edge)")
+            st.markdown("### Top Recommended Overpriced Premium Sells (Bid Edge)")
             st.caption(f"Cross-chain scan for **{selected_ticker} ({dir_clean}) [SELL SIDE]**: Identifies contracts trading at an elevated IV above model skew even after crossing the spread to sell at the Bid, capturing high variance premium.")
         else:
-            st.markdown("### 🏆 Top Recommended Cheap IV Contracts Across Different Expirations")
+            st.markdown("### Top Recommended Cheap IV Contracts Across Different Expirations")
             st.caption(f"Cross-chain scan for **{selected_ticker} ({dir_clean}) [BUY SIDE]**: Evaluates term structure cheapness ($IV/HV$), Ask-Edge (edge after paying the full Ask price), delta sweet spot (~0.38–0.45), and liquidity across diverse dates.")
 
         with st.spinner("Scanning volatility smiles and skew across date chains..."):
@@ -725,22 +728,22 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                     c_type = "Call" if is_call_rec else "Put"
                     
                     if rec['DTE'] <= 22:
-                        h_tag = "⚡ Tactical (10–21d)"
+                        h_tag = "Tactical (10–21d)"
                         badge_color = "#38bdf8"
                     elif rec['DTE'] <= 45:
-                        h_tag = "🚀 Fast Swing (25–45d)"
+                        h_tag = "Fast Swing (25–45d)"
                         badge_color = "#a855f7"
                     elif rec['DTE'] <= 70:
-                        h_tag = "🎯 Core Monthly (60d)"
+                        h_tag = "Core Monthly (60d)"
                         badge_color = "#e3b341"
                     else:
-                        h_tag = "🛡️ Quarterly (75d+)"
+                        h_tag = "Quarterly (75d+)"
                         badge_color = "#39d353"
 
-                    event_str = "⚡ Spans Earnings" if rec.get('Spans_Earnings') else "📅 Inter-Earnings (Safe)"
+                    event_str = "Spans Earnings" if rec.get('Spans_Earnings') else "Inter-Earnings (Safe)"
                     event_bg = "rgba(234, 179, 8, 0.15)" if rec.get('Spans_Earnings') else "rgba(56, 189, 248, 0.1)"
                     event_color = "#eab308" if rec.get('Spans_Earnings') else "#38bdf8"
-                    prob_tag = "🎯 Inside 1σ" if rec.get('Within_1_Sigma') else "🚀 Outside 1σ"
+                    prob_tag = "Inside 1σ" if rec.get('Within_1_Sigma') else "Outside 1σ"
                     spread_badge = rec.get('Spread_Quality', '🟢 Tight')
 
                     if side_clean == "Sell":
@@ -760,7 +763,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                             net_cr = rec.get('Net_Credit', 0)
                             max_rk = rec.get('Max_Risk', 0)
                             ror = rec.get('RoR_Pct', 0)
-                            wing_box = f"<div style='margin-top:6px; padding:6px; background:rgba(255,255,255,0.03); border-radius:6px; border:1px dashed #30363d; font-size:0.75rem;'>🛡️ <b>Hedged Spread Wing</b>: +${wing_k:.0f} {c_type}<br>Credit: <b>${net_cr:.2f}</b> | Max Risk: <b>${max_rk:.2f}</b> | RoR: <b style='color:#39d353;'>{ror:.1f}%</b></div>"
+                            wing_box = f"<div style='margin-top:6px; padding:6px; background:rgba(255,255,255,0.03); border-radius:6px; border:1px dashed #30363d; font-size:0.75rem;'><b>Hedged Spread Wing</b>: +${wing_k:.0f} {c_type}<br>Credit: <b>${net_cr:.2f}</b> | Max Risk: <b>${max_rk:.2f}</b> | RoR: <b style='color:#39d353;'>{ror:.1f}%</b></div>"
                         else:
                             wing_box = ""
                     else:
@@ -788,7 +791,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                             <span style="font-size: 0.72rem; background: {event_bg}; color: {event_color}; padding: 1px 5px; border-radius: 4px;">{event_str}</span>
                         </div>
                         <div style="font-size: 0.84rem; color: #f0f6fc; margin-bottom: 10px; background: rgba(255,255,255,0.03); padding: 4px 8px; border-radius: 6px; display: flex; justify-content: space-between;">
-                            <span>📅 <b>{rec['Expiration']}</b> ({rec['DTE']}d)</span>
+                            <span><b>{rec['Expiration']}</b> ({rec['DTE']}d)</span>
                             <span style="color: #8b949e;">{prob_tag}</span>
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.84rem; margin-bottom: 10px;">
@@ -809,7 +812,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
 
     # ----------------- SECTION B: VOLATILITY SMILE & SKEW INSPECTOR -----------------
     st.markdown("---")
-    st.markdown("### 🔍 Volatility Smile & Skew Inspector")
+    st.markdown("### Volatility Smile & Skew Inspector")
     st.caption("Inspect the exact smile, fitted asymmetric log-moneyness skew curve, expected move range, and value strikes for any chosen expiration date:")
 
     exp_col1, exp_col2 = st.columns([2.5, 1.5])
@@ -932,10 +935,10 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
     # ----------------- SECTION C: SINGLE DATE STRIKE RECOMMENDATIONS -----------------
     if "Single Expiration Focus" in rec_mode or not top_strikes.empty:
         if side_clean == "Sell":
-            st.markdown(f"#### 🎯 Recommended Premium Sell Strikes for **{chosen_exp}** ({chosen_row['DTE']}d DTE)")
+            st.markdown(f"#### Recommended Premium Sell Strikes for **{chosen_exp}** ({chosen_row['DTE']}d DTE)")
             st.caption(f"Strikes on **{chosen_exp}** offering the greatest Bid-Edge (selling at high IV even at the Bid) for credit harvesting.")
         else:
-            st.markdown(f"#### 🎯 Recommended Value Buy Strikes for **{chosen_exp}** ({chosen_row['DTE']}d DTE)")
+            st.markdown(f"#### Recommended Value Buy Strikes for **{chosen_exp}** ({chosen_row['DTE']}d DTE)")
             st.caption(f"Strikes on **{chosen_exp}** offering the greatest Ask-Edge (cheap even after paying the Ask price) within the prime delta band.")
 
         s_cols = st.columns(len(top_strikes))
@@ -956,7 +959,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                         net_cr = s_row.get('Net_Credit', 0)
                         max_rk = s_row.get('Max_Risk', 0)
                         ror = s_row.get('RoR_Pct', 0)
-                        wing_box = f"<div style='margin-top:6px; padding:6px; background:rgba(255,255,255,0.03); border-radius:6px; border:1px dashed #30363d; font-size:0.75rem;'>🛡️ <b>Hedged Spread Wing</b>: +${wing_k:.0f} {c_type}<br>Credit: <b>${net_cr:.2f}</b> | Max Risk: <b>${max_rk:.2f}</b> | RoR: <b style='color:#39d353;'>{ror:.1f}%</b></div>"
+                        wing_box = f"<div style='margin-top:6px; padding:6px; background:rgba(255,255,255,0.03); border-radius:6px; border:1px dashed #30363d; font-size:0.75rem;'><b>Hedged Spread Wing</b>: +${wing_k:.0f} {c_type}<br>Credit: <b>${net_cr:.2f}</b> | Max Risk: <b>${max_rk:.2f}</b> | RoR: <b style='color:#39d353;'>{ror:.1f}%</b></div>"
                     else:
                         wing_box = ""
                         

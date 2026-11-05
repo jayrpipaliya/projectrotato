@@ -200,7 +200,7 @@ Conclude with a clear statement: Current institutional regime is **[Risk-On / Ri
 * Detail top red confluence assets: Specific structural breakdowns and explicitly warn why retail traders must avoid buying the dip on these failing names.
 
 ### 4. Desk Game Plan & Tactical Risk Boundaries
-#### 🛡️ Tactical Risk Execution Rules
+#### Tactical Risk Execution Rules
 * **Capital Deployment (Add Risk):** Where to allocate capital and optimal entry zones.
 * **Portfolio Defense (Hedge / Trim):** Names or sectors to de-risk, trim profits, or hedge.
 * **Hard Invalidation Trigger Levels:** 2-3 specific index or ratio thresholds that will immediately invalidate the current bullish or bearish bias.
@@ -261,7 +261,7 @@ def query_ai_agent(
     """
     client, key = get_gemini_client(gemini_api_key)
     if not client:
-        return "⚠️ **Gemini API Key Missing or Invalid:** Please enter your Gemini API key in the sidebar to interact with the AI Quant Agent."
+        return "**Gemini API Key Missing or Invalid:** Please enter your Gemini API key in the sidebar to interact with the AI Quant Agent."
 
     if confluences is None:
         core_universe = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS
@@ -327,7 +327,7 @@ RULES FOR RESPONDING:
         except Exception:
             continue
 
-    return "⚠️ **Agent Error:** Unable to generate response from Gemini models at this moment. Please check your API key or network connection."
+    return "**Agent Error:** Unable to generate response from Gemini models at this moment. Please check your API key or network connection."
 
 
 def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = None) -> dict:
@@ -569,7 +569,7 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             "win_rate": f"{edge.get('win_rate_20d', 0)}%",
             "sample_size": edge.get("sample_size", 0),
             "median_alpha": opt["target1_pct"],
-            "card_color": "#10b981"
+            "card_color": "#00F5A0"
         })
 
     # Trade 2: Weakest Asset (Fade / De-Risk Warning)
@@ -612,7 +612,7 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             "win_rate": "N/A (Fade Setup)",
             "sample_size": 0,
             "median_alpha": "Downside Bias",
-            "card_color": "#ef4444"
+            "card_color": "#FF2E55"
         })
 
     # Trade 3: Orderly Dip-Buy Opportunity (Red on the day, but in uptrend on low volume)
@@ -662,7 +662,7 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
                 "win_rate": f"{d_edge.get('win_rate_20d', 71.0)}%",
                 "sample_size": d_edge.get("sample_size", 34),
                 "median_alpha": d_opt["target1_pct"],
-                "card_color": "#06b6d4"
+                "card_color": "#00F5A0"
             })
 
     # Trade 3: Pairs Rotation (IWM vs QQQ or SPY vs RSP)
@@ -687,7 +687,7 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             "win_rate": "72.4%",
             "sample_size": 47,
             "median_alpha": "+3.48%",
-            "card_color": "#f59e0b"
+            "card_color": "#00F5A0"
         })
 
     return {

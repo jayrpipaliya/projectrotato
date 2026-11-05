@@ -240,15 +240,15 @@ with st.sidebar:
         </div>
         <div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Data Feeds</div>
     ''', unsafe_allow_html=True)
-    if st.button("⚡ Sync Feeds Now", use_container_width=True):
+    if st.button("Sync Feeds Now", use_container_width=True):
         with st.status("Syncing core feeds from Yahoo Finance...", expanded=True) as status:
             from data_manager import sync_tickers_batch
             target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS
             results = sync_tickers_batch(tickers=target_tickers, force=True)
             st.cache_data.clear()
             last_date = results[0].get("last_date", "Today") if results else "Today"
-            status.update(label=f"✓ Complete! Updated to {last_date}.", state="complete")
-        st.toast(f"Feeds Synced! {len(results)} assets updated.", icon="✅")
+            status.update(label=f"Complete! Updated to {last_date}.", state="complete")
+        st.toast(f"Feeds Synced! {len(results)} assets updated.")
         time.sleep(0.5)
         st.rerun()
 
@@ -298,6 +298,11 @@ uso_m = macro_assets_data.get("USO", {})
 tlt_m = macro_assets_data.get("TLT", {})
 ibit_m = macro_assets_data.get("IBIT", {})
 
+gld_df = load_ticker_data("GLD")
+uso_df = load_ticker_data("USO")
+tlt_df = load_ticker_data("TLT")
+ibit_df = load_ticker_data("IBIT")
+
 spy_rsp = market_data["ratios"].get("SPY_RSP", {})
 iwm_qqq = market_data["ratios"].get("IWM_QQQ", {})
 
@@ -320,28 +325,67 @@ st.markdown('''
 </div>
 ''', unsafe_allow_html=True)
 
-def render_stealth_benchmark_card(ticker, name, price, pct_1d, sub1, sub2, pct_5d=0.0):
+def generate_smooth_sparkline(prices, width=56, height=20, pad_x=3, pad_y=4):
+    if not prices or len(prices) < 2:
+        return "M 3 10 L 49 10", 49, 10
+    n = len(prices)
+    min_p = min(prices)
+    max_p = max(prices)
+    rng = max_p - min_p
+    
+    w_avail = width - pad_x * 2 - 4
+    h_avail = height - pad_y * 2
+    
+    pts = []
+    for i in range(n):
+        x = pad_x + (i / (n - 1)) * w_avail
+        norm = (prices[i] - min_p) / rng if rng > 1e-4 else 0.5
+        y = (height - pad_y) - norm * h_avail
+        pts.append((round(x, 1), round(y, 1)))
+        
+    d = f"M {pts[0][0]} {pts[0][1]}"
+    for i in range(len(pts) - 1):
+        p0 = pts[i - 1] if i > 0 else pts[i]
+        p1 = pts[i]
+        p2 = pts[i + 1]
+        p3 = pts[i + 2] if i + 2 < len(pts) else pts[i + 1]
+        
+        cp1x = round(p1[0] + (p2[0] - p0[0]) / 5.0, 1)
+        cp1y = round(p1[1] + (p2[1] - p0[1]) / 5.0, 1)
+        cp2x = round(p2[0] - (p3[0] - p1[0]) / 5.0, 1)
+        cp2y = round(p2[1] - (p3[1] - p1[1]) / 5.0, 1)
+        
+        d += f" C {cp1x} {cp1y}, {cp2x} {cp2y}, {p2[0]} {p2[1]}"
+        
+    end_pt = pts[-1]
+    return d, end_pt[0], end_pt[1]
+
+def render_stealth_benchmark_card(ticker, name, price, pct_1d, sub1, sub2, pct_5d=0.0, prices=None):
     is_pos = pct_1d >= 0
     badge_cls = "badge-mint" if is_pos else "badge-cherry"
     sign = "+" if is_pos else ""
     spark_col = "#00F5A0" if pct_5d >= 0 else "#FF2E55"
-    spark_path = "M 2 15 Q 16 12, 28 8 T 42 10 T 54 6" if pct_5d >= 0 else "M 2 7 Q 15 4, 28 13 T 44 10 T 54 13"
-    spark_end = 6 if pct_5d >= 0 else 13
+    if prices and len(prices) >= 2:
+        spark_path, spark_end_x, spark_end_y = generate_smooth_sparkline(prices)
+    else:
+        spark_path = "M 3 15 Q 16 12, 28 8 T 42 10 T 50 6" if pct_5d >= 0 else "M 3 7 Q 15 4, 28 13 T 44 10 T 50 14"
+        spark_end_x = 50
+        spark_end_y = 6 if pct_5d >= 0 else 14
     return f'''
     <div class="stealth-card" style="padding:8px 10px; display:flex; flex-direction:column; justify-content:space-between; height:100%; overflow:hidden;">
         <div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:2px; overflow:hidden;">
-                <span style="font-size:9.5px; font-weight:700; color:#f1f5f9; white-space:nowrap; letter-spacing:-0.2px; display:inline-flex; align-items:center; gap:2px;" title="{ticker} • {name}">
-                    <span>{ticker}</span><span style="font-size:8.5px; font-weight:normal; color:#94a3b8; letter-spacing:-0.2px;">• {name}</span>
+                <span style="font-size:9px; font-weight:700; color:#f1f5f9; white-space:nowrap; letter-spacing:-0.3px; display:inline-flex; align-items:center; gap:2px;" title="{ticker} • {name}">
+                    <span>{ticker}</span><span style="font-size:8px; font-weight:normal; color:#94a3b8; letter-spacing:-0.3px;">• {name}</span>
                 </span>
-                <span class="{badge_cls} tabular-num" style="padding:1px 3px; font-size:8.5px; border-radius:4px; flex-shrink:0;">{sign}{pct_1d:.2f}%</span>
+                <span class="{badge_cls} tabular-num" style="padding:1px 3px; font-size:8px; border-radius:4px; flex-shrink:0;">{sign}{pct_1d:.2f}%</span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span class="tabular-num" style="font-size:19px; font-weight:800; color:#ffffff;">${price:,.2f}</span>
                 <div style="width:52px; height:18px; flex-shrink:0;">
                     <svg viewBox="0 0 56 20" style="width:100%; height:100%; overflow:visible;">
                         <path d="{spark_path}" fill="none" stroke="{spark_col}" stroke-width="1.5" stroke-linecap="round" />
-                        <circle cx="54" cy="{spark_end}" r="2" fill="{spark_col}" />
+                        <circle cx="{spark_end_x}" cy="{spark_end_y}" r="2" fill="{spark_col}" />
                     </svg>
                 </div>
             </div>
@@ -355,6 +399,14 @@ def render_stealth_benchmark_card(ticker, name, price, pct_1d, sub1, sub2, pct_5
 
 b_col1, b_col2, b_col3, b_col4, b_col5, b_col6, b_col7 = st.columns(7)
 
+spy_closes = spy_df['Close'].tail(6).tolist() if not spy_df.empty and 'Close' in spy_df.columns else None
+qqq_closes = qqq_df['Close'].tail(6).tolist() if not qqq_df.empty and 'Close' in qqq_df.columns else None
+iwm_closes = iwm_df['Close'].tail(6).tolist() if not iwm_df.empty and 'Close' in iwm_df.columns else None
+gld_closes = gld_df['Close'].tail(6).tolist() if not gld_df.empty and 'Close' in gld_df.columns else None
+tlt_closes = tlt_df['Close'].tail(6).tolist() if not tlt_df.empty and 'Close' in tlt_df.columns else None
+ibit_closes = ibit_df['Close'].tail(6).tolist() if not ibit_df.empty and 'Close' in ibit_df.columns else None
+uso_closes = uso_df['Close'].tail(6).tolist() if not uso_df.empty and 'Close' in uso_df.columns else None
+
 with b_col1:
     p1d = spy_metrics.get("pct_1d", 0)
     p5d = spy_metrics.get("pct_5d", 0)
@@ -362,7 +414,7 @@ with b_col1:
     st.markdown(render_stealth_benchmark_card(
         "SPY", "S&P 500", spy_metrics.get("close", 0), p1d,
         f'ATH DD: <span style="color:#FF2E55; font-weight:600;">{spy_metrics.get("drawdown_ath")}%</span> • 5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span>',
-        "Large-Cap Core Benchmark", pct_5d=p5d
+        "Large-Cap Core Benchmark", pct_5d=p5d, prices=spy_closes
     ), unsafe_allow_html=True)
 
 with b_col2:
@@ -372,7 +424,7 @@ with b_col2:
     st.markdown(render_stealth_benchmark_card(
         "QQQ", "Nasdaq 100", qqq_metrics.get("close", 0), p1d,
         f'ATH DD: <span style="color:#FF2E55; font-weight:600;">{qqq_metrics.get("drawdown_ath")}%</span> • 5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span>',
-        "Tech Growth Benchmark", pct_5d=p5d
+        "Tech Growth Benchmark", pct_5d=p5d, prices=qqq_closes
     ), unsafe_allow_html=True)
 
 with b_col3:
@@ -382,7 +434,7 @@ with b_col3:
     st.markdown(render_stealth_benchmark_card(
         "IWM", "Russell 2000", iwm_metrics.get("close", 0), p1d,
         f'ATH DD: <span style="color:#FF2E55; font-weight:600;">{iwm_metrics.get("drawdown_ath")}%</span> • 5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span>',
-        "Small-Cap Value Benchmark", pct_5d=p5d
+        "Small-Cap Value Benchmark", pct_5d=p5d, prices=iwm_closes
     ), unsafe_allow_html=True)
 
 with b_col4:
@@ -393,7 +445,7 @@ with b_col4:
     st.markdown(render_stealth_benchmark_card(
         "GLD", "Gold Trust", gld_m.get("close", 0), p1d,
         f'5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span> • 20D: <span style="color:#94a3b8;">{p20d:+.2f}%</span>',
-        "Safe Haven • Debasement", pct_5d=p5d
+        "Safe Haven • Debasement", pct_5d=p5d, prices=gld_closes
     ), unsafe_allow_html=True)
 
 with b_col5:
@@ -404,7 +456,7 @@ with b_col5:
     st.markdown(render_stealth_benchmark_card(
         "TLT", "20Y Treasury", tlt_m.get("close", 0), p1d,
         f'5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span> • 20D: <span style="color:#94a3b8;">{p20d:+.2f}%</span>',
-        "Duration • Real Yield Pressure", pct_5d=p5d
+        "Duration • Real Yield Pressure", pct_5d=p5d, prices=tlt_closes
     ), unsafe_allow_html=True)
 
 with b_col6:
@@ -415,7 +467,7 @@ with b_col6:
     st.markdown(render_stealth_benchmark_card(
         "IBIT", "Bitcoin Trust", ibit_m.get("close", 0), p1d,
         f'5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span> • 20D: <span style="color:#94a3b8;">{p20d:+.2f}%</span>',
-        "High-Beta Liquidity Barometer", pct_5d=p5d
+        "High-Beta Liquidity Barometer", pct_5d=p5d, prices=ibit_closes
     ), unsafe_allow_html=True)
 
 with b_col7:
@@ -426,7 +478,7 @@ with b_col7:
     st.markdown(render_stealth_benchmark_card(
         "USO", "Crude Oil", uso_m.get("close", 0), p1d,
         f'5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span> • 20D: <span style="color:#94a3b8;">{p20d:+.2f}%</span>',
-        "Energy & Inflation Input", pct_5d=p5d
+        "Energy & Inflation Input", pct_5d=p5d, prices=uso_closes
     ), unsafe_allow_html=True)
 
 # ----------------- SECTION 2: QUANTITATIVE REGIME & BREADTH RATIOS (3 DEDICATED PAIRS) -----------------
@@ -454,7 +506,7 @@ def render_stealth_ratio_card(ticker, name, subtitle, val, z_val, state, pct5d, 
     st_lower = state.lower()
     if any(k in st_lower for k in ["range", "neutral", "consolidat"]):
         pill_style = "color:#cbd5e1; background:#131720; border:1px solid #1B212D;"
-    elif any(k in st_lower for k in ["risk-off", "bear", "narrow", "contract"]):
+    elif any(k in st_lower for k in ["risk-off", "bear", "narrow", "contract", "oversold", "washout", "overextend", "peaking"]):
         pill_style = "color:#FF2E55; background:rgba(255,46,85,0.1); border:1px solid rgba(255,46,85,0.25);"
     else:
         pill_style = "color:#00F5A0; background:rgba(0,245,160,0.1); border:1px solid rgba(0,245,160,0.25);"
@@ -505,7 +557,7 @@ with r_col1:
         spy_rsp.get("z_score_50d", 0),
         spy_rsp.get("actionable_state", "Broad Breadth Expansion"),
         spy_rsp.get("pct_5d", 0),
-        "Equal-Weight RSP Outperforming"
+        spy_rsp.get("action_text", "Equal-Weight RSP Outperforming")
     ), unsafe_allow_html=True)
 
 with r_col2:
@@ -513,9 +565,9 @@ with r_col2:
         "QQQ / RSP", "Tech Breadth", "Tech Beta vs Broad Market",
         qqq_rsp.get("current", 0),
         qqq_rsp.get("z_score_50d", 0),
-        qqq_rsp.get("actionable_state", "Range-Bound Ratio"),
+        qqq_rsp.get("actionable_state", "Broadening Beyond Mega-Tech"),
         qqq_rsp.get("pct_5d", 0),
-        "Broadening Beyond Mega-Tech"
+        qqq_rsp.get("action_text", "Broadening Beyond Mega-Tech")
     ), unsafe_allow_html=True)
 
 with r_col3:
@@ -525,7 +577,7 @@ with r_col3:
         iwm_qqq.get("z_score_50d", 0),
         iwm_qqq.get("actionable_state", "Aggressive Small-Cap Momentum"),
         iwm_qqq.get("pct_5d", 0),
-        "Small-Cap Alpha Momentum"
+        iwm_qqq.get("action_text", "Small-Cap Alpha Momentum")
     ), unsafe_allow_html=True)
 
 st.caption(f"**Cross-Asset Macro Barometer Reading:** {macro_reading}")
@@ -533,15 +585,15 @@ st.markdown("<div style='margin-bottom:12px;'></div>", unsafe_allow_html=True)
 
 # ----------------- MODERN TABS (Institutional Options Desk v3.0 Full Suite) -----------------
 tab1, tab_agent, tab2, tab3, tab4, tab5, tab6, tab7, tab_options = st.tabs([
-    "📊 Daily AI Macro Briefing",
-    "🤖 Interactive AI Quant Agent",
-    "🎯 AI Trade Ideas",
-    "📡 Confirmation & Confluence Radar",
-    "⚡ Mag 7 Deep Dive & Realized Vol",
-    "🔄 Indexes & Sector Money Flow",
-    "📈 Key Ratio & Breadth Radar",
-    "🔍 Single Ticker Explorer",
-    "🎯 Volatility Pricing"
+    "Daily AI Macro Briefing",
+    "Interactive AI Quant Agent",
+    "AI Trade Ideas",
+    "Confirmation & Confluence Radar",
+    "Mag 7 Deep Dive & Realized Vol",
+    "Indexes & Sector Money Flow",
+    "Key Ratio & Breadth Radar",
+    "Single Ticker Explorer",
+    "Volatility Pricing"
 ])
 
 # ================= TAB 1: DAILY AI MACRO BRIEFING =================
@@ -629,7 +681,7 @@ with tab1:
         sections = [c.strip() for c in chunks if c.strip() and not c.strip().startswith('# DAILY') and not c.strip().startswith('**Date')]
         
         if len(sections) >= 4:
-            p_tabs = st.tabs(["🌐 1. Macro Liquidity (AI)", "⚡ 2. Sector Velocity (AI)", "🎯 3. Setups & Traps (AI)", "🛡️ 4. Desk Game Plan (AI)"])
+            p_tabs = st.tabs(["1. Macro Liquidity (AI)", "2. Sector Velocity (AI)", "3. Setups & Traps (AI)", "4. Desk Game Plan (AI)"])
             for idx, tab_obj in enumerate(p_tabs):
                 with tab_obj:
                     st.markdown(sections[idx])
@@ -648,7 +700,7 @@ with tab1:
             f'<div style="margin-bottom:8px;"><b style="color:#ef4444;">• Desk Risk Warning:</b> <span style="color:#94a3b8;">Monitor mega-cap breadth concentration (SPY/RSP at 5-year highs). Avoid front-running unconfirmed dip buys on broken distribution names.</span></div>'
             f'</div>'
             f'<div style="margin-top:12px; font-size:12px; color:#64748b; border-top:1px solid rgba(255,255,255,0.06); padding-top:8px;">'
-            f'<i>💡 Tip: Ensure your Gemini API Key is active in the sidebar to generate full daily macro briefings and activate the AI Agent.</i>'
+            f'<i>Tip: Ensure your Gemini API Key is active in the sidebar to generate full daily macro briefings and activate the AI Agent.</i>'
             f'</div>'
             f'</div>'
         )
@@ -679,16 +731,16 @@ with tab_agent:
     qp1, qp2, qp3, qp4 = st.columns(4)
     prompt_clicked = None
     with qp1:
-        if st.button("🔍 Mag 7 Divergence & Risks", use_container_width=True):
+        if st.button("Mag 7 Divergence & Risks", use_container_width=True):
             prompt_clicked = "Analyze today's Mag 7 divergence. Which tech leaders are showing institutional accumulation vs distribution, and what are the key invalidation levels?"
     with qp2:
-        if st.button("🚀 Sector Rotation Leaders", use_container_width=True):
+        if st.button("Sector Rotation Leaders", use_container_width=True):
             prompt_clicked = "Based on the 5-day sector velocities, where is institutional smart money rotating right now? Which sector is leading?"
     with qp3:
-        if st.button("⚠️ Top Distribution Warnings", use_container_width=True):
+        if st.button("Top Distribution Warnings", use_container_width=True):
             prompt_clicked = "What are the biggest distribution traps and high-risk names on the desk today? Where should retail traders avoid dip buying?"
     with qp4:
-        if st.button("🎯 Best High-Conviction Setups", use_container_width=True):
+        if st.button("Best High-Conviction Setups", use_container_width=True):
             prompt_clicked = "Give me the top 3 high-probability setups from today's confluence radar with exact entry rationale, targets, and stop-loss levels."
 
     # Render Chat History
@@ -737,76 +789,109 @@ with tab2:
     if not trade_cards:
         st.info("No high-confluence setups detected in current market conditions.")
     else:
-        for t in trade_cards:
+        def render_compact_trade_card_html(t):
             direction = t.get("direction", "LONG")
-            pill_type = "green" if "LONG" in direction else ("red" if "SHORT" in direction or "FADE" in direction else ("cyan" if "DIP" in direction else "amber"))
-            border_col = t.get("card_color", "#0ecb81")
+            is_long = "LONG" in direction or "DIP" in direction
+            border_col = "#00F5A0" if is_long else "#FF2E55"
+            pill_type = "green" if is_long else "red"
+            
             exec_state = t.get("execution_state", "")
+            is_caution = any(k in exec_state.upper() for k in ["EXTENDED", "TRAP", "DO NOT", "AWAIT", "FADE", "RISK"])
+            exec_pill_type = "red" if is_caution else "green"
+            
             curr_px = t.get("current_price", t.get("entry"))
             ext_metric = t.get("extension_metric", "At Support")
+            ext_col = "#FF2E55" if any(k in ext_metric for k in ["-", "EXTENDED"]) else "#00F5A0"
+            
             rr = t.get("risk_reward", "1 : 3.0 R:R")
+            payoff_pill = "green" if is_long else "red"
+            
             limit_zone = t.get("optimal_entry_zone", t.get("entry"))
+            opt_label = t.get("optimal_entry_label", "20 EMA Support Zone")
             trigger = t.get("breakout_trigger", "Above 5D Pivot")
             exec_desc = t.get("execution_desc", "Bidding structural support band rather than market buying.")
 
-            t_card_html = (
-                f'<div class="metric-card-lux" style="border-left:4px solid {border_col}; margin-bottom:16px;">'
-                f'<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px; margin-bottom:12px; flex-wrap:wrap; gap:8px;">'
-                f'<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">'
-                f'<span style="font-size:22px; font-weight:800; color:#ffffff; letter-spacing:-0.5px;">{t["ticker"]}</span>'
-                f'<span class="pill-{pill_type}">{t["direction"]}</span>'
-                f'<span style="font-size:12px; color:#94a3b8; font-weight:600;">{t["type_label"]}</span>'
-                f'{(f"<span class=\"pill-amber\" style=\"font-size:11px; font-weight:700;\">{exec_state}</span>") if exec_state else ""}'
+            entry_bg = "rgba(0, 245, 160, 0.06)" if is_long else "rgba(255, 46, 85, 0.06)"
+            entry_border = "rgba(0, 245, 160, 0.25)" if is_long else "rgba(255, 46, 85, 0.25)"
+            entry_col = "#00F5A0" if is_long else "#FF2E55"
+
+            return (
+                f'<div class="metric-card-lux" style="border-left:4px solid {border_col}; padding:10px 12px; margin-bottom:12px; display:flex; flex-direction:column; justify-content:space-between; height:100%; box-sizing:border-box;">'
+                f'<div>'
+                f'<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:6px; margin-bottom:8px; gap:6px; flex-wrap:wrap;">'
+                f'<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">'
+                f'<span style="font-size:18px; font-weight:800; color:#ffffff; letter-spacing:-0.4px;">{t["ticker"]}</span>'
+                f'<span class="pill-{pill_type}" style="font-size:10px; padding:1px 6px; font-weight:700;">{t["direction"]}</span>'
+                f'<span style="font-size:11px; color:#94a3b8; font-weight:600;">{t["type_label"]}</span>'
+                f'{(f"<span class=\"pill-{exec_pill_type}\" style=\"font-size:10px; padding:1px 6px; font-weight:700;\">{exec_state}</span>") if exec_state else ""}'
                 f'</div>'
-                f'<div style="display:flex; align-items:center; gap:8px;">'
-                f'<span style="font-size:11px; color:#64748b; text-transform:uppercase;">Conviction:</span>'
-                f'<span class="pill-{pill_type}" style="font-size:12px; font-weight:700;">Score: {t["score"]} ({t["bias_label"]})</span>'
+                f'<div style="display:flex; align-items:center; gap:4px; font-size:10px;">'
+                f'<span style="color:#64748b; text-transform:uppercase;">Conviction:</span>'
+                f'<span class="pill-{pill_type}" style="font-size:10.5px; font-weight:700; padding:1px 6px;">Score: {t["score"]} ({t["bias_label"]})</span>'
                 f'</div>'
                 f'</div>'
                 # Market Price vs Optimized R:R Banner
-                f'<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:8px; padding:8px 12px; margin-bottom:12px; flex-wrap:wrap; gap:8px; font-size:12px;">'
-                f'<div><span style="color:#94a3b8;">Current Print:</span> <b style="color:#ffffff;">{curr_px}</b> <span style="color:#64748b; margin:0 4px;">|</span> <span style="color:#94a3b8;">Moving Avg Extension:</span> <b style="color:#f59e0b;">{ext_metric}</b></div>'
-                f'<div><span style="font-size:10px; color:#64748b; text-transform:uppercase; margin-right:4px;">Optimized Payoff:</span> <span class="pill-amber" style="font-size:11px; font-weight:800;">{rr}</span></div>'
+                f'<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:4px 8px; margin-bottom:8px; font-size:11px;">'
+                f'<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">'
+                f'<span style="color:#94a3b8;">Print:</span> <b style="color:#ffffff;">{curr_px}</b>'
+                f'<span style="color:#475569; margin:0 2px;">|</span>'
+                f'<span style="color:#94a3b8;">20 EMA Ext:</span> <b style="color:{ext_col};">{ext_metric}</b>'
                 f'</div>'
-                # 4-Box Execution Strategy Grid
-                f'<div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:12px;">'
-                f'<div style="background:rgba(245, 158, 11, 0.05); padding:10px 12px; border-radius:8px; border:1px solid rgba(245, 158, 11, 0.25);">'
-                f'<div style="font-size:10px; font-weight:700; color:#f59e0b; text-transform:uppercase;">Optimal Limit Entry</div>'
-                f'<div style="font-size:16px; font-weight:800; color:#ffffff; margin-top:2px;">{limit_zone}</div>'
-                f'<div style="font-size:10px; color:#94a3b8; margin-top:2px;">20 EMA Support Zone</div>'
+                f'<div style="display:flex; align-items:center; gap:4px;">'
+                f'<span style="font-size:9.5px; color:#64748b; text-transform:uppercase;">Payoff:</span>'
+                f'<span class="pill-{payoff_pill}" style="font-size:10.5px; font-weight:800; padding:1px 5px;">{rr}</span>'
                 f'</div>'
-                f'<div style="background:rgba(255,255,255,0.02); padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.05);">'
-                f'<div style="font-size:10px; font-weight:700; color:#38bdf8; text-transform:uppercase;">Breakout Trigger</div>'
-                f'<div style="font-size:14px; font-weight:700; color:#ffffff; margin-top:2px;">{trigger}</div>'
-                f'<div style="font-size:10px; color:#94a3b8; margin-top:2px;">Momentum Confirmation</div>'
                 f'</div>'
-                f'<div style="background:rgba(239, 68, 68, 0.05); padding:10px 12px; border-radius:8px; border:1px solid rgba(239, 68, 68, 0.25);">'
-                f'<div style="font-size:10px; font-weight:700; color:#ef4444; text-transform:uppercase;">Stop Invalidation</div>'
-                f'<div style="font-size:16px; font-weight:800; color:#ef4444; margin-top:2px;">{t["stop"]}</div>'
-                f'<div style="font-size:10px; color:#fca5a5; margin-top:2px;">{t["stop_pct"]} Below Structural Support</div>'
+                # 4-Box Execution Strategy 2x2 Grid
+                f'<div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:6px; margin-bottom:8px;">'
+                f'<div style="background:{entry_bg}; padding:6px 8px; border-radius:6px; border:1px solid {entry_border};">'
+                f'<div style="font-size:9px; font-weight:700; color:{entry_col}; text-transform:uppercase; letter-spacing:0.3px;">Optimal Limit Entry</div>'
+                f'<div style="font-size:13.5px; font-weight:800; color:#ffffff; margin-top:1px;">{limit_zone}</div>'
+                f'<div style="font-size:9px; color:#94a3b8; margin-top:1px;">{opt_label}</div>'
                 f'</div>'
-                f'<div style="background:rgba(16, 185, 129, 0.05); padding:10px 12px; border-radius:8px; border:1px solid rgba(16, 185, 129, 0.25);">'
-                f'<div style="font-size:10px; font-weight:700; color:#10b981; text-transform:uppercase;">Profit Targets</div>'
-                f'<div style="font-size:16px; font-weight:800; color:#10b981; margin-top:2px;">{t["target1"]}</div>'
-                f'<div style="font-size:10px; color:#6ee7b7; margin-top:2px;">Runner: {t["target2"]} ({t["target2_pct"]})</div>'
+                f'<div style="background:rgba(255,255,255,0.02); padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">'
+                f'<div style="font-size:9px; font-weight:700; color:#cbd5e1; text-transform:uppercase; letter-spacing:0.3px;">Breakout Trigger</div>'
+                f'<div style="font-size:12.5px; font-weight:700; color:#ffffff; margin-top:1px;">{trigger}</div>'
+                f'<div style="font-size:9px; color:#94a3b8; margin-top:1px;">Momentum Confirmation</div>'
+                f'</div>'
+                f'<div style="background:rgba(255, 46, 85, 0.06); padding:6px 8px; border-radius:6px; border:1px solid rgba(255, 46, 85, 0.25);">'
+                f'<div style="font-size:9px; font-weight:700; color:#FF2E55; text-transform:uppercase; letter-spacing:0.3px;">Stop Invalidation</div>'
+                f'<div style="font-size:13.5px; font-weight:800; color:#FF2E55; margin-top:1px;">{t["stop"]} <span style="font-size:10px; font-weight:normal; color:#fda4af;">({t["stop_pct"]})</span></div>'
+                f'<div style="font-size:9px; color:#fda4af; margin-top:1px;">Below Structural Support</div>'
+                f'</div>'
+                f'<div style="background:rgba(0, 245, 160, 0.06); padding:6px 8px; border-radius:6px; border:1px solid rgba(0, 245, 160, 0.25);">'
+                f'<div style="font-size:9px; font-weight:700; color:#00F5A0; text-transform:uppercase; letter-spacing:0.3px;">Profit Targets</div>'
+                f'<div style="font-size:13.5px; font-weight:800; color:#00F5A0; margin-top:1px;">{t["target1"]} <span style="font-size:10px; font-weight:normal; color:#6ee7b7;">({t.get("target1_pct", "")})</span></div>'
+                f'<div style="font-size:9px; color:#6ee7b7; margin-top:1px;">Runner: {t["target2"]} ({t["target2_pct"]})</div>'
                 f'</div>'
                 f'</div>'
                 # Directive tip
-                f'<div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.05); border-radius:8px; padding:8px 12px; font-size:12px; color:#cbd5e1; margin-bottom:12px;">'
-                f'<span style="color:#f59e0b; margin-right:4px;">💡</span><b style="color:#f59e0b;">Desk Directive:</b> {exec_desc}'
+                f'<div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:5px 8px; font-size:10.5px; color:#cbd5e1; margin-bottom:8px; line-height:1.35;">'
+                f'<b style="color:{border_col};">Desk Directive:</b> {exec_desc}'
                 f'</div>'
-                # Stats Bar
-                f'<div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">'
-                f'<span style="font-size:12.5px; color:#94a3b8;">20Y Win Rate: <b style="color:#10b981; font-size:14px;">{t["win_rate"]}</b> <span style="color:#64748b;">(N={t["sample_size"]})</span></span>'
-                f'<span style="font-size:12.5px; color:#94a3b8;">Median 20D Alpha: <b style="color:#f59e0b;">{t["median_alpha"]}</b></span>'
-                f'<span style="font-size:12px; color:#cbd5e1;"><b>Confirmations:</b> {t["confirmations"]}</span>'
                 f'</div>'
-                f'<div style="font-size:13px; color:#cbd5e1; margin-top:10px; line-height:1.45;">'
+                # Stats Bar and Rationale
+                f'<div>'
+                f'<div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:5px 8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px; font-size:10.5px;">'
+                f'<span style="color:#94a3b8;">Win Rate: <b style="color:#00F5A0;">{t["win_rate"]}</b> <span style="color:#64748b;">(N={t["sample_size"]})</span></span>'
+                f'<span style="color:#94a3b8;">Alpha: <b style="color:{"#00F5A0" if is_long else "#FF2E55"};">{t["median_alpha"]}</b></span>'
+                f'<span style="color:#cbd5e1;"><b>Confirmations:</b> {t["confirmations"]}</span>'
+                f'</div>'
+                f'<div style="font-size:11px; color:#cbd5e1; margin-top:6px; line-height:1.35;">'
                 f'<b style="color:#ffffff;">Desk Rationale:</b> {t["thesis"]}'
                 f'</div>'
                 f'</div>'
+                f'</div>'
             )
-            st.markdown(t_card_html, unsafe_allow_html=True)
+
+        # Render trade cards side by side in pairs of 2
+        for i in range(0, len(trade_cards), 2):
+            cols = st.columns(2)
+            with cols[0]:
+                st.markdown(render_compact_trade_card_html(trade_cards[i]), unsafe_allow_html=True)
+            if i + 1 < len(trade_cards):
+                with cols[1]:
+                    st.markdown(render_compact_trade_card_html(trade_cards[i + 1]), unsafe_allow_html=True)
 
     with st.expander("Quantitative Desk Rules: How We Evaluate 'Buy the Dip' Opportunities on Red Days"):
         st.markdown(

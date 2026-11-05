@@ -32,7 +32,7 @@ def compute_ratio_analytics(ratio_name: str) -> dict:
     pct_5d = float((curr_close / close.iloc[-6] - 1) * 100) if len(close) > 5 else 0.0
     pct_20d = float((curr_close / close.iloc[-21] - 1) * 100) if len(close) > 20 else 0.0
 
-    # Dynamic actionable state driven purely by 5D/20D trend and 20 EMA / 50 EMA relationship
+    # Dynamic actionable state driven purely by 5D/20D trend, 20/50 EMA, and statistical Z-score
     if "SPY" in ratio_name and "RSP" in ratio_name:
         # SPY/RSP: Cap-Weighted vs Equal-Weight (Mega Concentration vs Broad Breadth)
         if dist_ema20 > 0 and dist_ema50 > 0:
@@ -49,7 +49,11 @@ def compute_ratio_analytics(ratio_name: str) -> dict:
                 action_text = "Holding Above 20/50 EMA; Monitor for Divergence"
                 state_color = "#f59e0b"
         elif dist_ema20 < 0 and dist_ema50 < 0:
-            if pct_5d < -0.5 and pct_20d < -1.0:
+            if curr_z <= -1.5:
+                state_label = "Oversold Breadth Ratio"
+                action_text = "Near -2σ Lower Band; Watch for Cap-Weight Mean Reversion"
+                state_color = "#ef4444"
+            elif pct_5d < -0.5 and pct_20d < -1.0:
                 state_label = "Broad Breadth Expansion"
                 action_text = "Downtrend Below 20/50 EMA; Overweight RSP"
                 state_color = "#10b981"
@@ -63,6 +67,47 @@ def compute_ratio_analytics(ratio_name: str) -> dict:
             state_color = "#10b981"
         else:
             state_label = "Balanced Breadth Regime"
+            action_text = "Consolidating Across 20/50 EMA"
+            state_color = "#94a3b8"
+
+    elif "QQQ" in ratio_name and "RSP" in ratio_name:
+        # QQQ/RSP: Tech Beta vs Broad Market (Mega-Tech vs Equal-Weight Participation)
+        if dist_ema20 > 0 and dist_ema50 > 0:
+            if curr_z > 1.5 or dist_ema20 > 1.5:
+                state_label = "Tech Beta Overextended"
+                action_text = "Overextended vs 20/50 EMA; Rotate into RSP"
+                state_color = "#ef4444"
+            elif pct_5d > 0.5:
+                state_label = "Tech Leadership Dominant"
+                action_text = "5D/20D Trend Bullish; Stay with Tech Growth"
+                state_color = "#10b981"
+            else:
+                state_label = "Tech Bull Trend (Slowing)"
+                action_text = "Holding Above 20/50 EMA; Monitor for Tech Fade"
+                state_color = "#f59e0b"
+        elif dist_ema20 < 0 and dist_ema50 < 0:
+            if curr_z <= -1.5:
+                state_label = "Oversold Tech Breadth"
+                action_text = "Near -2σ Lower Band; Watch for Tech Mean-Reversion Bid"
+                state_color = "#ef4444"
+            elif pct_5d < -0.5 and pct_20d < -1.0:
+                state_label = "Broadening Beyond Mega-Tech"
+                action_text = "Downtrend Below 20/50 EMA; Equal-Weight RSP Leading"
+                state_color = "#10b981"
+            else:
+                state_label = "Equal-Weight Outperforming Tech"
+                action_text = "RSP Broadening Gaining Strength over Tech Beta"
+                state_color = "#10b981"
+        elif dist_ema20 >= 0 and dist_ema50 < 0:
+            state_label = "Tech Reversal Bid"
+            action_text = "Reclaimed 20 EMA; Targeting 50 EMA Mean-Reversion"
+            state_color = "#10b981"
+        elif dist_ema20 < 0 and dist_ema50 >= 0:
+            state_label = "Pullback to 50 EMA Support"
+            action_text = "Testing 50 EMA; Watch for Tech Hold or Breadth Breakdown"
+            state_color = "#f59e0b"
+        else:
+            state_label = "Balanced Tech / Broad Market"
             action_text = "Consolidating Across 20/50 EMA"
             state_color = "#94a3b8"
 
@@ -99,9 +144,27 @@ def compute_ratio_analytics(ratio_name: str) -> dict:
             action_text = "Neutral Allocation (QQQ vs IWM)"
             state_color = "#94a3b8"
     else:
-        state_label = "Range-Bound Ratio"
-        action_text = "Consolidating Between 20/50 EMA"
-        state_color = "#94a3b8"
+        # Fallback for generic pairs
+        if curr_z <= -1.5:
+            state_label = f"Oversold ({curr_z:+.1f}σ)"
+            action_text = "At Lower Standard Deviation Band; Mean Reversion Watch"
+            state_color = "#ef4444"
+        elif curr_z >= 1.5:
+            state_label = f"Overextended ({curr_z:+.1f}σ)"
+            action_text = "At Upper Standard Deviation Band; Mean Reversion Watch"
+            state_color = "#ef4444"
+        elif dist_ema20 > 0 and dist_ema50 > 0:
+            state_label = "Uptrend Above 20/50 EMA"
+            action_text = "Positive Relative Momentum Above EMAs"
+            state_color = "#10b981"
+        elif dist_ema20 < 0 and dist_ema50 < 0:
+            state_label = "Downtrend Below 20/50 EMA"
+            action_text = "Negative Relative Momentum Below EMAs"
+            state_color = "#ef4444"
+        else:
+            state_label = "Range-Bound Ratio"
+            action_text = "Consolidating Between 20/50 EMA"
+            state_color = "#94a3b8"
 
     return {
         "name": ratio_name.replace("_", "/"),
@@ -116,7 +179,7 @@ def compute_ratio_analytics(ratio_name: str) -> dict:
         "sma50": round(curr_ema50, 4),
         "z_score_50d": round(curr_z, 2),
         "percentile_5y": round(float(pctile_5y), 1),
-        "is_stretched": abs(curr_z) >= 1.8,
+        "is_stretched": abs(curr_z) >= 1.5,
         "actionable_state": state_label,
         "action_text": action_text,
         "state_color": state_color

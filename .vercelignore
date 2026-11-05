@@ -1,0 +1,12 @@
+# Vercel Deployment Ignore
+.streamlit
+app.py
+scratch/
+*.bat
+run_dashboard.bat
+__pycache__/
+*.pyc
+.git
+.github
+.vscode
+*.md
