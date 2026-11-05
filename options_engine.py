@@ -130,24 +130,36 @@ def compute_realized_volatilities(df_history=None, ticker_symbol=None):
 @st_cache
 def get_next_earnings_date(ticker_symbol):
     """
-    Fetches the next scheduled earnings report date from Yahoo Finance.
+    Fetches the next scheduled upcoming earnings report date from Yahoo Finance.
+    Guarantees the returned date is strictly in the future (>= today).
     Returns None for ETFs (SPY, QQQ, etc.).
     """
     try:
         t = yf.Ticker(ticker_symbol)
-        cal = t.calendar
-        if cal is not None and isinstance(cal, dict) and 'Earnings Date' in cal:
-            ed_list = cal['Earnings Date']
-            if ed_list and len(ed_list) > 0:
-                return pd.Timestamp(ed_list[0]).normalize()
-                
-        ed = t.earnings_dates
-        if ed is not None and not ed.empty:
-            now = pd.Timestamp.now().tz_localize(None)
-            future = ed.index.tz_localize(None)
-            upcoming = future[future >= now]
-            if len(upcoming) > 0:
-                return pd.Timestamp(upcoming[-1]).normalize()
+        now = pd.Timestamp.now().normalize()
+
+        # 1. First check official earnings_dates table (most reliable post-earnings transition)
+        try:
+            ed = t.earnings_dates
+            if ed is not None and not ed.empty:
+                idx = ed.index.tz_localize(None) if ed.index.tz is not None else ed.index
+                upcoming = idx[idx >= now]
+                if len(upcoming) > 0:
+                    return pd.Timestamp(upcoming.min()).normalize()
+        except Exception:
+            pass
+
+        # 2. Fall back to t.calendar, but ONLY if the date is strictly in the future (>= today)
+        try:
+            cal = t.calendar
+            if cal is not None and isinstance(cal, dict) and 'Earnings Date' in cal:
+                ed_list = cal['Earnings Date']
+                for item in ed_list:
+                    ts = pd.Timestamp(item).tz_localize(None).normalize()
+                    if ts >= now:
+                        return ts
+        except Exception:
+            pass
     except Exception:
         pass
     return None
@@ -223,7 +235,7 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
                 upper_bound = round(spot_price + expected_move, 2)
                 
                 spans_earnings = False
-                if next_earnings is not None:
+                if next_earnings is not None and next_earnings >= today:
                     spans_earnings = (exp_date >= next_earnings)
                     
                 if dte < 18:
@@ -860,8 +872,8 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                         badge_color = "#00F5A0"
 
                     event_str = "Spans Earnings" if rec.get('Spans_Earnings') else "Inter-Earnings (Safe)"
-                    event_bg = "rgba(234, 179, 8, 0.15)" if rec.get('Spans_Earnings') else "rgba(56, 189, 248, 0.1)"
-                    event_color = "#eab308" if rec.get('Spans_Earnings') else "#38bdf8"
+                    event_bg = "rgba(255, 46, 85, 0.15)" if rec.get('Spans_Earnings') else "rgba(0, 245, 160, 0.1)"
+                    event_color = "#FF2E55" if rec.get('Spans_Earnings') else "#00F5A0"
                     prob_tag = "Inside 1σ" if rec.get('Within_1_Sigma') else "Outside 1σ"
                     spread_badge = rec.get('Spread_Quality', '🟢 Tight')
 
@@ -952,7 +964,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         chosen_row = display_df.iloc[selected_idx]
 
     with exp_col2:
-        ev_color = "#eab308" if chosen_row['Spans_Earnings'] else "#38bdf8"
+        ev_color = "#FF2E55" if chosen_row['Spans_Earnings'] else "#00F5A0"
         st.markdown(f"""
         <div style="background: #161b22; padding: 12px 18px; border-radius: 8px; border: 1px solid #30363d; margin-top: 1.6rem;">
             <div style="font-size: 0.85rem; color: #8b949e;">Expected Move (1σ Bound)</div>
