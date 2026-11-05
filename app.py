@@ -31,7 +31,7 @@ from options_engine import render_options_vol_page
 st.set_page_config(
     page_title="Rotato | Quantitative Macro & Equity Desk",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # ----------------- STEALTH QUANTITATIVE MACRO DESK THEME CSS -----------------
@@ -210,21 +210,36 @@ def style_table_status(val):
         return "color: #10b981; font-weight: 700;"
     return "color: #94a3b8;"
 
-# ----------------- TOP BRAND & DESK HEADER (STEALTH STYLE) -----------------
-col_h1, col_h2 = st.columns([3.5, 1.5])
-with col_h1:
+# ----------------- SIDEBAR CONTROLS & DESK STATUS -----------------
+with st.sidebar:
     st.markdown('''
-        <div style="display:flex; align-items:center; gap:12px; margin-bottom:2px;">
-            <div style="width:32px; height:32px; border-radius:8px; background:#0D0F14; border:1px solid #1B212D; display:flex; align-items:center; justify-content:center; font-weight:800; color:#ffffff; font-size:15px; position:relative;">
+        <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+            <div style="width:34px; height:34px; border-radius:8px; background:#0D0F14; border:1px solid #1B212D; display:flex; align-items:center; justify-content:center; font-weight:800; color:#ffffff; font-size:16px; position:relative;">
                 R<span style="position:absolute; top:3px; right:3px; width:6px; height:6px; border-radius:50%; background:#00F5A0; box-shadow:0 0 6px #00F5A0;"></span>
             </div>
-            <h1 style="font-size:22px; font-weight:700; color:#ffffff; margin:0; letter-spacing:-0.5px;">Rotato</h1>
-            <span style="font-size:11px; font-weight:500; color:#94a3b8; background:#131720; border:1px solid #1B212D; padding:2px 8px; border-radius:6px;">Stealth Macro Desk</span>
-            <span style="font-size:11px; color:#00F5A0; font-weight:600; display:inline-flex; align-items:center; gap:4px;"><span style="width:6px; height:6px; border-radius:50%; background:#00F5A0; display:inline-block; box-shadow:0 0 6px #00F5A0;"></span> Gemini Key Active</span>
+            <div>
+                <div style="font-size:16px; font-weight:700; color:#ffffff; line-height:1.2;">Rotato</div>
+                <div style="font-size:11px; color:#64748b; font-weight:500;">Stealth Macro Desk</div>
+            </div>
         </div>
-        <div style="font-size:12px; color:#94a3b8;">Quantitative Macro & Confluence Intelligence Desk</div>
+        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid #1B212D;">
+            <div style="background:#0D0F14; border:1px solid #1B212D; border-radius:8px; padding:6px 12px; font-size:11.5px; display:flex; justify-content:space-between; align-items:center;">
+                <span style="color:#ffffff; font-weight:600; display:inline-flex; align-items:center; gap:6px;">
+                    <span style="width:6px; height:6px; border-radius:50%; background:#00F5A0; box-shadow:0 0 6px #00F5A0;"></span>
+                    Desk Active
+                </span>
+                <span style="color:#64748b; font-family:monospace; font-size:10.5px;">Live</span>
+            </div>
+            <div style="background:#0D0F14; border:1px solid #1B212D; border-radius:8px; padding:6px 12px; font-size:11.5px; display:flex; justify-content:space-between; align-items:center;">
+                <span style="color:#00F5A0; font-weight:600; display:inline-flex; align-items:center; gap:6px;">
+                    <span style="width:6px; height:6px; border-radius:50%; background:#00F5A0; box-shadow:0 0 6px #00F5A0;"></span>
+                    Gemini Key Active
+                </span>
+                <span style="color:#64748b; font-size:10.5px;">Ready</span>
+            </div>
+        </div>
+        <div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Data Feeds</div>
     ''', unsafe_allow_html=True)
-with col_h2:
     if st.button("⚡ Sync Feeds Now", use_container_width=True):
         with st.status("Syncing core feeds from Yahoo Finance...", expanded=True) as status:
             from data_manager import sync_tickers_batch
@@ -236,6 +251,11 @@ with col_h2:
         st.toast(f"Feeds Synced! {len(results)} assets updated.", icon="✅")
         time.sleep(0.5)
         st.rerun()
+
+    st.markdown('<div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-top:16px; margin-bottom:6px;">AI Strategist Engine</div>', unsafe_allow_html=True)
+    custom_key = st.text_input("Gemini API Key", value=user_api_key, type="password", placeholder="Enter Gemini Key...", label_visibility="collapsed")
+    if custom_key:
+        user_api_key = custom_key
 
 # ----------------- AUTO-SYNC & LOAD DATA -----------------
 if "auto_synced_on_load" not in st.session_state:
@@ -308,11 +328,13 @@ def render_stealth_benchmark_card(ticker, name, price, pct_1d, sub1, sub2, pct_5
     spark_path = "M 2 15 Q 16 12, 28 8 T 42 10 T 54 6" if pct_5d >= 0 else "M 2 7 Q 15 4, 28 13 T 44 10 T 54 13"
     spark_end = 6 if pct_5d >= 0 else 13
     return f'''
-    <div class="stealth-card" style="padding:10px 12px; display:flex; flex-direction:column; justify-content:space-between; height:100%; overflow:hidden;">
+    <div class="stealth-card" style="padding:8px 10px; display:flex; flex-direction:column; justify-content:space-between; height:100%; overflow:hidden;">
         <div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:4px; overflow:hidden;">
-                <span style="font-size:11px; font-weight:700; color:#f1f5f9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="{ticker} • {name}">{ticker} <span style="font-weight:normal; color:#94a3b8;">• {name}</span></span>
-                <span class="{badge_cls} tabular-num" style="padding:1px 5px; font-size:10px; border-radius:4px; flex-shrink:0;">{sign}{pct_1d:.2f}%</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:2px; overflow:hidden;">
+                <span style="font-size:9.5px; font-weight:700; color:#f1f5f9; white-space:nowrap; letter-spacing:-0.2px; display:inline-flex; align-items:center; gap:2px;" title="{ticker} • {name}">
+                    <span>{ticker}</span><span style="font-size:8.5px; font-weight:normal; color:#94a3b8; letter-spacing:-0.2px;">• {name}</span>
+                </span>
+                <span class="{badge_cls} tabular-num" style="padding:1px 3px; font-size:8.5px; border-radius:4px; flex-shrink:0;">{sign}{pct_1d:.2f}%</span>
             </div>
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span class="tabular-num" style="font-size:19px; font-weight:800; color:#ffffff;">${price:,.2f}</span>
@@ -348,7 +370,7 @@ with b_col2:
     p5d = qqq_metrics.get("pct_5d", 0)
     p5_col = "#00F5A0" if p5d >= 0 else "#FF2E55"
     st.markdown(render_stealth_benchmark_card(
-        "QQQ", "NASDAQ 100", qqq_metrics.get("close", 0), p1d,
+        "QQQ", "Nasdaq 100", qqq_metrics.get("close", 0), p1d,
         f'ATH DD: <span style="color:#FF2E55; font-weight:600;">{qqq_metrics.get("drawdown_ath")}%</span> • 5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span>',
         "Tech Growth Benchmark", pct_5d=p5d
     ), unsafe_allow_html=True)
@@ -358,7 +380,7 @@ with b_col3:
     p5d = iwm_metrics.get("pct_5d", 0)
     p5_col = "#00F5A0" if p5d >= 0 else "#FF2E55"
     st.markdown(render_stealth_benchmark_card(
-        "IWM", "RUSSELL 2000", iwm_metrics.get("close", 0), p1d,
+        "IWM", "Russell 2000", iwm_metrics.get("close", 0), p1d,
         f'ATH DD: <span style="color:#FF2E55; font-weight:600;">{iwm_metrics.get("drawdown_ath")}%</span> • 5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span>',
         "Small-Cap Value Benchmark", pct_5d=p5d
     ), unsafe_allow_html=True)
@@ -369,7 +391,7 @@ with b_col4:
     p20d = gld_m.get("pct_20d", 0)
     p5_col = "#00F5A0" if p5d >= 0 else "#FF2E55"
     st.markdown(render_stealth_benchmark_card(
-        "GLD", "GOLD TRUST", gld_m.get("close", 0), p1d,
+        "GLD", "Gold Trust", gld_m.get("close", 0), p1d,
         f'5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span> • 20D: <span style="color:#94a3b8;">{p20d:+.2f}%</span>',
         "Safe Haven • Debasement", pct_5d=p5d
     ), unsafe_allow_html=True)
@@ -380,7 +402,7 @@ with b_col5:
     p20d = tlt_m.get("pct_20d", 0)
     p5_col = "#00F5A0" if p5d >= 0 else "#FF2E55"
     st.markdown(render_stealth_benchmark_card(
-        "TLT", "20Y TREAS", tlt_m.get("close", 0), p1d,
+        "TLT", "20Y Treasury", tlt_m.get("close", 0), p1d,
         f'5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span> • 20D: <span style="color:#94a3b8;">{p20d:+.2f}%</span>',
         "Duration • Real Yield Pressure", pct_5d=p5d
     ), unsafe_allow_html=True)
@@ -391,7 +413,7 @@ with b_col6:
     p20d = ibit_m.get("pct_20d", 0)
     p5_col = "#00F5A0" if p5d >= 0 else "#FF2E55"
     st.markdown(render_stealth_benchmark_card(
-        "IBIT", "BITCOIN", ibit_m.get("close", 0), p1d,
+        "IBIT", "Bitcoin Trust", ibit_m.get("close", 0), p1d,
         f'5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span> • 20D: <span style="color:#94a3b8;">{p20d:+.2f}%</span>',
         "High-Beta Liquidity Barometer", pct_5d=p5d
     ), unsafe_allow_html=True)
@@ -402,7 +424,7 @@ with b_col7:
     p20d = uso_m.get("pct_20d", 0)
     p5_col = "#00F5A0" if p5d >= 0 else "#FF2E55"
     st.markdown(render_stealth_benchmark_card(
-        "USO", "CRUDE OIL", uso_m.get("close", 0), p1d,
+        "USO", "Crude Oil", uso_m.get("close", 0), p1d,
         f'5D: <span style="color:{p5_col}; font-weight:600;">{p5d:+.2f}%</span> • 20D: <span style="color:#94a3b8;">{p20d:+.2f}%</span>',
         "Energy & Inflation Input", pct_5d=p5d
     ), unsafe_allow_html=True)

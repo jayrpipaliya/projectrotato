@@ -531,7 +531,7 @@ HTML_CONTENT = """<!DOCTYPE html>
       
       <!-- Brand Logo Header -->
       <div class="flex items-center space-x-3 pb-2">
-        <div class="w-9 h-9 rounded-lg bg-stealth-900 border border-stealth-border flex items-center justify-center font-bold text-lg text-white shadow-[0_0_15px_rgba(0,245,160,0.15)] relative">
+        <div class="w-9 h-9 rounded-lg bg-stealth-900 border border-stealth-border flex items-center justify-center font-bold text-lg text-white shadow-[0_0_15px_rgba(0,245,160,0.15)] relative shrink-0">
           <span class="text-white font-extrabold">R</span>
           <span class="w-1.5 h-1.5 rounded-full bg-mint absolute top-1.5 right-1.5 shadow-[0_0_6px_#00F5A0]"></span>
         </div>
@@ -539,6 +539,32 @@ HTML_CONTENT = """<!DOCTYPE html>
           <h1 class="font-bold text-base tracking-tight text-white leading-tight">Rotato</h1>
           <p class="text-[11px] text-slate-500 font-medium">Stealth Macro Desk</p>
         </div>
+      </div>
+
+      <!-- Desk Status & Engine Badges (Moved to Left Side Menu) -->
+      <div class="space-y-2 pb-2 border-b border-stealth-border/80">
+        <!-- Desk Active Pill -->
+        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-stealth-900 border border-stealth-border text-xs shadow-sm">
+          <div class="flex items-center space-x-2">
+            <span class="relative flex h-2 w-2">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-mint opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-mint"></span>
+            </span>
+            <span class="text-slate-200 font-semibold text-xs tracking-tight">Desk Active</span>
+          </div>
+          <span id="sessionDateBadge" class="text-slate-400 tabular-num text-[11px] font-mono">Prices: 2026-11-04</span>
+        </div>
+
+        <!-- Gemini Key Active Pill -->
+        <button onclick="promptApiKey()" class="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-stealth-900 hover:bg-stealth-850 border border-stealth-border hover:border-mint/40 text-xs text-slate-300 transition group shadow-sm">
+          <div class="flex items-center space-x-2">
+            <svg class="w-3.5 h-3.5 text-mint group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            </svg>
+            <span id="aiGlobalStatusText" class="font-medium text-emerald-400">Gemini Key Active</span>
+          </div>
+          <span class="w-1.5 h-1.5 rounded-full bg-mint shadow-[0_0_6px_#00F5A0]"></span>
+        </button>
       </div>
 
       <!-- Section: DATA FEEDS -->
@@ -597,7 +623,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         <div class="flex items-center space-x-2 text-xs text-mint font-medium pt-1">
           <span class="w-2 h-2 rounded-full bg-mint shadow-[0_0_8px_#00F5A0]"></span>
-          <span id="aiGlobalStatusText">Status: Gemini API Key Active</span>
+          <span id="sidebarEngineStatus">Status: Gemini AI Active</span>
         </div>
       </div>
 
@@ -619,46 +645,6 @@ HTML_CONTENT = """<!DOCTYPE html>
 
   <!-- ================= MAIN VIEWPORT ================= -->
   <div class="flex-1 flex flex-col min-w-0 overflow-y-auto">
-
-    <!-- TOP DESK HEADER -->
-    <header class="border-b border-stealth-border bg-stealth-950/90 backdrop-blur-md px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 z-40">
-      
-      <!-- Desk Title & Subtitle -->
-      <div class="flex items-center space-x-3">
-        <div class="w-8 h-8 rounded-lg bg-stealth-900 border border-stealth-border flex items-center justify-center font-bold text-white shadow-sm">
-          R
-        </div>
-        <div>
-          <h2 class="text-base font-bold text-white tracking-tight flex items-center space-x-2">
-            <span>Rotato</span>
-          </h2>
-          <p class="text-xs text-slate-400 font-medium">Quantitative Macro & Confluence Intelligence Desk</p>
-        </div>
-      </div>
-
-      <!-- Desk Status Badges -->
-      <div class="flex items-center space-x-2.5">
-        <!-- Gemini Key Active Pill -->
-        <button onclick="promptApiKey()" class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-stealth-900 border border-stealth-border text-xs text-slate-300 hover:border-mint/50 transition">
-          <svg class="w-3.5 h-3.5 text-mint" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-          </svg>
-          <span id="aiGlobalStatusText" class="font-medium text-emerald-400">Gemini Key Active</span>
-        </button>
-
-        <!-- Desk Active & Date Pill -->
-        <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-stealth-900 border border-stealth-border text-xs">
-          <span class="relative flex h-2 w-2">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-mint opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-2 w-2 bg-mint"></span>
-          </span>
-          <span class="text-slate-200 font-semibold">Desk Active</span>
-          <span class="text-slate-600">•</span>
-          <span id="sessionDateBadge" class="text-slate-400 tabular-num">Prices: 2026-11-04</span>
-        </div>
-      </div>
-
-    </header>
 
     <!-- MAIN BODY CONTENT -->
     <main class="p-6 space-y-6 max-w-[1600px] w-full">
@@ -1152,8 +1138,6 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         </div>
     </main>
-
-        </main>
   </div>
 <!-- JavaScript Application Logic -->
     <script>
@@ -1164,6 +1148,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         function updateApiKeyUI() {
             const statusEl = document.getElementById('aiGlobalStatusText');
+            const engineStatusEl = document.getElementById('sidebarEngineStatus');
             const key = USER_API_KEY || '';
             const topInput = document.getElementById('topApiKeyInput');
             if (topInput && key) topInput.value = key;
@@ -1171,6 +1156,9 @@ HTML_CONTENT = """<!DOCTYPE html>
             if (sideInput && key) sideInput.value = key;
             if (statusEl) {
                 statusEl.innerText = key ? 'Gemini Key Active' : 'Gemini Key Active (Default)';
+            }
+            if (engineStatusEl) {
+                engineStatusEl.innerText = key ? 'Status: Gemini AI Active (Custom)' : 'Status: Gemini AI Active (Default)';
             }
         }
 
@@ -1673,7 +1661,7 @@ async function init() {
                     sub2: `Safe Haven • Debasement Hedge`
                 },
                 { 
-                    ticker: "TLT", name: "20Y Treasuries", 
+                    ticker: "TLT", name: "20Y Treasury", 
                     price: macro.TLT?.close || 0, pct1d: macro.TLT?.pct_1d || 0, pct5d: macro.TLT?.pct_5d || 0,
                     sub1: `5D: <span class="${(macro.TLT?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(macro.TLT?.pct_5d || 0) >= 0 ? '+' : ''}${Number(macro.TLT?.pct_5d || 0).toFixed(2)}%</span> • 20D: <span class="font-medium text-slate-300">${Number(macro.TLT?.pct_20d || 0).toFixed(2)}%</span>`,
                     sub2: `Duration • Real Yield Pressure`
@@ -1705,12 +1693,12 @@ async function init() {
                 const sparkEndY = is5dPos ? 6 : 13;
 
                 html += `
-                    <div class="stealth-card p-3 space-y-1.5 overflow-hidden">
-                        <div class="flex items-center justify-between gap-1 overflow-hidden">
-                            <div class="text-[11px] font-bold text-slate-200 whitespace-nowrap truncate shrink pr-1" title="${c.ticker} • ${c.name}">
-                                ${c.ticker} <span class="text-slate-400 font-normal">• ${c.name}</span>
+                    <div class="stealth-card p-2.5 space-y-1.5 overflow-hidden">
+                        <div class="flex items-center justify-between gap-1 overflow-hidden min-w-0">
+                            <div class="text-[9.5px] font-bold text-slate-200 whitespace-nowrap tracking-tight shrink-0 flex items-center gap-1" title="${c.ticker} • ${c.name}">
+                                <span>${c.ticker}</span><span class="text-slate-400 font-normal text-[8.5px] tracking-tight">• ${c.name}</span>
                             </div>
-                            <span class="${badgeClass} px-1.5 py-0.5 rounded text-[10.5px] font-semibold tabular-num shrink-0">${sign}${Number(p1d).toFixed(2)}%</span>
+                            <span class="${badgeClass} px-1 py-0.5 rounded text-[8.5px] font-semibold tabular-num shrink-0">${sign}${Number(p1d).toFixed(2)}%</span>
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-xl font-bold text-white tracking-tight tabular-num">$${Number(c.price || 0).toFixed(2)}</span>
