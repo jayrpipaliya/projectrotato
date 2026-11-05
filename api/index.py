@@ -3108,6 +3108,93 @@ async function init() {
             const traces = [];
             const atmIvVal = m.atm_iv || 25.0;
 
+            // Dynamic Dual-Color Shading vs ATM Baseline (Red when above ATM, Green when under ATM)
+            const fullCurveStrikes = [];
+            const fullCurveIvs = [];
+            if (s.otm_put_curve && s.otm_put_curve.strikes) {
+                fullCurveStrikes.push(...s.otm_put_curve.strikes);
+                fullCurveIvs.push(...s.otm_put_curve.iv);
+            }
+            if (s.otm_call_curve && s.otm_call_curve.strikes) {
+                const startIdx = (fullCurveStrikes.length > 0 && Math.abs(s.otm_call_curve.strikes[0] - fullCurveStrikes[fullCurveStrikes.length - 1]) < 0.01) ? 1 : 0;
+                fullCurveStrikes.push(...s.otm_call_curve.strikes.slice(startIdx));
+                fullCurveIvs.push(...s.otm_call_curve.iv.slice(startIdx));
+            }
+
+            if (fullCurveStrikes.length >= 2 && atmIvVal) {
+                const pts = [];
+                for (let i = 0; i < fullCurveStrikes.length - 1; i++) {
+                    const x1 = fullCurveStrikes[i], y1 = fullCurveIvs[i];
+                    const x2 = fullCurveStrikes[i+1], y2 = fullCurveIvs[i+1];
+                    pts.push({ x: x1, y: y1 });
+                    if ((y1 - atmIvVal) * (y2 - atmIvVal) < 0) {
+                        const t = (atmIvVal - y1) / (y2 - y1);
+                        const xc = x1 + t * (x2 - x1);
+                        pts.push({ x: xc, y: atmIvVal });
+                    }
+                }
+                pts.push({ x: fullCurveStrikes[fullCurveStrikes.length - 1], y: fullCurveIvs[fullCurveIvs.length - 1] });
+
+                const segsAbove = [];
+                const segsBelow = [];
+                let currSeg = [pts[0]];
+                let isAbove = pts[0].y >= atmIvVal;
+
+                for (let i = 1; i < pts.length; i++) {
+                    currSeg.push(pts[i]);
+                    if (Math.abs(pts[i].y - atmIvVal) < 1e-4) {
+                        if (isAbove) segsAbove.push(currSeg);
+                        else segsBelow.push(currSeg);
+                        currSeg = [pts[i]];
+                        isAbove = (i + 1 < pts.length) ? (pts[i+1].y >= atmIvVal) : !isAbove;
+                    }
+                }
+                if (currSeg.length > 1) {
+                    if (isAbove) segsAbove.push(currSeg);
+                    else segsBelow.push(currSeg);
+                }
+
+                // Above ATM: Translucent Cherry Red
+                segsAbove.forEach((seg, idx) => {
+                    const xs = seg.map(p => p.x);
+                    const ys = seg.map(p => p.y);
+                    xs.push(seg[seg.length - 1].x, seg[0].x, seg[0].x);
+                    ys.push(atmIvVal, atmIvVal, seg[0].y);
+                    traces.push({
+                        x: xs, y: ys,
+                        fill: 'toself',
+                        fillcolor: 'rgba(255, 46, 85, 0.16)',
+                        line: { width: 0 },
+                        mode: 'none',
+                        type: 'scatter',
+                        name: idx === 0 ? 'bid over ATM' : undefined,
+                        showlegend: idx === 0,
+                        legendgroup: 'shading_above',
+                        hoverinfo: 'none'
+                    });
+                });
+
+                // Below ATM: Translucent Mint Green
+                segsBelow.forEach((seg, idx) => {
+                    const xs = seg.map(p => p.x);
+                    const ys = seg.map(p => p.y);
+                    xs.push(seg[seg.length - 1].x, seg[0].x, seg[0].x);
+                    ys.push(atmIvVal, atmIvVal, seg[0].y);
+                    traces.push({
+                        x: xs, y: ys,
+                        fill: 'toself',
+                        fillcolor: 'rgba(0, 245, 160, 0.15)',
+                        line: { width: 0 },
+                        mode: 'none',
+                        type: 'scatter',
+                        name: idx === 0 ? 'under ATM' : undefined,
+                        showlegend: idx === 0,
+                        legendgroup: 'shading_below',
+                        hoverinfo: 'none'
+                    });
+                });
+            }
+
             // 1. OTM Puts Fitted Curve (Cherry Red)
             if (s.otm_put_curve && s.otm_put_curve.strikes && s.otm_put_curve.strikes.length > 0) {
                 traces.push({

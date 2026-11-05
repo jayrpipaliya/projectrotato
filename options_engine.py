@@ -993,6 +993,63 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
 
     fig = go.Figure()
 
+    # Dynamic Dual-Color Shading vs ATM Baseline (Red when above ATM, Green when under ATM)
+    atm_val = metrics.get('atm_iv', 25.0)
+    comb_strikes = []
+    comb_ivs = []
+    if 'otm_put_curve' in smile_data and smile_data['otm_put_curve']['strikes']:
+        comb_strikes.extend(smile_data['otm_put_curve']['strikes'])
+        comb_ivs.extend(smile_data['otm_put_curve']['iv'])
+    if 'otm_call_curve' in smile_data and smile_data['otm_call_curve']['strikes']:
+        start_idx = 1 if (comb_strikes and abs(smile_data['otm_call_curve']['strikes'][0] - comb_strikes[-1]) < 0.01) else 0
+        comb_strikes.extend(smile_data['otm_call_curve']['strikes'][start_idx:])
+        comb_ivs.extend(smile_data['otm_call_curve']['iv'][start_idx:])
+
+    if len(comb_strikes) >= 2 and atm_val:
+        pts = []
+        for i in range(len(comb_strikes) - 1):
+            x1, y1 = comb_strikes[i], comb_ivs[i]
+            x2, y2 = comb_strikes[i+1], comb_ivs[i+1]
+            pts.append((x1, y1))
+            if (y1 - atm_val) * (y2 - atm_val) < 0:
+                t = (atm_val - y1) / (y2 - y1)
+                xc = x1 + t * (x2 - x1)
+                pts.append((xc, atm_val))
+        pts.append((comb_strikes[-1], comb_ivs[-1]))
+
+        segs_above = []
+        segs_below = []
+        curr_seg = [pts[0]]
+        is_above = pts[0][1] >= atm_val
+        for i in range(1, len(pts)):
+            p = pts[i]
+            curr_seg.append(p)
+            if abs(p[1] - atm_val) < 1e-4:
+                if is_above: segs_above.append(curr_seg)
+                else: segs_below.append(curr_seg)
+                curr_seg = [p]
+                is_above = (pts[i+1][1] >= atm_val) if i+1 < len(pts) else (not is_above)
+        if len(curr_seg) > 1:
+            if is_above: segs_above.append(curr_seg)
+            else: segs_below.append(curr_seg)
+
+        for idx, seg in enumerate(segs_above):
+            xs = [p[0] for p in seg] + [seg[-1][0], seg[0][0], seg[0][0]]
+            ys = [p[1] for p in seg] + [atm_val, atm_val, seg[0][1]]
+            fig.add_trace(go.Scatter(
+                x=xs, y=ys, fill='toself', fillcolor='rgba(255, 46, 85, 0.16)',
+                line=dict(width=0), mode='none', name='bid over ATM' if idx == 0 else None,
+                showlegend=(idx == 0), legendgroup='shading_above', hoverinfo='none'
+            ))
+        for idx, seg in enumerate(segs_below):
+            xs = [p[0] for p in seg] + [seg[-1][0], seg[0][0], seg[0][0]]
+            ys = [p[1] for p in seg] + [atm_val, atm_val, seg[0][1]]
+            fig.add_trace(go.Scatter(
+                x=xs, y=ys, fill='toself', fillcolor='rgba(0, 245, 160, 0.15)',
+                line=dict(width=0), mode='none', name='under ATM' if idx == 0 else None,
+                showlegend=(idx == 0), legendgroup='shading_below', hoverinfo='none'
+            ))
+
     # OTM Puts Fitted Curve (Cherry Red)
     if 'otm_put_curve' in smile_data and smile_data['otm_put_curve']['strikes']:
         fig.add_trace(go.Scatter(
