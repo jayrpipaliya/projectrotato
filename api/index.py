@@ -2914,7 +2914,13 @@ async function init() {
                                 ${actionHtml}
                                 <div>Bid / Mid: $${p.bid.toFixed(2)} / $${p.Mid_Price.toFixed(2)}</div>
                                 ${extraHtml}
-                                <div>Open Interest: <b class="text-slate-300">${(p.openInterest || 0).toLocaleString()}</b></div>
+                                <div>
+                                    Open Interest: <b class="text-slate-300">${(p.openInterest || 0).toLocaleString()}</b>
+                                    ${((!p.openInterest || p.openInterest === 0) && (p.volume && p.volume > 0))
+                                        ? `<span class="text-[10px] text-mint font-semibold">(${Number(p.volume).toLocaleString()} Vol • OCC Overnight Reset)</span>`
+                                        : (p.volume && p.volume > 0 ? `<span class="text-[10px] text-slate-400 font-mono">(${Number(p.volume).toLocaleString()} Vol)</span>` : '')
+                                    }
+                                </div>
                                 ${wingHtml}
                             </div>
                         </div>

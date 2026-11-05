@@ -452,16 +452,18 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
             else: # Bearish: selling Calls
                 delta_band = (tradable['Est_Delta'] >= 0.12) & (tradable['Est_Delta'] <= 0.45)
                 
-            liquid_band = (tradable['openInterest'] >= 20) & (tradable['bid'] > 0.05)
+            tradable['Effective_Liquidity'] = tradable[['openInterest', 'volume']].max(axis=1).fillna(0)
+            liquid_band = (tradable['Effective_Liquidity'] >= 20) & (tradable['bid'] > 0.05)
             candidates = tradable[delta_band & liquid_band].copy()
             if candidates.empty:
-                candidates = tradable[delta_band].copy() if not tradable[delta_band].empty else tradable.copy()
+                active_fallback = tradable[delta_band & (tradable['Effective_Liquidity'] > 0)]
+                candidates = active_fallback.copy() if not active_fallback.empty else (tradable[delta_band].copy() if not tradable[delta_band].empty else tradable.copy())
                 
             candidates['Composite_Score'] = (
                 (candidates['Bid_Edge'] * 3.5)
                 + (candidates['IV_Premium'] * 1.5)
                 - (abs(candidates['Est_Delta'] - ideal_delta) * 14.0)
-                + np.log10(candidates['openInterest'].clip(lower=10)) * 1.8
+                + np.log10(candidates['Effective_Liquidity'].clip(lower=10)) * 1.8
                 - (candidates['Spread_Pct'].clip(upper=25.0) * 0.15)
             )
             
@@ -505,16 +507,18 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
             else:
                 delta_band = (tradable['Est_Delta'] <= -0.20) & (tradable['Est_Delta'] >= -0.65)
                 
-            liquid_band = (tradable['openInterest'] >= 20) & (tradable['ask'] > 0)
+            tradable['Effective_Liquidity'] = tradable[['openInterest', 'volume']].max(axis=1).fillna(0)
+            liquid_band = (tradable['Effective_Liquidity'] >= 20) & (tradable['ask'] > 0)
             candidates = tradable[delta_band & liquid_band].copy()
             if candidates.empty:
-                candidates = tradable[delta_band].copy() if not tradable[delta_band].empty else tradable.copy()
+                active_fallback = tradable[delta_band & (tradable['Effective_Liquidity'] > 0)]
+                candidates = active_fallback.copy() if not active_fallback.empty else (tradable[delta_band].copy() if not tradable[delta_band].empty else tradable.copy())
                 
             candidates['Composite_Score'] = (
                 (candidates['Ask_Edge'] * 3.0)
                 + (candidates['IV_Discount'] * 1.5)
                 - (abs(candidates['Est_Delta'] - ideal_delta) * 14.0)
-                + np.log10(candidates['openInterest'].clip(lower=10)) * 1.8
+                + np.log10(candidates['Effective_Liquidity'].clip(lower=10)) * 1.8
                 - (candidates['Spread_Pct'].clip(upper=25.0) * 0.15)
             )
             candidates['Wing_Strike'] = None
@@ -577,6 +581,9 @@ def scan_cross_chain_recommendations(ticker_symbol, cheap_expirations_list, spot
                 cand['Side'] = side_clean
                 
                 oi = float(cand.get('openInterest', 0) if pd.notnull(cand.get('openInterest')) else 0)
+                vol = float(cand.get('volume', 0) if pd.notnull(cand.get('volume')) else 0)
+                liq = max(oi, vol)
+                cand['Effective_Liquidity'] = liq
                 
                 if side_clean == "Sell":
                     ideal_d = -0.25 if direction == "Bullish" else 0.25
@@ -586,7 +593,7 @@ def scan_cross_chain_recommendations(ticker_symbol, cheap_expirations_list, spot
                         + (cand.get('Bid_Edge', 0) * 3.5)
                         + (cand.get('IV_Premium', 0) * 1.5)
                         - (abs(cand.get('Est_Delta', 0) - ideal_d) * 14.0)
-                        + np.log10(max(oi, 10.0)) * 2.0
+                        + np.log10(max(liq, 10.0)) * 2.0
                         - (cand.get('Spread_Pct', 0) * 0.1)
                     )
                 else:
@@ -597,7 +604,7 @@ def scan_cross_chain_recommendations(ticker_symbol, cheap_expirations_list, spot
                         + (cand.get('Ask_Edge', 0) * 3.0)
                         + (cand.get('IV_Discount', 0) * 1.5)
                         - (abs(cand.get('Est_Delta', 0) - ideal_d) * 14.0)
-                        + np.log10(max(oi, 10.0)) * 2.0
+                        + np.log10(max(liq, 10.0)) * 2.0
                         - (cand.get('Spread_Pct', 0) * 0.1)
                         - earnings_penalty
                     )
@@ -804,7 +811,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                             {action_html}
                             <div>Bid / Mid: ${rec['bid']:.2f} / ${rec['Mid_Price']:.2f}</div>
                             {extra_html}
-                            <div>Open Interest: <b>{int(rec.get('openInterest', 0) or 0):,}</b></div>
+                            <div>Open Interest: <b>{int(rec.get('openInterest', 0) or 0):,}</b> {f"<span style='font-size:10px; color:#00F5A0;'>({int(rec.get('volume', 0) or 0):,} Vol • OCC Overnight Reset)</span>" if (int(rec.get('openInterest', 0) or 0) == 0 and int(rec.get('volume', 0) or 0) > 0) else (f"<span style='font-size:10px; color:#94a3b8;'>({int(rec.get('volume', 0) or 0):,} Vol)</span>" if int(rec.get('volume', 0) or 0) > 0 else "")}</div>
                             {wing_box}
                         </div>
                     </div>
