@@ -513,6 +513,9 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
                 return "🔴 Wide"
         target_df['Spread_Quality'] = target_df['Spread_Pct'].apply(classify_spread)
         
+        # Clamp Ask_IV_Pct and Bid_IV_Pct so that wide bid-ask spread artifacts on illiquid wings do not explode
+        target_df['Ask_IV_Pct'] = np.clip(target_df['Ask_IV_Pct'], target_df['IV_Pct'], target_df['Fitted_IV'] + 4.5)
+        target_df['Bid_IV_Pct'] = np.clip(target_df['Bid_IV_Pct'], target_df['Fitted_IV'] - 4.5, target_df['IV_Pct'])
         target_df['Ask_Edge'] = (target_df['Fitted_IV'] - target_df['Ask_IV_Pct']).round(2)
         target_df['Bid_Edge'] = (target_df['Bid_IV_Pct'] - target_df['Fitted_IV']).round(2)
         
@@ -1053,13 +1056,19 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
             marker=dict(size=12, color='rgba(0, 245, 160, 0.2)', line=dict(color='#00F5A0', width=2))
         ))
 
-    # Effective Ask IV / Bid IV Execution Overlay
+    # Effective Ask IV / Bid IV Execution Overlay (filtered to active tradable moneyness)
     is_buy = (side_clean == "Buy")
-    spread_trace_y = target_df['Ask_IV_Pct'] if is_buy else target_df['Bid_IV_Pct']
+    if dir_clean == "Bullish":
+        exec_mask = (target_df['strike'] >= spot_price * 0.95) & (target_df['strike'] <= spot_price * 1.15)
+    else:
+        exec_mask = (target_df['strike'] <= spot_price * 1.05) & (target_df['strike'] >= spot_price * 0.85)
+    exec_plot_df = target_df[exec_mask] if exec_mask.any() else target_df
+    
+    spread_trace_y = exec_plot_df['Ask_IV_Pct'] if is_buy else exec_plot_df['Bid_IV_Pct']
     spread_name = 'Effective Ask IV (Cost to Buy)' if is_buy else 'Effective Bid IV (Selling Price)'
     spread_color = 'rgba(245, 158, 11, 0.75)' if is_buy else 'rgba(0, 245, 160, 0.75)'
     fig.add_trace(go.Scatter(
-        x=target_df['strike'], y=spread_trace_y,
+        x=exec_plot_df['strike'], y=spread_trace_y,
         mode='lines', name=spread_name,
         line=dict(color=spread_color, width=1.5, dash='dot')
     ))

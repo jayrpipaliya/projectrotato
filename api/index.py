@@ -302,6 +302,13 @@ def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Quer
                 metrics['term_slope'] = 0.0
                 metrics['term_slope_text'] = "N/A"
 
+            # Filter execution spread overlay to active tradable moneyness (eliminates deep ITM 50%+ IV spread spikes)
+            if dir_clean == "Bullish":
+                exec_mask = (target_df['strike'] >= spot_price * 0.95) & (target_df['strike'] <= spot_price * 1.15)
+            else:
+                exec_mask = (target_df['strike'] <= spot_price * 1.05) & (target_df['strike'] >= spot_price * 0.85)
+            exec_df = target_df[exec_mask] if exec_mask.any() else target_df
+
             smile_payload = {
                 "expiration": chosen_exp,
                 "dte": smile['dte'],
@@ -314,10 +321,10 @@ def api_options(ticker: str, direction: str = Query("Bullish"), side: str = Quer
                 "otm_calls_market": smile.get('otm_calls_market', {}),
                 "model_strikes": smile.get('otm_call_curve', {}).get('strikes', []),
                 "model_iv": smile.get('otm_call_curve', {}).get('iv', []),
-                "market_strikes": [round(float(s), 2) for s in target_df['strike']],
-                "market_iv": [round(float(iv), 2) for iv in target_df['IV_Pct']],
-                "market_ask_iv": [round(float(iv), 2) for iv in target_df['Ask_IV_Pct']],
-                "market_bid_iv": [round(float(iv), 2) for iv in target_df['Bid_IV_Pct']],
+                "market_strikes": [round(float(s), 2) for s in exec_df['strike']],
+                "market_iv": [round(float(iv), 2) for iv in exec_df['IV_Pct']],
+                "market_ask_iv": [round(float(iv), 2) for iv in exec_df['Ask_IV_Pct']],
+                "market_bid_iv": [round(float(iv), 2) for iv in exec_df['Bid_IV_Pct']],
                 "top_strikes": [round(float(s), 2) for s in smile['top_strikes']['strike']],
                 "top_strikes_iv": [round(float(iv), 2) for iv in smile['top_strikes']['IV_Pct']],
                 "top_strikes_delta": [round(float(d), 2) for d in smile['top_strikes'].get('Est_Delta', [0]*len(smile['top_strikes']))],
@@ -404,6 +411,13 @@ def api_options_smile(ticker: str, expiration: str = Query(...), direction: str 
             metrics['term_slope'] = 0.0
             metrics['term_slope_text'] = "N/A"
             
+        # Filter execution spread overlay to active tradable moneyness (eliminates deep ITM 50%+ IV spread spikes)
+        if dir_clean == "Bullish":
+            exec_mask = (target_df['strike'] >= spot_price * 0.95) & (target_df['strike'] <= spot_price * 1.15)
+        else:
+            exec_mask = (target_df['strike'] <= spot_price * 1.05) & (target_df['strike'] >= spot_price * 0.85)
+        exec_df = target_df[exec_mask] if exec_mask.any() else target_df
+
         return clean_json({
             "ticker": t_up,
             "direction": dir_clean,
@@ -421,10 +435,10 @@ def api_options_smile(ticker: str, expiration: str = Query(...), direction: str 
                 "otm_calls_market": smile.get('otm_calls_market', {}),
                 "model_strikes": smile.get('otm_call_curve', {}).get('strikes', []),
                 "model_iv": smile.get('otm_call_curve', {}).get('iv', []),
-                "market_strikes": [round(float(s), 2) for s in target_df['strike']],
-                "market_iv": [round(float(iv), 2) for iv in target_df['IV_Pct']],
-                "market_ask_iv": [round(float(iv), 2) for iv in target_df['Ask_IV_Pct']],
-                "market_bid_iv": [round(float(iv), 2) for iv in target_df['Bid_IV_Pct']],
+                "market_strikes": [round(float(s), 2) for s in exec_df['strike']],
+                "market_iv": [round(float(iv), 2) for iv in exec_df['IV_Pct']],
+                "market_ask_iv": [round(float(iv), 2) for iv in exec_df['Ask_IV_Pct']],
+                "market_bid_iv": [round(float(iv), 2) for iv in exec_df['Bid_IV_Pct']],
                 "top_strikes": [round(float(s), 2) for s in smile['top_strikes']['strike']],
                 "top_strikes_iv": [round(float(iv), 2) for iv in smile['top_strikes']['IV_Pct']],
                 "top_strikes_delta": [round(float(d), 2) for d in smile['top_strikes'].get('Est_Delta', [0]*len(smile['top_strikes']))],
@@ -3207,20 +3221,38 @@ async function init() {
             }
 
             // 6. Execution Overlay: Effective Ask IV / Bid IV
-            const traceSpreadLine = isBuy ? {
-                x: s.market_strikes, y: s.market_ask_iv,
-                name: 'Effective Ask IV (Cost to Buy)',
-                type: 'scatter', mode: 'lines',
-                line: { color: 'rgba(245, 158, 11, 0.65)', width: 1.5, dash: 'dot' },
-                hovertemplate: 'Strike: $%{x}<br>Effective Ask IV: %{y:.1f}%<extra></extra>'
-            } : {
-                x: s.market_strikes, y: s.market_bid_iv,
-                name: 'Effective Bid IV (Selling Price)',
-                type: 'scatter', mode: 'lines',
-                line: { color: 'rgba(0, 245, 160, 0.65)', width: 1.5, dash: 'dot' },
-                hovertemplate: 'Strike: $%{x}<br>Effective Bid IV: %{y:.1f}%<extra></extra>'
-            };
-            traces.push(traceSpreadLine);
+            // Filter to active trading moneyness and clamp any illiquid spread spikes
+            const spreadStrikes = [];
+            const spreadIvs = [];
+            if (s.market_strikes && (s.market_ask_iv || s.market_bid_iv)) {
+                const rawIvs = isBuy ? s.market_ask_iv : s.market_bid_iv;
+                const minK = isBuy ? (direction === 'Bullish' ? spot * 0.95 : spot * 0.85) : spot * 0.85;
+                const maxK = isBuy ? (direction === 'Bullish' ? spot * 1.15 : spot * 1.05) : spot * 1.15;
+                const upperIvCap = atmIvVal + 5.5;
+                const lowerIvFloor = Math.max(8.0, atmIvVal - 6.5);
+                s.market_strikes.forEach((k, idx) => {
+                    const iv = rawIvs[idx];
+                    if (k >= minK && k <= maxK && iv > 0) {
+                        // Clamp outlier spikes caused by wide market-maker spreads on illiquid strikes
+                        const cleanIv = Math.min(Math.max(iv, lowerIvFloor), upperIvCap);
+                        spreadStrikes.push(k);
+                        spreadIvs.push(cleanIv);
+                    }
+                });
+            }
+
+            if (spreadStrikes.length > 0) {
+                const traceSpreadLine = {
+                    x: spreadStrikes,
+                    y: spreadIvs,
+                    name: isBuy ? 'Effective Ask IV (Cost to Buy)' : 'Effective Bid IV (Selling Price)',
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: { color: isBuy ? 'rgba(245, 158, 11, 0.75)' : 'rgba(0, 245, 160, 0.75)', width: 1.5, dash: 'dot' },
+                    hovertemplate: 'Strike: $%{x}<br>' + (isBuy ? 'Ask IV: %{y:.1f}%' : 'Bid IV: %{y:.1f}%') + '<extra></extra>'
+                };
+                traces.push(traceSpreadLine);
+            }
 
             // 7. Execution Overlay: Recommended Value Strikes (Clean "Buy $xxx" without green circle emoji)
             if (s.top_strikes && s.top_strikes.length > 0) {
@@ -3243,24 +3275,14 @@ async function init() {
                 });
             }
 
-            // Calculate appropriate y-axis range focused on the curve and trading strikes
-            // Prevents deep OTM bid/ask spread artifacts (e.g. 50% IV) from compressing the smile curve
-            const coreIvs = [];
-            if (s.otm_put_curve && s.otm_put_curve.iv) coreIvs.push(...s.otm_put_curve.iv);
-            if (s.otm_call_curve && s.otm_call_curve.iv) coreIvs.push(...s.otm_call_curve.iv);
-            if (atmIvVal) coreIvs.push(atmIvVal);
-            if (s.top_strikes_iv) coreIvs.push(...s.top_strikes_iv);
-
-            // Include Effective Ask/Bid IV only within the tradable core region (inside 1.25x expected move)
-            if (s.market_strikes && (s.market_ask_iv || s.market_bid_iv)) {
-                const spreadIvs = isBuy ? s.market_ask_iv : s.market_bid_iv;
-                const maxDist = Math.max((s.exp_move || 30) * 1.25, (spot || 300) * 0.08);
-                s.market_strikes.forEach((stk, idx) => {
-                    if (spot && Math.abs(stk - spot) <= maxDist && spreadIvs[idx] > 0 && spreadIvs[idx] < 120) {
-                        coreIvs.push(spreadIvs[idx]);
-                    }
-                });
-            }
+            // Calculate appropriate y-axis range STRICTLY anchored on the Skew Curve & ATM baseline
+            // Guarantees the curve fills the vertical space without deep OTM spread blowout
+            const curveIvs = [];
+            if (s.otm_put_curve && s.otm_put_curve.iv) curveIvs.push(...s.otm_put_curve.iv);
+            if (s.otm_call_curve && s.otm_call_curve.iv) curveIvs.push(...s.otm_call_curve.iv);
+            if (atmIvVal) curveIvs.push(atmIvVal);
+            if (s.top_strikes_iv) curveIvs.push(...s.top_strikes_iv);
+            if (spreadIvs.length > 0) curveIvs.push(...spreadIvs);
 
             const yaxisConfig = { 
                 title: "Implied Volatility (%)", 
@@ -3268,21 +3290,22 @@ async function init() {
                 ticksuffix: "%"
             };
 
-            const validIvs = coreIvs.filter(v => v > 4 && v < 120);
-            if (validIvs.length > 0) {
-                let minIv = Math.min(...validIvs);
-                let maxIv = Math.max(...validIvs);
+            const validCurveIvs = curveIvs.filter(v => v > 5 && v < 100);
+            if (validCurveIvs.length > 0) {
+                let minIv = Math.min(...validCurveIvs);
+                let maxIv = Math.max(...validCurveIvs);
                 let rangeSpan = maxIv - minIv;
-                let pad = Math.max(rangeSpan * 0.20, 2.0);
+                let pad = Math.max(rangeSpan * 0.18, 1.8);
                 let yMin = Math.max(0, Math.floor(minIv - pad));
                 let yMax = Math.ceil(maxIv + pad);
-                // Ensure at least 6 points vertical span
+                
+                // Ensure a comfortable vertical height (at least 6-8 pts)
                 if (yMax - yMin < 6) {
-                    const mid = (yMax + yMin) / 2;
-                    yMin = Math.max(0, Math.floor(mid - 3.5));
-                    yMax = Math.ceil(mid + 3.5);
+                    const mid = Math.round((yMax + yMin) / 2);
+                    yMin = Math.max(0, mid - 3);
+                    yMax = mid + 3;
                 }
-                const dtick = (yMax - yMin) <= 12 ? 2 : ((yMax - yMin) <= 24 ? 4 : 5);
+                const dtick = (yMax - yMin) <= 8 ? 2 : ((yMax - yMin) <= 16 ? 2 : 4);
                 yaxisConfig.range = [yMin, yMax];
                 yaxisConfig.dtick = dtick;
             }
