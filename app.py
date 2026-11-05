@@ -11,6 +11,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+DEFAULT_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
+user_api_key = DEFAULT_GEMINI_KEY
+
 from data_manager import (
     load_ticker_data, update_all_tickers, get_available_tickers,
     MAG_7, INDEXES, SECTORS, MACRO_ASSETS, generate_synthetic_ratios,
@@ -28,160 +31,93 @@ from options_engine import render_options_vol_page
 st.set_page_config(
     page_title="Rotato | Quantitative Macro & Equity Desk",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# ----------------- LUXURY FINTECH DARK THEME CSS -----------------
+# ----------------- STEALTH QUANTITATIVE MACRO DESK THEME CSS -----------------
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap');
     
     html, body, [class*="css"] {
-        font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .tabular-num, [data-num], table, .kpi-val, .pill-num {
+        font-variant-numeric: tabular-nums lining-nums;
+        font-feature-settings: 'tnum' 1, 'zero' 1;
+        letter-spacing: -0.015em;
     }
     
-    /* Background & Main Container */
+    /* Background & Main Container (Constrained Width) */
     .stApp {
-        background-color: #08090d;
-        color: #f8fafc;
+        background-color: #08090C;
+        color: #f1f5f9;
     }
     
-    /* Top Ticker Ribbon */
-    .ticker-tape-container {
-        display: flex;
-        align-items: center;
-        gap: 18px;
-        overflow-x: auto;
-        padding: 8px 16px;
-        background: #050608;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        margin: -4rem -4rem 1.5rem -4rem;
-        white-space: nowrap;
+    .main .block-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding-top: 1.25rem;
+        padding-bottom: 3rem;
     }
-    .ticker-item {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 13px;
+    
+    /* Stealth Mint & Cherry Badges */
+    .pill-green, .badge-mint {
+        background: rgba(0, 245, 160, 0.10);
+        color: #00F5A0;
+        border: 1px solid rgba(0, 245, 160, 0.25);
+        border-radius: 6px;
+        padding: 2px 7px;
+        font-size: 11px;
         font-weight: 600;
-        color: #94a3b8;
+        font-variant-numeric: tabular-nums lining-nums;
     }
-    .ticker-symbol {
-        color: #f1f5f9;
-        font-weight: 700;
-    }
-    .pill-green {
-        background: rgba(16, 185, 129, 0.14);
-        color: #10b981;
-        border: 1px solid rgba(16, 185, 129, 0.28);
-        border-radius: 9999px;
+    .pill-red, .badge-cherry {
+        background: rgba(255, 46, 85, 0.10);
+        color: #FF2E55;
+        border: 1px solid rgba(255, 46, 85, 0.25);
+        border-radius: 6px;
         padding: 2px 7px;
         font-size: 11px;
-        font-weight: 700;
-    }
-    .pill-red {
-        background: rgba(239, 68, 68, 0.14);
-        color: #ef4444;
-        border: 1px solid rgba(239, 68, 68, 0.28);
-        border-radius: 9999px;
-        padding: 2px 7px;
-        font-size: 11px;
-        font-weight: 700;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums lining-nums;
     }
     .pill-amber {
-        background: rgba(245, 158, 11, 0.14);
-        color: #f59e0b;
-        border: 1px solid rgba(245, 158, 11, 0.28);
-        border-radius: 9999px;
+        background: rgba(245, 158, 11, 0.10);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.25);
+        border-radius: 6px;
         padding: 2px 7px;
         font-size: 11px;
-        font-weight: 700;
+        font-weight: 600;
     }
     .pill-cyan {
-        background: rgba(6, 182, 212, 0.14);
-        color: #06b6d4;
-        border: 1px solid rgba(6, 182, 212, 0.28);
-        border-radius: 9999px;
+        background: rgba(0, 245, 160, 0.10);
+        color: #00F5A0;
+        border: 1px solid rgba(0, 245, 160, 0.25);
+        border-radius: 6px;
         padding: 2px 7px;
         font-size: 11px;
-        font-weight: 700;
-    }
-
-    /* Hero Brand Block */
-    .brand-hero {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 22px;
-        padding-bottom: 16px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    }
-    .brand-title-group {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-    }
-    .brand-logo-box {
-        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-        width: 44px;
-        height: 44px;
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 4px 16px rgba(245, 158, 11, 0.35);
-        font-weight: 900;
-        font-size: 24px;
-        color: #08090d;
-    }
-    .brand-title {
-        font-size: 26px;
-        font-weight: 800;
-        letter-spacing: -0.6px;
-        margin: 0;
-        color: #ffffff;
-    }
-    .brand-title-accent {
-        background: linear-gradient(135deg, #f59e0b, #fbbf24);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-    .status-badge-live {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        background: #111319;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        padding: 6px 14px;
-        border-radius: 9999px;
-        font-size: 12px;
         font-weight: 600;
-        color: #cbd5e1;
-    }
-    .status-dot-green {
-        width: 8px;
-        height: 8px;
-        background-color: #10b981;
-        border-radius: 50%;
-        box-shadow: 0 0 10px #10b981;
+        font-variant-numeric: tabular-nums lining-nums;
     }
 
-    /* Elevated Glass Cards */
-    .metric-card-lux {
-        background: #111319;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 14px;
-        padding: 16px 18px;
-        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
-        transition: transform 0.2s ease, border-color 0.2s ease;
+    /* Stealth Cards */
+    .metric-card-lux, .stealth-card {
+        background: #0D0F14;
+        border: 1px solid #1B212D;
+        border-radius: 10px;
+        padding: 14px 16px;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.5);
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
         margin-bottom: 12px;
     }
-    .metric-card-lux:hover {
-        transform: translateY(-2px);
-        border-color: rgba(245, 158, 11, 0.35);
+    .metric-card-lux:hover, .stealth-card:hover {
+        border-color: #262E3E;
     }
     .card-label {
-        font-size: 12px;
+        font-size: 11.5px;
         font-weight: 600;
         color: #94a3b8;
         text-transform: uppercase;
@@ -193,93 +129,75 @@ st.markdown("""
     }
     .card-val {
         font-size: 24px;
-        font-weight: 800;
+        font-weight: 700;
         color: #ffffff;
         letter-spacing: -0.5px;
-    }
-    .card-sub {
-        font-size: 12px;
-        color: #64748b;
-        margin-top: 4px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
+        font-variant-numeric: tabular-nums lining-nums;
     }
 
-    /* Regime Ribbon Card */
-    .regime-card {
-        background: #111319;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 14px;
-        padding: 16px 20px;
-        margin-bottom: 20px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
-    }
-
-    /* Modern Tabs */
+    /* Stealth Navigation Tabs */
     .stTabs [data-baseweb="tab-list"] {
         gap: 6px;
-        background-color: #0d0e13;
+        background-color: #0D0F14;
         padding: 6px;
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 10px;
+        border: 1px solid #1B212D;
         margin-bottom: 20px;
+        overflow-x: auto;
     }
     .stTabs [data-baseweb="tab"] {
-        border-radius: 8px;
-        padding: 8px 18px;
-        color: #94a3b8;
-        font-weight: 600;
-        font-size: 13.5px;
-        border: none !important;
-        background-color: transparent;
-        transition: all 0.2s ease;
+        border-radius: 8px !important;
+        padding: 7px 14px !important;
+        color: #94a3b8 !important;
+        font-weight: 500 !important;
+        font-size: 12px !important;
+        border: 1px solid transparent !important;
+        background-color: transparent !important;
+        transition: all 0.15s ease !important;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #ffffff !important;
+        background-color: #131720 !important;
     }
     .stTabs [aria-selected="true"] {
-        background: #1c1e27 !important;
-        color: #fbbf24 !important;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        background: #131720 !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
+        border: 1px solid rgba(0, 245, 160, 0.4) !important;
+        box-shadow: 0 0 12px rgba(0, 245, 160, 0.15) !important;
     }
 
-    /* Buttons */
+    /* Action Buttons */
     .stButton > button {
-        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
-        color: #08090d !important;
-        font-weight: 700 !important;
-        border: none !important;
-        border-radius: 9px !important;
-        padding: 8px 18px !important;
-        box-shadow: 0 4px 14px rgba(245, 158, 11, 0.28) !important;
-        transition: all 0.2s ease;
+        background: #131720 !important;
+        color: #00F5A0 !important;
+        font-weight: 600 !important;
+        border: 1px solid rgba(0, 245, 160, 0.3) !important;
+        border-radius: 8px !important;
+        padding: 7px 16px !important;
+        font-size: 12.5px !important;
+        box-shadow: 0 0 10px rgba(0, 245, 160, 0.1) !important;
+        transition: all 0.15s ease;
     }
     .stButton > button:hover {
-        box-shadow: 0 6px 22px rgba(245, 158, 11, 0.45) !important;
-        transform: translateY(-1px);
-    }
-
-    /* Sidebar Styling */
-    section[data-testid="stSidebar"] {
-        background-color: #0b0d12 !important;
-        border-right: 1px solid rgba(255, 255, 255, 0.06);
+        background: #00F5A0 !important;
+        color: #08090C !important;
+        box-shadow: 0 0 15px rgba(0, 245, 160, 0.3) !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Helper function to format Plotly charts in the dark fintech theme
 def apply_dark_theme(fig, height=360, title=None):
     fig.update_layout(
-        plot_bgcolor="#111319",
-        paper_bgcolor="#111319",
-        font=dict(family="Plus Jakarta Sans, sans-serif", color="#94a3b8", size=12),
+        plot_bgcolor="#0D0F14",
+        paper_bgcolor="#0D0F14",
+        font=dict(family="Inter, -apple-system, sans-serif", color="#94a3b8", size=12),
         margin=dict(l=15, r=15, t=45 if title else 15, b=15),
         height=height,
         title=dict(text=title, font=dict(color="#ffffff", size=15, weight=700)) if title else None,
-        xaxis=dict(gridcolor="rgba(255, 255, 255, 0.04)", zerolinecolor="rgba(255, 255, 255, 0.08)"),
-        yaxis=dict(gridcolor="rgba(255, 255, 255, 0.04)", zerolinecolor="rgba(255, 255, 255, 0.08)"),
-        legend=dict(bgcolor="rgba(17, 19, 25, 0.8)", bordercolor="rgba(255, 255, 255, 0.08)")
+        xaxis=dict(gridcolor="#1B212D", zerolinecolor="#1B212D"),
+        yaxis=dict(gridcolor="#1B212D", zerolinecolor="#1B212D"),
+        legend=dict(bgcolor="rgba(13, 15, 20, 0.9)", bordercolor="#1B212D")
     )
     return fig
 
@@ -292,62 +210,32 @@ def style_table_status(val):
         return "color: #10b981; font-weight: 700;"
     return "color: #94a3b8;"
 
-# ----------------- SIDEBAR CONTROLS -----------------
-st.sidebar.markdown("""
-<div style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
-    <div style="background:linear-gradient(135deg, #f59e0b, #d97706); width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:800; color:#08090d;">R</div>
-    <span style="font-size:18px; font-weight:800; color:#ffffff;">Rotato</span>
-</div>
-""", unsafe_allow_html=True)
-
-st.sidebar.subheader("Data Feeds (yfinance)")
-sync_scope = st.sidebar.radio("Sync Scope", ["Core Universe (Mag 7 + Indexes + Sectors + Macro)", "All 79 Tickers in raw_csv"], index=0)
-
-if st.sidebar.button("Sync Daily Closes Now", use_container_width=True):
-    with st.sidebar.status("Syncing market feeds from Yahoo Finance...", expanded=True) as status:
-        st.write("⚡ Step 1: Connecting to Yahoo Finance endpoints...")
-        time.sleep(0.2)
-        st.write(f"📥 Step 2: Downloading batch daily bars ({'Core 28 Assets' if 'Core' in sync_scope else 'All 79 Assets'})...")
-        from data_manager import sync_tickers_batch
-        target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS if "Core" in sync_scope else get_available_tickers()
-        results = sync_tickers_batch(tickers=target_tickers, force=True)
-        st.write(f"📊 Step 3: Recalculating EMAs, RSI, and ATR stretch across {len(results)} assets...")
-        time.sleep(0.2)
-        st.write("🔄 Step 4: Recomputing synthetic ratios (SPY/RSP, QQQ/RSP, IWM/QQQ)...")
-        st.cache_data.clear()
-        last_date = results[0].get("last_date", "Today") if results else "Today"
-        status.update(
-            label=f"✓ Sync Complete! {len(results)} assets updated to {last_date}.",
-            state="complete",
-            expanded=True
-        )
-    st.toast(f"Market Sync Complete! {len(results)} assets updated to {last_date}.", icon="✅")
-    time.sleep(1.0)
-    st.rerun()
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("AI Strategist Engine")
-env_key = os.getenv("GEMINI_API_KEY", "")
-user_api_key = st.sidebar.text_input(
-    "Gemini API Key", 
-    value=env_key, 
-    type="password", 
-    help="Enter your Google Gemini API key to generate bespoke AI macro reports and trade setups."
-)
-
-if user_api_key:
-    if user_api_key != env_key:
-        if st.sidebar.button("Save Key to .env", use_container_width=True):
-            with open(".env", "w", encoding="utf-8") as f:
-                f.write(f"GEMINI_API_KEY={user_api_key.strip()}\n")
-            st.sidebar.success("API Key saved permanently!")
-            st.rerun()
-    st.sidebar.caption("Status: Gemini API Key Active")
-else:
-    st.sidebar.caption("Status: Using Built-in Quantitative Heuristic AI")
-
-st.sidebar.markdown("---")
-st.sidebar.caption("Data source: Local `raw_csv` + `yfinance` daily sync.")
+# ----------------- TOP BRAND & DESK HEADER (FILAMENT STYLE) -----------------
+col_h1, col_h2 = st.columns([3.5, 1.5])
+with col_h1:
+    st.markdown('''
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:2px;">
+            <div style="width:32px; height:32px; border-radius:8px; background:#0D0F14; border:1px solid #1B212D; display:flex; align-items:center; justify-content:center; font-weight:800; color:#ffffff; font-size:15px; position:relative;">
+                R<span style="position:absolute; top:3px; right:3px; width:6px; height:6px; border-radius:50%; background:#00F5A0; box-shadow:0 0 6px #00F5A0;"></span>
+            </div>
+            <h1 style="font-size:22px; font-weight:700; color:#ffffff; margin:0; letter-spacing:-0.5px;">Rotato</h1>
+            <span style="font-size:11px; font-weight:500; color:#94a3b8; background:#131720; border:1px solid #1B212D; padding:2px 8px; border-radius:6px;">Stealth Macro Desk</span>
+            <span style="font-size:11px; color:#00F5A0; font-weight:600; display:inline-flex; align-items:center; gap:4px;"><span style="width:6px; height:6px; border-radius:50%; background:#00F5A0; display:inline-block; box-shadow:0 0 6px #00F5A0;"></span> Gemini Key Active</span>
+        </div>
+        <div style="font-size:12px; color:#94a3b8;">Quantitative Macro & Confluence Intelligence Desk</div>
+    ''', unsafe_allow_html=True)
+with col_h2:
+    if st.button("⚡ Sync Feeds Now", use_container_width=True):
+        with st.status("Syncing core feeds from Yahoo Finance...", expanded=True) as status:
+            from data_manager import sync_tickers_batch
+            target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS
+            results = sync_tickers_batch(tickers=target_tickers, force=True)
+            st.cache_data.clear()
+            last_date = results[0].get("last_date", "Today") if results else "Today"
+            status.update(label=f"✓ Complete! Updated to {last_date}.", state="complete")
+        st.toast(f"Feeds Synced! {len(results)} assets updated.", icon="✅")
+        time.sleep(0.5)
+        st.rerun()
 
 # ----------------- AUTO-SYNC & LOAD DATA -----------------
 if "auto_synced_on_load" not in st.session_state:
@@ -372,6 +260,8 @@ def get_cached_confluences(tickers_tuple):
 with st.spinner("Analyzing quantitative regimes and technicals..."):
     market_data = get_market_analysis()
 
+macro_reading = market_data.get("macro_context", "Balanced backdrop.")
+
 # Top Banner Data
 spy_df = load_ticker_data("SPY")
 spy_metrics = compute_all_metrics(spy_df)
@@ -391,173 +281,78 @@ ibit_m = macro_assets_data.get("IBIT", {})
 spy_rsp = market_data["ratios"].get("SPY_RSP", {})
 iwm_qqq = market_data["ratios"].get("IWM_QQQ", {})
 
-
-
-# ----------------- HERO BRAND BAR -----------------
 last_market_session = "Today"
 if not spy_df.empty and "Date" in spy_df.columns:
     last_market_session = str(spy_df["Date"].iloc[-1]).split()[0]
 
-brand_hero_html = (
-    '<div class="brand-hero">'
-    '<div class="brand-title-group">'
-    '<div class="brand-logo-box">R</div>'
-    '<div>'
-    '<h1 class="brand-title">Rotato</h1>'
-    '<span style="font-size:13px; color:#94a3b8;">Quantitative Macro & Confluence Intelligence Desk</span>'
-    '</div>'
-    '</div>'
-    '<div class="status-badge-live">'
-    '<div class="status-dot-green"></div>'
-    '<span>Desk Active</span>'
-    '<span style="color:#64748b;">•</span>'
-    f'<span style="color:#f59e0b; font-weight:700;">Prices: {last_market_session}</span>'
-    '</div>'
-    '</div>'
-)
-st.markdown(brand_hero_html, unsafe_allow_html=True)
 
 
 
-# ----------------- TOP METRIC CARDS ROW 1: CORE EQUITY & MACRO BENCHMARKS -----------------
-st.markdown('<div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Core Equity & Macro Benchmarks</div>', unsafe_allow_html=True)
-r1_c1, r1_c2, r1_c3, r1_c4, r1_c5 = st.columns(5)
 
-def render_metric_card(label, price, change, sub_text1, sub_text2, pill_type="green"):
-    sign = "+" if change >= 0 else ""
-    pill_class = f"pill-{pill_type}"
+def render_filament_hero_card(ticker, label, price_val, change, sub_text, is_pos=True, is_ratio=False, sigma=0.0):
+    pill_class = "badge-mint" if is_pos else "badge-cherry"
+    sign = "+" if is_pos else ""
+    badge = f'<span class="badge-mint tabular-num">{sigma:+.2f}σ</span>' if (is_ratio and sigma >= 0) else (f'<span class="badge-cherry tabular-num">{sigma:+.2f}σ</span>' if is_ratio else f'<span class="{pill_class} tabular-num">{sign}{change:.2f}%</span>')
+    stroke_color = "#00F5A0" if is_pos else "#FF2E55"
+    spark_path = "M0,18 Q30,8 60,14 T120,6 T180,12 T240,4" if is_pos else "M0,6 Q30,14 60,10 T120,20 T180,16 T240,24"
     return (
-        f'<div class="metric-card-lux" style="display:flex; flex-direction:column; justify-content:space-between; height:100%;">'
+        f'<div class="stealth-card" style="display:flex; flex-direction:column; justify-content:space-between; height:100%;">'
         f'<div>'
-        f'<div class="card-label"><span>{label}</span><span class="{pill_class}">{sign}{change:.2f}%</span></div>'
-        f'<div class="card-val">${price:,.2f}</div>'
+        f'<div class="card-label"><span>{ticker} <span style="color:#64748b; font-weight:normal;">• {label}</span></span>{badge}</div>'
+        f'<div class="card-val tabular-num">{price_val}</div>'
         f'</div>'
-        f'<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06); font-size:11px; color:#94a3b8; display:flex; flex-direction:column; gap:2px;">'
-        f'<div>{sub_text1}</div>'
-        f'<div style="font-size:10px; color:#64748b;">{sub_text2}</div>'
+        f'<div style="margin-top:14px;">'
+        f'<svg style="width:100%; height:24px; overflow:visible;" viewBox="0 0 240 24" fill="none">'
+        f'<path d="{spark_path}" stroke="{stroke_color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+        f'</svg>'
+        f'<div style="font-size:11px; color:#94a3b8; border-top:1px solid #1B212D; padding-top:6px; margin-top:4px;" class="tabular-num">{sub_text}</div>'
         f'</div>'
         f'</div>'
     )
 
-with r1_c1:
-    st.markdown(render_metric_card(
-        "SPY • S&P 500", spy_metrics.get("close", 0), spy_metrics.get("pct_1d", 0),
-        f"ATH DD: <b style='color:#cbd5e1;'>{spy_metrics.get('drawdown_ath')}%</b> • 5D: <b>{spy_metrics.get('pct_5d', 0):+.2f}%</b>",
-        f"14D RSI: {spy_metrics.get('rsi')} • Large-Cap Core",
-        "green" if spy_metrics.get("pct_1d", 0) >= 0 else "red"
+# ----------------- FILAMENT HERO STAT CARDS (4 SPAGIOUS CARDS WITH SPARKLINES) -----------------
+col_h_head1, col_h_head2 = st.columns([4, 1])
+with col_h_head1:
+    st.markdown('<div style="font-size:11px; font-weight:600; color:#a1a1aa; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Desk Core Radar</div>', unsafe_allow_html=True)
+
+hero_c1, hero_c2, hero_c3, hero_c4 = st.columns(4)
+
+with hero_c1:
+    spy_p = spy_metrics.get("pct_1d", 0)
+    st.markdown(render_filament_hero_card(
+        "SPY", "S&P 500 Core", f"${spy_metrics.get('close', 0):,.2f}",
+        spy_p, f"ATH DD: {spy_metrics.get('drawdown_ath')}% • 5D: {spy_metrics.get('pct_5d', 0):+.2f}%",
+        is_pos=(spy_p >= 0)
     ), unsafe_allow_html=True)
 
-with r1_c2:
-    st.markdown(render_metric_card(
-        "QQQ • Nasdaq 100", qqq_metrics.get("close", 0), qqq_metrics.get("pct_1d", 0),
-        f"ATH DD: <b style='color:#cbd5e1;'>{qqq_metrics.get('drawdown_ath')}%</b> • 5D: <b>{qqq_metrics.get('pct_5d', 0):+.2f}%</b>",
-        f"14D RSI: {qqq_metrics.get('rsi')} • Tech Growth",
-        "green" if qqq_metrics.get("pct_1d", 0) >= 0 else "red"
+with hero_c2:
+    qqq_p = qqq_metrics.get("pct_1d", 0)
+    st.markdown(render_filament_hero_card(
+        "QQQ", "Nasdaq 100 Tech", f"${qqq_metrics.get('close', 0):,.2f}",
+        qqq_p, f"ATH DD: {qqq_metrics.get('drawdown_ath')}% • 5D: {qqq_metrics.get('pct_5d', 0):+.2f}%",
+        is_pos=(qqq_p >= 0)
     ), unsafe_allow_html=True)
 
-with r1_c3:
-    st.markdown(render_metric_card(
-        "IWM • Russell 2000", iwm_metrics.get("close", 0), iwm_metrics.get("pct_1d", 0),
-        f"ATH DD: <b style='color:#cbd5e1;'>{iwm_metrics.get('drawdown_ath')}%</b> • 5D: <b>{iwm_metrics.get('pct_5d', 0):+.2f}%</b>",
-        f"14D RSI: {iwm_metrics.get('rsi')} • Small-Cap Value",
-        "green" if iwm_metrics.get("pct_1d", 0) >= 0 else "red"
+with hero_c3:
+    s_val = spy_rsp.get("current", 0)
+    s_sig = spy_rsp.get("z_score_50d", 0)
+    s_state = spy_rsp.get("actionable_state", "Breadth Expansion")
+    s_col = spy_rsp.get("state_color", "#34d399")
+    st.markdown(render_filament_hero_card(
+        "SPY / RSP", "Breadth Spread", f"{s_val:.4f}",
+        spy_rsp.get("pct_5d", 0), f'<span style="color:{s_col}; font-weight:600;">{s_state}</span>',
+        is_pos=(spy_rsp.get("pct_5d", 0) >= 0), is_ratio=True, sigma=s_sig
     ), unsafe_allow_html=True)
 
-with r1_c4:
-    st.markdown(render_metric_card(
-        "GLD • Gold Trust", gld_m.get("close", 0), gld_m.get("pct_1d", 0),
-        f"5D: <b>{gld_m.get('pct_5d', 0):+.2f}%</b> • 20D: {gld_m.get('pct_20d', 0):+.2f}%",
-        "Safe Haven • Debasement Hedge",
-        "green" if gld_m.get("pct_1d", 0) >= 0 else "red"
+with hero_c4:
+    iwm_p = iwm_metrics.get("pct_1d", 0)
+    st.markdown(render_filament_hero_card(
+        "IWM", "Russell 2000 Small", f"${iwm_metrics.get('close', 0):,.2f}",
+        iwm_p, f"ATH DD: {iwm_metrics.get('drawdown_ath')}% • 5D: {iwm_metrics.get('pct_5d', 0):+.2f}%",
+        is_pos=(iwm_p >= 0)
     ), unsafe_allow_html=True)
 
-with r1_c5:
-    st.markdown(render_metric_card(
-        "TLT • 20Y Treasuries", tlt_m.get("close", 0), tlt_m.get("pct_1d", 0),
-        f"5D: <b>{tlt_m.get('pct_5d', 0):+.2f}%</b> • 20D: {tlt_m.get('pct_20d', 0):+.2f}%",
-        "Duration • Real Yield Pressure",
-        "green" if tlt_m.get("pct_1d", 0) >= 0 else "red"
-    ), unsafe_allow_html=True)
-
-# ----------------- TOP METRIC CARDS ROW 2: LIQUIDITY, ENERGY & REGIME RADAR -----------------
-st.markdown('<div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-top:10px; margin-bottom:6px;">Liquidity, Energy & Quantitative Regime Radar</div>', unsafe_allow_html=True)
-r2_c1, r2_c2, r2_c3, r2_c4, r2_c5 = st.columns(5)
-
-qqq_rsp = market_data["ratios"].get("QQQ_RSP", {})
-
-with r2_c1:
-    st.markdown(render_metric_card(
-        "IBIT • Bitcoin Trust", ibit_m.get("close", 0), ibit_m.get("pct_1d", 0),
-        f"5D: <b>{ibit_m.get('pct_5d', 0):+.2f}%</b> • 20D: {ibit_m.get('pct_20d', 0):+.2f}%",
-        "High-Beta Liquidity Barometer",
-        "green" if ibit_m.get("pct_1d", 0) >= 0 else "red"
-    ), unsafe_allow_html=True)
-
-with r2_c2:
-    st.markdown(render_metric_card(
-        "USO • Crude Oil", uso_m.get("close", 0), uso_m.get("pct_1d", 0),
-        f"5D: <b>{uso_m.get('pct_5d', 0):+.2f}%</b> • 20D: {uso_m.get('pct_20d', 0):+.2f}%",
-        "Energy & Inflation Input Cost",
-        "green" if uso_m.get("pct_1d", 0) >= 0 else "red"
-    ), unsafe_allow_html=True)
-
-def render_ratio_card(label, val, z_val, state, state_color, p5d, action_text):
-    sig_text = f"{z_val:+.2f}σ"
-    pill_class = "pill-cyan" if z_val > 0 else "pill-amber"
-    p5_color = "#10b981" if p5d >= 0 else "#ef4444"
-    return (
-        f'<div class="metric-card-lux" style="display:flex; flex-direction:column; justify-content:space-between; height:100%; border-top:2px solid {state_color};">'
-        f'<div>'
-        f'<div class="card-label"><span>{label}</span><span class="{pill_class}">{sig_text}</span></div>'
-        f'<div style="display:flex; align-items:baseline; gap:8px;">'
-        f'<span class="card-val" style="font-family:monospace;">{val:.4f}</span>'
-        f'<span style="font-size:11px; font-weight:700; color:{state_color};">{state}</span>'
-        f'</div>'
-        f'</div>'
-        f'<div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06); font-size:11px; color:#94a3b8; display:flex; flex-direction:column; gap:2px;">'
-        f'<div>5D: <b style="color:{p5_color};">{p5d:+.2f}%</b> • Regime Trend</div>'
-        f'<div style="font-size:10.5px; color:#f59e0b; font-weight:500;">{action_text}</div>'
-        f'</div>'
-        f'</div>'
-    )
-
-with r2_c3:
-    st.markdown(render_ratio_card(
-        "SPY / RSP • Breadth",
-        spy_rsp.get("current", 0),
-        spy_rsp.get("z_score_50d", 0),
-        spy_rsp.get("actionable_state", "Breadth Expansion"),
-        spy_rsp.get("state_color", "#10b981"),
-        spy_rsp.get("pct_5d", 0),
-        "Equal-Weight RSP Leading"
-    ), unsafe_allow_html=True)
-
-with r2_c4:
-    st.markdown(render_ratio_card(
-        "QQQ / RSP • Tech Breadth",
-        qqq_rsp.get("current", 0),
-        qqq_rsp.get("z_score_50d", 0),
-        qqq_rsp.get("actionable_state", "Tech Consolidating"),
-        qqq_rsp.get("state_color", "#94a3b8"),
-        qqq_rsp.get("pct_5d", 0),
-        "Broadening Beyond Mega-Tech"
-    ), unsafe_allow_html=True)
-
-with r2_c5:
-    st.markdown(render_ratio_card(
-        "IWM / QQQ • Small vs Tech",
-        iwm_qqq.get("current", 0),
-        iwm_qqq.get("z_score_50d", 0),
-        iwm_qqq.get("actionable_state", "Small-Cap Bid"),
-        iwm_qqq.get("state_color", "#10b981"),
-        iwm_qqq.get("pct_5d", 0),
-        "Small-Cap Alpha Momentum"
-    ), unsafe_allow_html=True)
-
-st.caption(f"**Cross-Asset Macro Barometer Reading:** {macro_reading}")
-
-st.markdown("---")
-
+st.markdown("<div style='margin-bottom:16px;'></div>", unsafe_allow_html=True)
 # ----------------- MODERN TABS (Institutional Options Desk v3.0 Full Suite) -----------------
 tab1, tab_agent, tab2, tab3, tab4, tab5, tab6, tab7, tab_options = st.tabs([
     "📊 Daily AI Macro Briefing",
@@ -614,7 +409,7 @@ with tab1:
         e_val = baskets.get("Energy", baskets.get("Energy (XLE)", 0.0))
 
         def fmt_b(val):
-            col_b = "#10b981" if val >= 0 else "#ef4444"
+            col_b = "#0ecb81" if val >= 0 else "#f6465d"
             sign_b = "+" if val >= 0 else ""
             return f'<span style="font-size:16px; font-weight:800; color:{col_b};">{sign_b}{val:.2f}%</span>'
 
@@ -767,7 +562,7 @@ with tab2:
         for t in trade_cards:
             direction = t.get("direction", "LONG")
             pill_type = "green" if "LONG" in direction else ("red" if "SHORT" in direction or "FADE" in direction else ("cyan" if "DIP" in direction else "amber"))
-            border_col = t.get("card_color", "#10b981")
+            border_col = t.get("card_color", "#0ecb81")
             exec_state = t.get("execution_state", "")
             curr_px = t.get("current_price", t.get("entry"))
             ext_metric = t.get("extension_metric", "At Support")
@@ -957,11 +752,11 @@ with tab3:
             if status == "PASS_BULL":
                 badge = "[BULLISH CONFIRMATION]"
                 box_color = "rgba(16, 185, 129, 0.08)"
-                border_color = "#10b981"
+                border_color = "#0ecb81"
             elif status == "PASS_BEAR":
                 badge = "[BEARISH CONFIRMATION]"
                 box_color = "rgba(239, 68, 68, 0.08)"
-                border_color = "#ef4444"
+                border_color = "#f6465d"
             else:
                 badge = "[NEUTRAL / INACTIVE]"
                 box_color = "#111319"
@@ -1050,7 +845,7 @@ with tab4:
     with col_chart1:
         st.markdown("#### 60-Day Normalized Return (% Change)")
         fig_norm = go.Figure()
-        palette = ["#f59e0b", "#10b981", "#3b82f6", "#ec4899", "#8b5cf6", "#06b6d4", "#f97316"]
+        palette = ["#f59e0b", "#0ecb81", "#3b82f6", "#ec4899", "#8b5cf6", "#06b6d4", "#f97316"]
         for idx, ticker in enumerate(MAG_7):
             df_t = load_ticker_data(ticker)
             if len(df_t) >= 60:
@@ -1261,7 +1056,7 @@ with tab7:
 
         # Row 1: Daily Price & EMAs
         fig_combined.add_trace(go.Scatter(x=t_sub["Date"], y=t_sub["Close"], name="Close Price", line=dict(color="#ffffff", width=2)), row=1, col=1)
-        fig_combined.add_trace(go.Scatter(x=t_sub["Date"], y=t_sub["EMA20"], name="20 EMA (Red)", line=dict(color="#ef4444", width=1.75)), row=1, col=1)
+        fig_combined.add_trace(go.Scatter(x=t_sub["Date"], y=t_sub["EMA20"], name="20 EMA (Red)", line=dict(color="#f6465d", width=1.75)), row=1, col=1)
         fig_combined.add_trace(go.Scatter(x=t_sub["Date"], y=t_sub["EMA50"], name="50 EMA (Amber)", line=dict(color="#f59e0b", width=1.75)), row=1, col=1)
         fig_combined.add_trace(go.Scatter(x=t_sub["Date"], y=t_sub["EMA200"], name="200 EMA (Blue)", line=dict(color="#3b82f6", width=2)), row=1, col=1)
 
@@ -1271,13 +1066,13 @@ with tab7:
             y=t_sub["Drawdown_ATH"],
             fill="tozeroy",
             fillcolor="rgba(239, 68, 68, 0.15)",
-            line=dict(color="#ef4444", width=1.5),
+            line=dict(color="#f6465d", width=1.5),
             name="ATH Drawdown (%)"
         ), row=2, col=1)
 
         apply_dark_theme(fig_combined, height=620)
-        fig_combined.update_xaxes(gridcolor="rgba(255, 255, 255, 0.04)", zerolinecolor="rgba(255, 255, 255, 0.08)")
-        fig_combined.update_yaxes(gridcolor="rgba(255, 255, 255, 0.04)", zerolinecolor="rgba(255, 255, 255, 0.08)")
+        fig_combined.update_xaxes(gridcolor="rgba(255, 255, 255, 0.03)", zerolinecolor="rgba(255, 255, 255, 0.08)")
+        fig_combined.update_yaxes(gridcolor="rgba(255, 255, 255, 0.03)", zerolinecolor="rgba(255, 255, 255, 0.08)")
         fig_combined.update_yaxes(title_text="Price ($)", row=1, col=1)
         fig_combined.update_yaxes(title_text="Drawdown (%)", row=2, col=1)
 

@@ -7,6 +7,7 @@ from confluence_engine import compute_all_confluences
 from data_manager import MAG_7, INDEXES, SECTORS, MACRO_ASSETS
 
 load_dotenv()
+DEFAULT_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
 
 # Validated working model cascade (leading with fastest supported models)
 GEMINI_MODELS = [
@@ -17,7 +18,7 @@ GEMINI_MODELS = [
 ]
 
 def get_gemini_client(api_key: str = None):
-    key = api_key or os.getenv("GEMINI_API_KEY")
+    key = api_key or os.getenv("GEMINI_API_KEY") or DEFAULT_GEMINI_KEY
     if not key:
         return None, None
     try:

@@ -22,6 +22,14 @@ from narrative_engine import analyze_market_narrative, compute_ratio_analytics
 from confluence_engine import compute_all_confluences
 from ai_strategist import generate_ai_ideas
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+DEFAULT_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
+
 app = FastAPI(title="Rotato Quantitative Market Intelligence Desk")
 
 def clean_json(obj):
@@ -104,7 +112,7 @@ def api_ai_briefing(api_key: Optional[str] = Query(None)):
 @app.post("/api/agent-chat")
 async def api_agent_chat(payload: dict):
     user_query = payload.get("query", "")
-    api_key = payload.get("api_key") or os.getenv("GEMINI_API_KEY")
+    api_key = payload.get("api_key") or os.getenv("GEMINI_API_KEY") or DEFAULT_GEMINI_KEY
     history = payload.get("history", [])
     market_data = get_cached_analysis()
     confluences = get_cached_confluence("core")
@@ -287,273 +295,441 @@ def index_page():
 HTML_CONTENT = """<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rotato | Quantitative Macro & Equity Desk</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <style>
-        body {
-            font-family: 'Plus Jakarta Sans', -apple-system, sans-serif;
-            background-color: #08090d;
-            color: #f8fafc;
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rotato // Stealth Quantitative Macro Desk</title>
+  
+  <!-- Inter Google Font with full weights -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            stealth: {
+              950: '#08090C', // Root background
+              900: '#0D0F14', // Base KPI Card
+              850: '#131720', // Elevated buttons & inputs
+              800: '#181E2A', // Hover
+              700: '#1F2637', // Active borders & subtle pills
+              600: '#2A3449',
+              border: '#1B212D',
+              'border-subtle': '#141822',
+              'border-focus': '#262E3E'
+            },
+            mint: {
+              DEFAULT: '#00F5A0',
+              hover: '#00DB8F',
+              surface: 'rgba(0, 245, 160, 0.08)',
+              glow: 'rgba(0, 245, 160, 0.22)',
+              border: 'rgba(0, 245, 160, 0.3)',
+              text: '#5CFFC1'
+            },
+            cherry: {
+              DEFAULT: '#FF2E55',
+              hover: '#E61E44',
+              surface: 'rgba(255, 46, 85, 0.08)',
+              glow: 'rgba(255, 46, 85, 0.22)',
+              border: 'rgba(255, 46, 85, 0.3)',
+              text: '#FF6682'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+          }
         }
-        .ticker-ribbon {
-            background: #050608;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        }
-        .lux-card {
-            background: #111319;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 14px;
-            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
-        }
-        .tab-btn.active {
-            background: #1c1e27;
-            color: #fbbf24;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-        }
-        .tab-btn {
-            color: #94a3b8;
-            transition: all 0.2s ease;
-        }
-        .tab-btn:hover {
-            color: #ffffff;
-        }
-        .pill-green { background: rgba(16, 185, 129, 0.14); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.28); }
-        .pill-red { background: rgba(239, 68, 68, 0.14); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.28); }
-        .pill-amber { background: rgba(245, 158, 11, 0.14); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.28); }
-        .pill-cyan { background: rgba(6, 182, 212, 0.14); color: #06b6d4; border: 1px solid rgba(6, 182, 212, 0.28); }
-        table td, table th { padding: 10px 12px; }
+      }
+    }
+  </script>
+  <style>
+    /* Global Typography: Inter with Tabular Numerals */
+    * {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
 
-        /* Executive Synthesis Styling */
-        .synth-body ul {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin: 10px 0;
-            padding-left: 0;
-            list-style: none;
-        }
-        .synth-body li {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: 10px;
-            padding: 10px 14px;
-            font-size: 13px;
-            line-height: 1.6;
-            color: #cbd5e1;
-            list-style: none;
-            transition: all 0.2s ease;
-        }
-        .synth-body li:hover {
-            background: rgba(255, 255, 255, 0.035);
-            border-color: rgba(255, 255, 255, 0.1);
-        }
-        .synth-body li.card-long {
-            border-color: rgba(16, 185, 129, 0.25);
-            border-left: 4px solid #10b981;
-            background: rgba(16, 185, 129, 0.04);
-        }
-        .synth-body li.card-warn {
-            border-color: rgba(239, 68, 68, 0.25);
-            border-left: 4px solid #ef4444;
-            background: rgba(239, 68, 68, 0.04);
-        }
-        .synth-body li.card-risk {
-            border-color: rgba(245, 158, 11, 0.25);
-            border-left: 4px solid #f59e0b;
-            background: rgba(245, 158, 11, 0.04);
-        }
-        .synth-body li.card-macro {
-            border-color: rgba(14, 165, 233, 0.25);
-            border-left: 4px solid #0ea5e9;
-            background: rgba(14, 165, 233, 0.04);
-        }
-        .synth-body h4 {
-            font-size: 12.5px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            color: #e2e8f0;
-            margin-top: 14px;
-            margin-bottom: 6px;
-            padding-bottom: 5px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        .synth-body strong, .synth-body b {
-            color: #ffffff;
-            font-weight: 700;
-        }
-        .synth-body p {
-            margin-bottom: 8px;
-            font-size: 13px;
-            line-height: 1.65;
-            color: #cbd5e1;
-        }
-    </style>
+    body {
+      background-color: #08090C;
+      color: #f1f5f9;
+    }
+
+    /* Tabular numbers for clean financial alignment */
+    .tabular-num, [data-num], table, .kpi-val, .pill-num {
+      font-variant-numeric: tabular-nums lining-nums;
+      font-feature-settings: 'tnum' 1, 'zero' 1, 'cv01' 1;
+      letter-spacing: -0.015em;
+    }
+
+    /* Stealth Cards */
+    .stealth-card, .lux-card {
+      background-color: #0D0F14;
+      border: 1px solid #1B212D;
+      border-radius: 10px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .stealth-card:hover, .lux-card:hover {
+      border-color: #262E3E;
+    }
+
+    /* Accents */
+    .badge-mint, .pill-green {
+      background-color: rgba(0, 245, 160, 0.10);
+      color: #00F5A0;
+      border: 1px solid rgba(0, 245, 160, 0.25);
+      border-radius: 6px;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-cherry, .pill-red {
+      background-color: rgba(255, 46, 85, 0.10);
+      color: #FF2E55;
+      border: 1px solid rgba(255, 46, 85, 0.25);
+      border-radius: 6px;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pill-cyan {
+      background-color: rgba(56, 189, 248, 0.10);
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 6px;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pill-amber {
+      background-color: rgba(245, 158, 11, 0.10);
+      color: #f59e0b;
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: 6px;
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* Custom subtle radio styling */
+    .stealth-radio {
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border: 1px solid #2A3449;
+      border-radius: 50%;
+      background-color: #08090C;
+      display: inline-grid;
+      place-content: center;
+      cursor: pointer;
+    }
+    .stealth-radio:checked {
+      border-color: #00F5A0;
+      box-shadow: 0 0 8px rgba(0, 245, 160, 0.4);
+    }
+    .stealth-radio:checked::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: #00F5A0;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #08090C;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1B212D;
+      border-radius: 2px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #2A3449;
+    }
+
+    table td, table th { padding: 10px 12px; }
+
+    /* Executive Synthesis Styling */
+    .synth-body ul {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 10px 0;
+      padding-left: 0;
+      list-style: none;
+    }
+    .synth-body li {
+      background: #0D0F14;
+      border: 1px solid #1B212D;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #cbd5e1;
+      list-style: none;
+      transition: all 0.15s ease;
+    }
+    .synth-body li:hover {
+      border-color: #262E3E;
+    }
+    .synth-body li.card-long {
+      border-left: 3px solid #00F5A0;
+      background: rgba(0, 245, 160, 0.05);
+    }
+    .synth-body li.card-warn {
+      border-left: 3px solid #FF2E55;
+      background: rgba(255, 46, 85, 0.05);
+    }
+    .synth-body li.card-risk {
+      border-left: 3px solid #f59e0b;
+      background: rgba(245, 158, 11, 0.05);
+    }
+    .synth-body li.card-macro {
+      border-left: 3px solid #38bdf8;
+      background: rgba(56, 189, 248, 0.05);
+    }
+    .synth-body h4 {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #e2e8f0;
+      margin-top: 14px;
+      margin-bottom: 6px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #1B212D;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .synth-body strong, .synth-body b {
+      color: #ffffff;
+      font-weight: 600;
+    }
+    .synth-body p {
+      margin-bottom: 8px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #cbd5e1;
+    }
+  </style>
 </head>
-<body class="min-h-screen bg-[#08090d] text-[#f8fafc] flex flex-col antialiased">
+<body class="min-h-screen text-slate-100 flex antialiased selection:bg-mint selection:text-black">
 
+  <!-- ================= LEFT SIDEBAR ================= -->
+  <aside class="w-72 bg-stealth-950 border-r border-stealth-border flex flex-col justify-between shrink-0 min-h-screen p-5 hidden md:flex">
+    
+    <div class="space-y-6">
+      
+      <!-- Brand Logo Header -->
+      <div class="flex items-center space-x-3 pb-2">
+        <div class="w-9 h-9 rounded-lg bg-stealth-900 border border-stealth-border flex items-center justify-center font-bold text-lg text-white shadow-[0_0_15px_rgba(0,245,160,0.15)] relative">
+          <span class="text-white font-extrabold">R</span>
+          <span class="w-1.5 h-1.5 rounded-full bg-mint absolute top-1.5 right-1.5 shadow-[0_0_6px_#00F5A0]"></span>
+        </div>
+        <div>
+          <h1 class="font-bold text-base tracking-tight text-white leading-tight">Rotato</h1>
+          <p class="text-[11px] text-slate-500 font-medium">Stealth Macro Desk</p>
+        </div>
+      </div>
 
-
-    <!-- App Wrapper: Left Sidebar + Main Dashboard -->
-    <div class="flex flex-1 min-h-0">
-
-        <!-- Left Sidebar (Matching Streamlit sidebar exactly) -->
-        <aside id="sidebar" class="w-72 bg-[#0a0b10] border-r border-white/5 p-5 flex flex-col shrink-0 overflow-y-auto space-y-6">
-            <!-- Sidebar Header Brand -->
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center font-extrabold text-base text-slate-950 shadow-md shadow-amber-500/20">
-                    R
-                </div>
-                <span class="text-lg font-extrabold text-white tracking-tight">Rotato</span>
+      <!-- Section: DATA FEEDS -->
+      <div class="space-y-2.5 pt-2">
+        <div class="text-[11px] font-bold text-slate-400 tracking-wider uppercase">Data Feeds</div>
+        
+        <div class="space-y-2">
+          <!-- Button 1: Sync from YFinance -->
+          <button onclick="triggerDataSync()" id="syncBtn" class="w-full py-2.5 px-3 rounded-lg bg-stealth-900 hover:bg-stealth-850 border border-stealth-border hover:border-mint/50 text-xs font-semibold text-slate-200 hover:text-white transition-all flex items-center justify-between group shadow-sm">
+            <div class="flex items-center space-x-2.5">
+              <div class="w-6 h-6 rounded-md bg-stealth-800 flex items-center justify-center text-mint group-hover:scale-105 transition-transform">
+                <span id="syncSpinner" class="hidden inline-block animate-spin">⚡</span>
+                <svg id="syncIconDefault" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+              </div>
+              <span id="syncBtnText" class="tracking-tight">Sync from YFinance</span>
             </div>
+            <span class="w-1.5 h-1.5 rounded-full bg-mint shadow-[0_0_6px_#00F5A0]"></span>
+          </button>
 
-            <!-- Data Feeds Section -->
-            <div class="space-y-3 pt-3 border-t border-white/5">
-                <div class="text-xs font-bold text-slate-300 uppercase tracking-wider">Data Feeds (yfinance)</div>
-                <div class="space-y-2">
-                    <label class="flex items-start gap-2.5 text-xs text-slate-300 cursor-pointer">
-                        <input type="radio" name="syncScope" value="core" checked class="mt-0.5 accent-amber-500">
-                        <span>Core Universe (Mag 7 + Indexes + Sectors + Macro)</span>
-                    </label>
-                    <label class="flex items-start gap-2.5 text-xs text-slate-400 cursor-pointer">
-                        <input type="radio" name="syncScope" value="all" class="mt-0.5 accent-amber-500">
-                        <span>All 79 Tickers in raw_csv</span>
-                    </label>
-                </div>
-                <button onclick="triggerDataSync()" id="syncBtn" class="w-full bg-[#161822] hover:bg-[#1d202d] border border-white/10 hover:border-amber-500/40 text-xs font-bold text-slate-200 py-2.5 px-3 rounded-lg flex items-center justify-center gap-2 transition active:scale-[0.99]">
-                    <span id="syncSpinner" class="hidden inline-block animate-spin">⚡</span>
-                    <span id="syncBtnText">Sync Daily Closes Now</span>
-                </button>
-
-                <!-- Live Sync Real-Time Feedback Panel -->
-                <div id="syncFeedbackBox" class="hidden p-3 rounded-xl bg-[#11131a] border border-white/10 space-y-2.5 text-xs">
-                    <div class="space-y-1">
-                        <div class="flex justify-between items-center text-[10px] text-slate-400">
-                            <span id="syncStageTitle" class="font-bold text-amber-400">Syncing Market Feed...</span>
-                            <span id="syncPctText" class="font-mono text-slate-300">0%</span>
-                        </div>
-                        <div class="w-full bg-slate-800/80 rounded-full h-1.5 overflow-hidden">
-                            <div id="syncProgressBar" class="bg-gradient-to-r from-amber-500 to-emerald-400 h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div>
-                        </div>
-                    </div>
-
-                    <!-- Step-by-Step Live Log -->
-                    <div id="syncLogList" class="space-y-1 text-[10.5px] font-mono">
-                        <!-- Dynamically filled with checkmarks -->
-                    </div>
-
-                    <!-- Final Confirmation Badge -->
-                    <div id="syncSummaryBadge" class="hidden pt-2 border-t border-white/5 space-y-1">
-                        <div class="flex items-center gap-1.5 text-emerald-400 font-bold text-xs">
-                            <span>✓</span> <span id="syncSuccessHeading">Feed Live & Verified</span>
-                        </div>
-                        <div id="syncSuccessDetails" class="text-[10px] text-slate-400 leading-tight"></div>
-                    </div>
-                </div>
+          <!-- Button 2: Sync from CSV -->
+          <button onclick="triggerDataSync()" class="w-full py-2.5 px-3 rounded-lg bg-stealth-900 hover:bg-stealth-850 border border-stealth-border hover:border-slate-600 text-xs font-semibold text-slate-300 hover:text-white transition-all flex items-center justify-between group shadow-sm">
+            <div class="flex items-center space-x-2.5">
+              <div class="w-6 h-6 rounded-md bg-stealth-800 flex items-center justify-center text-slate-400 group-hover:text-slate-200 group-hover:scale-105 transition-transform">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <span class="tracking-tight">Sync from CSV</span>
             </div>
+            <span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
+          </button>
+        </div>
+      </div>
 
-            <!-- AI Strategist Engine Section -->
-            <div class="space-y-3 pt-3 border-t border-white/5">
-                <div class="text-xs font-bold text-slate-300 uppercase tracking-wider">AI Strategist Engine</div>
-                <div class="space-y-1.5">
-                    <label class="text-[11px] text-slate-400 block font-medium">Gemini API Key</label>
-                    <input id="sidebarApiKey" type="password" placeholder="Enter Gemini API key..." class="w-full bg-[#13151f] border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 font-mono">
-                </div>
-                <button onclick="saveSidebarApiKey()" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs py-2 px-3 rounded-lg transition">
-                    Save Key Permanently
-                </button>
-                <div id="sidebarApiStatus" class="text-[11px] text-slate-400 flex items-center gap-1.5">
-                    <span id="apiStatusDot" class="w-2 h-2 rounded-full bg-amber-500"></span>
-                    <span id="apiStatusText">Status: Checking Key...</span>
-                </div>
-            </div>
-
-            <!-- Sidebar Info / Footer -->
-            <div class="pt-4 border-t border-white/5 text-[11px] text-slate-500 space-y-2 mt-auto">
-                <div>Data source: Local <code class="text-slate-400 bg-white/5 px-1 py-0.5 rounded">raw_csv</code> + <code class="text-slate-400 bg-white/5 px-1 py-0.5 rounded">yfinance</code> daily sync.</div>
-                <div class="flex items-center gap-1.5 text-slate-400 pt-1">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span>Desktop Parity Active</span>
-                </div>
-            </div>
-        </aside>
-
-        <!-- Main Dashboard View on the Right -->
-        <main class="flex-1 min-w-0 p-6 overflow-y-auto">
-            <div class="max-w-7xl mx-auto">
-
-        <!-- Hero Brand Header -->
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-5 mb-5 border-b border-white/10 gap-4">
-            <div class="flex items-center gap-3.5">
-                <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center font-black text-2xl text-slate-950 shadow-lg shadow-amber-500/30">
-                    R
-                </div>
-                <div>
-                    <h1 class="text-2xl font-extrabold text-white tracking-tight">Rotato</h1>
-                    <p class="text-xs text-slate-400">Quantitative Macro & Confluence Intelligence Desk</p>
-                </div>
-            </div>
-            <div class="flex items-center gap-3">
-                <button onclick="promptApiKey()" id="apiKeyBtn" class="bg-[#111319] hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-300 flex items-center gap-1.5 transition">
-                    <span>🔑</span> <span id="apiKeyStatus">Set Gemini Key</span>
-                </button>
-                <div class="flex items-center gap-2 bg-[#111319] border border-white/10 px-3.5 py-1.5 rounded-full text-xs font-semibold text-slate-300">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500"></span>
-                    <span>Desk Active</span>
-                    <span class="text-slate-600">•</span>
-                    <span id="sessionDateBadge" class="text-amber-400 font-bold">Prices: Loading...</span>
-                </div>
-            </div>
+      <!-- Section: AI STRATEGIST ENGINE -->
+      <div class="space-y-3 pt-3 border-t border-stealth-border">
+        <div class="text-[11px] font-bold text-slate-400 tracking-wider uppercase">AI Strategist Engine</div>
+        
+        <div>
+          <label class="block text-xs text-slate-400 mb-1.5 font-medium">Gemini API Key</label>
+          <div class="relative">
+            <input type="password" id="sidebarApiKeyInput" value="••••••••••••••••••••••••••••" readonly 
+                   class="w-full bg-stealth-900 border border-stealth-border rounded-lg px-3 py-2 text-xs text-slate-400 font-mono focus:outline-none cursor-default" />
+          </div>
         </div>
 
+        <!-- Save Key for Session Button -->
+        <button onclick="promptApiKey()" class="w-full py-2.5 px-3 rounded-lg bg-mint/10 hover:bg-mint hover:text-stealth-950 text-mint border border-mint/30 text-xs font-bold transition-all shadow-[0_0_12px_rgba(0,245,160,0.15)] flex items-center justify-center space-x-1.5">
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          <span>Save Key for Session</span>
+        </button>
 
+        <div class="flex items-center space-x-2 text-xs text-mint font-medium pt-1">
+          <span class="w-2 h-2 rounded-full bg-mint shadow-[0_0_8px_#00F5A0]"></span>
+          <span id="aiGlobalStatusText">Status: Gemini API Key Active</span>
+        </div>
+      </div>
 
-        <!-- Row 1: Core Equity & Macro Benchmarks (5 columns) -->
-        <div class="mb-3.5">
-            <div class="flex items-center justify-between mb-1.5 px-0.5">
-                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Core Equity & Macro Benchmarks</span>
-                <span class="text-[10px] text-slate-500 font-medium">Session Closes & Momentum</span>
-            </div>
-            <div id="benchmarksRow" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-                <!-- Dynamic Benchmark Cards (SPY, QQQ, IWM, GLD, TLT) -->
-            </div>
+    </div>
+
+    <!-- Sidebar Bottom Status Footer -->
+    <div class="pt-6 border-t border-stealth-border text-[11px] space-y-2 text-slate-500 font-medium">
+      <div class="flex items-start space-x-2">
+        <span class="w-1.5 h-1.5 rounded-full bg-slate-600 mt-1"></span>
+        <span>Data source: Local <code class="text-slate-400 text-[10px]">raw_csv</code> + yfinance daily sync</span>
+      </div>
+      <div class="flex items-center space-x-2 text-slate-400">
+        <span class="w-2 h-2 rounded-full bg-mint shadow-[0_0_6px_#00F5A0]"></span>
+        <span class="text-slate-300 font-semibold">Desktop Parity Active</span>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ================= MAIN VIEWPORT ================= -->
+  <div class="flex-1 flex flex-col min-w-0 overflow-y-auto">
+
+    <!-- TOP DESK HEADER -->
+    <header class="border-b border-stealth-border bg-stealth-950/90 backdrop-blur-md px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 z-40">
+      
+      <!-- Desk Title & Subtitle -->
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-stealth-900 border border-stealth-border flex items-center justify-center font-bold text-white shadow-sm">
+          R
+        </div>
+        <div>
+          <h2 class="text-base font-bold text-white tracking-tight flex items-center space-x-2">
+            <span>Rotato</span>
+          </h2>
+          <p class="text-xs text-slate-400 font-medium">Quantitative Macro & Confluence Intelligence Desk</p>
+        </div>
+      </div>
+
+      <!-- Desk Status Badges -->
+      <div class="flex items-center space-x-2.5">
+        <!-- Gemini Key Active Pill -->
+        <button onclick="promptApiKey()" class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-stealth-900 border border-stealth-border text-xs text-slate-300 hover:border-mint/50 transition">
+          <svg class="w-3.5 h-3.5 text-mint" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+          </svg>
+          <span class="font-medium text-emerald-400">Gemini Key Active</span>
+        </button>
+
+        <!-- Desk Active & Date Pill -->
+        <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-stealth-900 border border-stealth-border text-xs">
+          <span class="relative flex h-2 w-2">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-mint opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-mint"></span>
+          </span>
+          <span class="text-slate-200 font-semibold">Desk Active</span>
+          <span class="text-slate-600">•</span>
+          <span id="sessionDateBadge" class="text-slate-400 tabular-num">Prices: 2026-11-04</span>
+        </div>
+      </div>
+
+    </header>
+
+    <!-- MAIN BODY CONTENT -->
+    <main class="p-6 space-y-6 max-w-[1600px] w-full">
+
+      <!-- ================= 1. CORE EQUITIES & MACRO BENCHMARKS ================= -->
+      <section class="space-y-3">
+        <div class="flex items-center justify-between text-xs">
+          <div class="flex items-center space-x-2">
+            <span class="w-1.5 h-1.5 rounded-full bg-mint"></span>
+            <h3 class="font-bold text-slate-300 tracking-wider uppercase text-[11px]">Core Equities & Macro Benchmarks</h3>
+          </div>
+          <span class="text-slate-500 font-medium text-[11px]">Session Closes & Momentum • 7 Universe Assets</span>
         </div>
 
-        <!-- Row 2: Liquidity, Energy & Quantitative Regime Radar (5 columns) -->
-        <div class="mb-5">
-            <div class="flex items-center justify-between mb-1.5 px-0.5">
-                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Liquidity, Energy & Quantitative Regime Radar</span>
-                <span class="text-[10px] text-slate-500 font-medium">50-Day Z-Score & Relative Velocity</span>
-            </div>
-            <div id="macroBarometersRow" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-                <!-- Dynamic Regime Cards (IBIT, USO, SPY/RSP, QQQ/RSP, IWM/QQQ) -->
-            </div>
+        <!-- Responsive Grid for All 7 Primary Universe Assets -->
+        <div id="benchmarksRow" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+          <!-- Dynamically populated by renderBenchmarks() with inline sparklines -->
+        </div>
+      </section>
+
+      <!-- ================= 2. QUANTITATIVE REGIME & BREADTH RATIOS ================= -->
+      <section class="space-y-3 pt-1">
+        <div class="flex items-center justify-between text-xs">
+          <div class="flex items-center space-x-2">
+            <span class="w-1.5 h-1.5 rounded-full bg-cherry"></span>
+            <h3 class="font-bold text-slate-300 tracking-wider uppercase text-[11px]">Quantitative Regime & Breadth Ratios</h3>
+            <span class="px-1.5 py-0.5 rounded bg-stealth-850 text-[10px] text-slate-400 font-mono border border-stealth-border">3 Pairs Monitored</span>
+          </div>
+          <span class="text-slate-500 font-medium text-[11px]">50-Day Z-Score & Relative Velocity</span>
         </div>
 
-        <!-- Navigation Tabs -->
-        <div class="bg-[#0d0e13] p-1.5 rounded-xl border border-white/5 flex gap-1.5 overflow-x-auto mb-6">
-            <button onclick="switchTab('tab1')" id="btn-tab1" class="tab-btn active px-4 py-2 rounded-lg text-xs font-bold">AI Macro Briefing</button>
-            <button onclick="switchTab('tab_agent')" id="btn-tab_agent" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5"><span>🤖</span> AI Quant Agent</button>
-            <button onclick="switchTab('tab2')" id="btn-tab2" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">AI Trade Ideas</button>
-            <button onclick="switchTab('tab3')" id="btn-tab3" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Confirmation & Confluence</button>
-            <button onclick="switchTab('tab4')" id="btn-tab4" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Mag 7 Diagnostics</button>
-            <button onclick="switchTab('tab5')" id="btn-tab5" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Indexes & Sector Flow</button>
-            <button onclick="switchTab('tab6')" id="btn-tab6" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Key Ratio & Breadth Radar</button>
-            <button onclick="switchTab('tab7')" id="btn-tab7" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold">Single Ticker Explorer</button>
-            <button onclick="switchTab('tab_options')" id="btn-tab_options" class="tab-btn px-4 py-2 rounded-lg text-xs font-bold text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5"><span>🎯</span> Cheap IV & Strikes</button>
+        <div id="macroBarometersRow" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <!-- Dynamically populated by renderMacroBarometers() with Z-Score Gauge Spectrum Meters -->
         </div>
+      </section>
 
-        <!-- Tab Agent: Interactive AI Quant Agent -->
+      <!-- ================= 3. NAVIGATION PILL TABS ================= -->
+      <nav class="flex items-center space-x-1.5 overflow-x-auto py-1 border-b border-stealth-border text-xs scrollbar-none font-medium">
+        <button onclick="switchTab('tab1')" id="btn-tab1" class="tab-btn active px-4 py-2 rounded-lg bg-stealth-850 text-white font-semibold border border-mint/40 shadow-[0_0_12px_rgba(0,245,160,0.15)] flex items-center space-x-1.5 shrink-0">
+          <span>AI Macro Briefing</span>
+        </button>
+        <button onclick="switchTab('tab_agent')" id="btn-tab_agent" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0 flex items-center space-x-1.5">
+          <svg class="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <span>AI Quant Agent</span>
+        </button>
+        <button onclick="switchTab('tab2')" id="btn-tab2" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          AI Trade Ideas
+        </button>
+        <button onclick="switchTab('tab3')" id="btn-tab3" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          Confirmation & Confluence
+        </button>
+        <button onclick="switchTab('tab4')" id="btn-tab4" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          Mag 7 Diagnostics
+        </button>
+        <button onclick="switchTab('tab5')" id="btn-tab5" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          Indexes & Sector Flow
+        </button>
+        <button onclick="switchTab('tab6')" id="btn-tab6" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          Key Ratio & Breadth Radar
+        </button>
+        <button onclick="switchTab('tab7')" id="btn-tab7" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          Single Ticker Explorer
+        </button>
+        <button onclick="switchTab('tab_options')" id="btn-tab_options" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0 flex items-center space-x-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-cherry shadow-[0_0_6px_#FF2E55]"></span>
+          <span>Cheap IV & Strikes</span>
+        </button>
+      </nav>
+<!-- Tab Agent: Interactive AI Quant Agent -->
         <div id="tab_agent" class="tab-pane hidden">
             <div class="lux-card p-5 mb-4">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-3 mb-4 border-b border-white/10 gap-3">
@@ -588,7 +764,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
                 <!-- Chat Input Bar -->
                 <form onsubmit="handleAgentSubmit(event)" class="flex gap-2">
-                    <input id="chatInput" type="text" placeholder="Ask the Quant AI Agent anything about today's market data, tickers, or setups..." class="flex-1 bg-[#13151f] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500">
+                    <input id="chatInput" type="text" placeholder="Ask the Quant AI Agent anything about today's market data, tickers, or setups..." class="flex-1 bg-[#161722] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500">
                     <button type="submit" id="chatSendBtn" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition">
                         <span>Send</span>
                     </button>
@@ -598,62 +774,94 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         <!-- Tab 1: AI Macro Briefing -->
         <div id="tab1" class="tab-pane">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div class="lux-card p-5 border-t-4 border-amber-500">
-                    <div class="flex justify-between items-center mb-2">
-                        <div class="flex items-center gap-2">
-                            <span class="text-[11px] font-bold text-amber-500 uppercase tracking-wider">Market Regime</span>
-                            <span id="briefingAiBadge" class="hidden text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">AI Synthesized</span>
-                        </div>
-                        <span id="briefingRiskPill" class="pill-amber px-2 py-0.5 rounded text-[11px] font-bold">Moderate</span>
-                    </div>
-                    <div id="briefingTitle" class="text-xl font-bold text-white mb-2">Secular Uptrend</div>
-                    <div id="briefingDetail" class="text-xs text-slate-300 leading-relaxed">Cross-asset flow analysis loading...</div>
+          <!-- ================= 4. MARKET REGIME & SECTOR VELOCITY BASKETS ================= -->
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 mb-5">
+            
+            <!-- Left: MARKET REGIME SYNTHESIS (Col span 7) -->
+            <div class="lg:col-span-7 stealth-card p-6 space-y-3 relative overflow-hidden border border-stealth-border hover:border-slate-700">
+              <!-- Subtle Stealth Ambient Glow in Top Right Corner -->
+              <div class="absolute -top-16 -right-16 w-48 h-48 bg-mint/5 rounded-full blur-2xl pointer-events-none"></div>
+
+              <!-- Badges -->
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <span class="text-[11px] font-bold text-mint uppercase tracking-wider">Market Regime</span>
+                  <span id="briefingAiBadge" class="px-2 py-0.5 rounded bg-stealth-850 text-[10px] text-slate-300 font-semibold border border-stealth-border">
+                    AI Synthesized
+                  </span>
                 </div>
-                <div class="lux-card p-5 border-t-4 border-blue-500">
-                    <div class="text-[11px] font-bold text-blue-500 uppercase tracking-wider mb-2">5-Day Sector Velocity Baskets</div>
-                    <div id="basketsGrid" class="grid grid-cols-4 gap-2 text-center my-3">
-                        <!-- Basket stats -->
-                    </div>
-                    <div class="text-xs text-slate-400 pt-2 border-t border-white/5">
-                        <b>Capital Rotation:</b> Measures 5-day velocity across cyclical vs defensive balance sheets.
-                    </div>
-                </div>
+                <span id="briefingRiskPill" class="text-xs text-slate-400 font-medium px-2.5 py-0.5 rounded-full bg-stealth-900 border border-stealth-border">
+                  Selective / Dispersion
+                </span>
+              </div>
+
+              <!-- Title -->
+              <h4 id="briefingTitle" class="text-xl font-bold text-white tracking-tight leading-snug">
+                Selective Cyclical Rotation With Mega-Cap Tech Rebound
+              </h4>
+
+              <!-- Paragraph -->
+              <p id="briefingDetail" class="text-xs text-slate-300 leading-relaxed font-normal">
+                Capital is aggressively rotating out of secular tech leadership like SMH and into mega-cap anchors (AAPL, MSFT, AMZN) and cyclicals, while defensives like XLU capture steady bids. Breadth ratios show severe mean-reversion in cap-weighted benchmarks relative to equal-weight baselines.
+              </p>
             </div>
-            <div id="synthesisCard" class="lux-card p-5 border border-amber-500/30 bg-gradient-to-b from-[#13161f] to-[#0d0e13]">
-                <!-- Top Executive Header -->
-                <div class="flex flex-wrap justify-between items-center gap-3 pb-3 mb-4 border-b border-white/5">
-                    <div class="flex items-center gap-2.5">
-                        <span class="text-amber-400 text-lg">🏛️</span>
-                        <div>
-                            <span class="text-xs font-extrabold text-amber-400 uppercase tracking-wider block">Institutional Executive Synthesis</span>
-                            <span class="text-[11px] text-slate-400">Chief Quantitative Strategist & Portfolio Risk Intelligence</span>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span id="aiBriefingTimestamp" class="text-[11px] font-mono text-slate-400 bg-white/5 px-2.5 py-1 rounded border border-white/10">Daily Session</span>
-                        <span id="aiSourceBadge" class="pill-amber px-2.5 py-1 rounded text-[11px] font-bold">Quantitative Desk</span>
-                    </div>
+
+            <!-- Right: 5-DAY SECTOR VELOCITY BASKETS (Col span 5) -->
+            <div class="lg:col-span-5 stealth-card p-6 flex flex-col justify-between space-y-4 border border-stealth-border">
+              
+              <div>
+                <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4">
+                  5-Day Sector Velocity Baskets
                 </div>
 
-                <!-- Navigation View Filter Pills -->
-                <div class="flex flex-wrap items-center gap-1.5 mb-4 p-1.5 rounded-xl bg-white/[0.02] border border-white/5">
-                    <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">Focus Pillar:</span>
-                    <button onclick="filterSynthesisSection('all')" id="synthPill-all" class="synth-nav-pill px-3 py-1 rounded-lg text-xs font-bold bg-amber-500 text-black shadow-sm transition">All 4 Pillars</button>
-                    <button onclick="filterSynthesisSection('macro')" id="synthPill-macro" class="synth-nav-pill px-3 py-1 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition">🌐 1. Macro Liquidity</button>
-                    <button onclick="filterSynthesisSection('sectors')" id="synthPill-sectors" class="synth-nav-pill px-3 py-1 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition">⚡ 2. Sector Velocity</button>
-                    <button onclick="filterSynthesisSection('setups')" id="synthPill-setups" class="synth-nav-pill px-3 py-1 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition">🎯 3. Setups & Traps</button>
-                    <button onclick="filterSynthesisSection('risk')" id="synthPill-risk" class="synth-nav-pill px-3 py-1 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 transition">🛡️ 4. Desk Game Plan</button>
+                <div id="basketsGrid" class="grid grid-cols-4 gap-2 text-center">
+                  <!-- Populated dynamically by renderBriefingBaskets() -->
                 </div>
+              </div>
 
-                <!-- Structured Synthesis Section Cards Container -->
-                <div id="synthesisText" class="space-y-4">
-                    <div class="flex items-center gap-2 text-slate-400 py-6 text-xs">
-                        <span class="inline-block animate-spin text-amber-400">⚡</span>
-                        <span>Synthesizing multi-factor institutional market intelligence...</span>
-                    </div>
-                </div>
+              <!-- Footer Footnote -->
+              <div class="pt-3 border-t border-stealth-border text-[11px] text-slate-500 leading-normal">
+                <span class="text-slate-400 font-medium">Capital Rotation:</span> Measures 5-day velocity across cyclical vs defensive balance sheets.
+              </div>
+
             </div>
+
+          </div>
+
+          <!-- Executive Synthesis Card -->
+          <div id="synthesisCard" class="stealth-card p-6 border border-stealth-border space-y-4">
+            <div class="flex flex-wrap justify-between items-center gap-3 pb-3 border-b border-stealth-border">
+              <div class="flex items-center space-x-2.5">
+                <span class="text-mint text-lg">🏛️</span>
+                <div>
+                  <span class="text-xs font-bold text-mint uppercase tracking-wider block">Institutional Executive Synthesis</span>
+                  <span class="text-[11px] text-slate-400">Chief Quantitative Strategist & Portfolio Risk Intelligence</span>
+                </div>
+              </div>
+              <div class="flex items-center space-x-2">
+                <span id="aiBriefingTimestamp" class="text-[11px] font-mono text-slate-400 bg-stealth-850 px-2.5 py-1 rounded border border-stealth-border">Daily Session</span>
+                <span id="aiSourceBadge" class="badge-mint px-2.5 py-1 rounded text-[11px] font-bold">Quantitative Desk</span>
+              </div>
+            </div>
+
+            <!-- Navigation View Filter Pills -->
+            <div class="flex flex-wrap items-center gap-1.5 p-1.5 rounded-lg bg-stealth-950 border border-stealth-border">
+              <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">Focus Pillar:</span>
+              <button onclick="filterSynthesisSection('all')" id="synthPill-all" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-bold bg-mint text-stealth-950 shadow-sm transition">All 4 Pillars</button>
+              <button onclick="filterSynthesisSection('macro')" id="synthPill-macro" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">🌐 1. Macro Liquidity</button>
+              <button onclick="filterSynthesisSection('sectors')" id="synthPill-sectors" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">⚡ 2. Sector Velocity</button>
+              <button onclick="filterSynthesisSection('setups')" id="synthPill-setups" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">🎯 3. Setups & Traps</button>
+              <button onclick="filterSynthesisSection('risk')" id="synthPill-risk" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">🛡️ 4. Desk Game Plan</button>
+            </div>
+
+            <!-- Structured Synthesis Section Cards Container -->
+            <div id="synthesisText" class="space-y-4">
+              <div class="flex items-center space-x-2 text-slate-400 py-6 text-xs">
+                <span class="inline-block animate-spin text-mint">⚡</span>
+                <span>Synthesizing multi-factor institutional market intelligence...</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Tab 2: AI Trade Ideas -->
@@ -668,14 +876,16 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         <!-- Tab 3: Confirmation & Confluence Radar -->
         <div id="tab3" class="tab-pane hidden">
-            <div class="flex flex-wrap gap-2 mb-4">
+            <div class="inline-flex flex-wrap bg-[#18181b] p-1 rounded-lg border border-[#27272a] gap-1 mb-4">
                 <button onclick="loadConfluence('core', this)" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-white/10 text-white">Core Universe</button>
                 <button onclick="loadConfluence('mag7', this)" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-[#111319] text-slate-400">Mag 7 Only</button>
                 <button onclick="loadConfluence('indexes', this)" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-[#111319] text-slate-400">Major Indexes</button>
                 <button onclick="loadConfluence('sectors', this)" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-[#111319] text-slate-400">Sector ETFs</button>
                 <button onclick="loadConfluence('macro', this)" class="conf-pill px-3 py-1 rounded-full text-xs font-semibold bg-[#111319] text-slate-400">Macro Assets</button>
             </div>
-            <div id="confluenceChart" class="lux-card p-4 mb-5" style="min-height: 400px;"></div>
+            <div class="lux-card p-4 mb-5 overflow-hidden">
+                <div id="confluenceChart" style="width: 100%; min-height: 480px;"></div>
+            </div>
             
             <h4 class="text-sm font-bold text-white mb-2">Confluence Confirmation Matrix</h4>
             <div class="lux-card overflow-x-auto mb-6">
@@ -940,37 +1150,25 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
         </div>
 
-            </div>
-        </main>
-    </div>
+        </div>
+    </main>
 
-    <!-- JavaScript Application Logic -->
+        </main>
+  </div>
+<!-- JavaScript Application Logic -->
     <script>
         let DATA = null;
         let CURRENT_HORIZON = "All Historical Data";
         let USER_API_KEY = localStorage.getItem('rotato_gemini_key') || '';
 
-        function updateApiKeyUI() {
-            const sidebarInput = document.getElementById('sidebarApiKey');
-            const textEl = document.getElementById('apiStatusText');
-            const dotEl = document.getElementById('apiStatusDot');
-            const headerBtn = document.getElementById('apiKeyStatus');
 
-            if (sidebarInput && document.activeElement !== sidebarInput) {
-                sidebarInput.value = USER_API_KEY;
-            }
-            if (headerBtn) {
-                headerBtn.innerText = USER_API_KEY ? 'Gemini Key Active' : 'Set Gemini Key';
-            }
-            if (textEl && dotEl) {
+        function updateApiKeyUI() {
+            const statusEl = document.getElementById('aiGlobalStatusText');
+            if (statusEl) {
                 if (USER_API_KEY) {
-                    textEl.innerText = 'Status: Gemini API Key Active';
-                    textEl.className = 'text-emerald-400 font-semibold';
-                    dotEl.className = 'w-2 h-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-500';
+                    statusEl.innerText = 'Gemini AI Active (Custom)';
                 } else {
-                    textEl.innerText = 'Status: Using Built-in Quantitative Heuristic AI';
-                    textEl.className = 'text-slate-400';
-                    dotEl.className = 'w-2 h-2 rounded-full bg-amber-500';
+                    statusEl.innerText = 'Gemini AI Active';
                 }
             }
         }
@@ -1004,109 +1202,93 @@ HTML_CONTENT = """<!DOCTYPE html>
         }
 
         async function triggerDataSync() {
-            const scope = document.querySelector('input[name="syncScope"]:checked')?.value || 'core';
             const btn = document.getElementById('syncBtn');
             const spinner = document.getElementById('syncSpinner');
             const btnText = document.getElementById('syncBtnText');
-            const feedbackBox = document.getElementById('syncFeedbackBox');
-            const stageTitle = document.getElementById('syncStageTitle');
-            const pctText = document.getElementById('syncPctText');
-            const progressBar = document.getElementById('syncProgressBar');
-            const logList = document.getElementById('syncLogList');
-            const summaryBadge = document.getElementById('syncSummaryBadge');
-            const successHeading = document.getElementById('syncSuccessHeading');
-            const successDetails = document.getElementById('syncSuccessDetails');
 
-            btn.disabled = true;
-            spinner.classList.remove('hidden');
-            btnText.innerText = 'Syncing Feeds...';
-            feedbackBox.classList.remove('hidden');
-            summaryBadge.classList.add('hidden');
-            logList.innerHTML = '';
-
-            const appendLog = (icon, text, color = 'text-slate-300') => {
-                const div = document.createElement('div');
-                div.className = `flex items-center gap-1.5 ${color}`;
-                div.innerHTML = `<span>${icon}</span><span>${text}</span>`;
-                logList.appendChild(div);
-            };
-
-            const setProgress = (pct, stage) => {
-                progressBar.style.width = pct + '%';
-                pctText.innerText = pct + '%';
-                stageTitle.innerText = stage;
-            };
-
-            setProgress(15, 'Contacting Yahoo Finance...');
-            appendLog('⚡', 'Connecting to Yahoo Finance endpoints...', 'text-amber-300');
-
-            await new Promise(r => setTimeout(r, 200));
-            setProgress(35, 'Downloading Tickers Batch...');
-            appendLog('📥', `Fetching batch quotes for ${scope === 'core' ? '28 core assets' : 'all 79 assets'}...`, 'text-blue-300');
+            if (btn) btn.disabled = true;
+            if (spinner) spinner.classList.remove('hidden');
+            if (btnText) btnText.innerText = 'Syncing...';
 
             try {
                 const res = await fetch('/api/sync-data', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ scope: scope })
+                    body: JSON.stringify({ scope: 'core' })
                 });
 
                 if (!res.ok) {
-                    const errData = await res.json().catch(() => null);
-                    const msg = (errData && errData.message) ? errData.message : `Server returned HTTP ${res.status}`;
-                    throw new Error(msg);
+                    throw new Error(`Sync returned HTTP ${res.status}`);
                 }
 
                 const data = await res.json();
 
-                setProgress(75, 'Re-indexing Technical Indicators...');
-                appendLog('📊', `Received ${data.total} ticker daily bars. Calculating EMAs & RSI...`, 'text-indigo-300');
-
-                await new Promise(r => setTimeout(r, 200));
-                setProgress(90, 'Recalculating Synthetic Ratios...');
-                appendLog('🔄', 'Updating SPY/RSP, QQQ/RSP, and IWM/QQQ spreads...', 'text-cyan-300');
-
-                await new Promise(r => setTimeout(r, 200));
-                setProgress(100, 'Sync Complete');
-                appendLog('✓', `All ${data.total} assets indexed to ${data.last_date}`, 'text-emerald-400 font-bold');
-
-                // Display success badge
-                summaryBadge.classList.remove('hidden');
-                successHeading.innerText = `Updated ${data.total} Assets (${data.duration}s)`;
-                successDetails.innerHTML = `
-                    <div>• <b>Session Date:</b> ${data.last_date} (${data.timestamp})</div>
-                    <div>• <b>Verified:</b> ${(data.sample_tickers || []).slice(0, 6).join(', ')}...</div>
-                `;
-
-                // Pulse the session badge in header
+                // Update session date badge
                 const sessionBadge = document.getElementById('sessionDateBadge');
-                if (sessionBadge) {
+                if (sessionBadge && data.last_date) {
                     sessionBadge.innerText = 'Prices: ' + data.last_date;
-                    sessionBadge.classList.add('bg-emerald-500/20', 'text-emerald-300');
-                    setTimeout(() => sessionBadge.classList.remove('bg-emerald-500/20', 'text-emerald-300'), 3000);
                 }
 
-                // Re-render dashboard
-                await init();
+                // Refresh market data
+                const mRes = await fetch('/api/market-data');
+                DATA = await mRes.json();
+                renderBenchmarks();
+                renderMacroBarometers();
+                renderBriefingBaskets();
+                renderFilamentHeroCards();
+
+                if (btnText) btnText.innerText = '✓ Synced!';
+                setTimeout(() => {
+                    if (btnText) btnText.innerText = 'Sync Feeds';
+                    if (btn) btn.disabled = false;
+                    if (spinner) spinner.classList.add('hidden');
+                }, 2000);
 
             } catch (err) {
-                setProgress(100, 'Sync Error');
-                appendLog('✕', 'Sync failed: ' + err.message, 'text-red-400 font-bold');
-            } finally {
-                btn.disabled = false;
-                spinner.classList.add('hidden');
-                btnText.innerText = 'Sync Daily Closes Now';
+                console.error("Data sync error:", err);
+                if (btnText) btnText.innerText = 'Sync Error';
+                setTimeout(() => {
+                    if (btnText) btnText.innerText = 'Sync Feeds';
+                    if (btn) btn.disabled = false;
+                    if (spinner) spinner.classList.add('hidden');
+                }, 2500);
             }
         }
 
         const LOADED_TABS = new Set(['tab1']);
         let AI_DATA = null;
 
+        const TAB_NAMES = {
+            'tab1': 'Daily Macro Briefing',
+            'tab_agent': 'Interactive AI Quant Agent',
+            'tab2': 'AI Trade Ideas Desk',
+            'tab3': 'Confirmation & Confluence Radar',
+            'tab4': 'Mag 7 Granular Diagnostics',
+            'tab5': 'Indexes & Sector Money Flow',
+            'tab6': 'Key Ratio & Breadth Radar',
+            'tab7': 'Single Ticker Explorer',
+            'tab_options': 'Cheap IV & Strike Selector'
+        };
+
         function switchTab(tabId) {
             document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
-            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-            document.getElementById(tabId).classList.remove('hidden');
-            document.getElementById('btn-' + tabId).classList.add('active');
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active', 'bg-stealth-850', 'text-white', 'font-semibold', 'border-mint/40', 'shadow-[0_0_12px_rgba(0,245,160,0.15)]');
+                btn.classList.add('text-slate-400', 'hover:text-white', 'hover:bg-stealth-900', 'border-transparent');
+            });
+            const targetPane = document.getElementById(tabId);
+            if (targetPane) targetPane.classList.remove('hidden');
+            
+            const activeBtn = document.getElementById('btn-' + tabId);
+            if (activeBtn) {
+                activeBtn.classList.remove('text-slate-400', 'hover:bg-stealth-900', 'border-transparent');
+                activeBtn.classList.add('active', 'bg-stealth-850', 'text-white', 'font-semibold', 'border-mint/40', 'shadow-[0_0_12px_rgba(0,245,160,0.15)]');
+            }
+
+            const heading = document.getElementById('pageHeading');
+            const breadcrumb = document.getElementById('breadcrumbCurrent');
+            if (heading && TAB_NAMES[tabId]) heading.innerText = TAB_NAMES[tabId];
+            if (breadcrumb && TAB_NAMES[tabId]) breadcrumb.innerText = TAB_NAMES[tabId];
 
             // Lazy load tabs on demand
             if (tabId === 'tab2') {
@@ -1115,7 +1297,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             } else if (tabId === 'tab3') {
                 if (!LOADED_TABS.has('tab3')) {
                     LOADED_TABS.add('tab3');
-                    renderConfluence();
+                    loadConfluence('core');
                 } else {
                     setTimeout(() => Plotly.Plots.resize('confluenceChart'), 50);
                 }
@@ -1143,12 +1325,12 @@ HTML_CONTENT = """<!DOCTYPE html>
             } else if (tabId === 'tab7') {
                 if (!LOADED_TABS.has('tab7')) {
                     LOADED_TABS.add('tab7');
-                    populateTickersDropdown();
-                    loadSingleTicker();
+                    updateSingleTicker();
                 } else {
-                    setTimeout(() => Plotly.Plots.resize('singleTickerCombinedChart'), 50);
+                    setTimeout(() => Plotly.Plots.resize('singleTickerChart'), 50);
                 }
-            } else if (tabId === 'tab_options') {
+            }
+        } else if (tabId === 'tab_options') {
                 populateOptionsTickersDropdown();
                 if (!LOADED_TABS.has('tab_options')) {
                     LOADED_TABS.add('tab_options');
@@ -1159,7 +1341,132 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
         }
 
-        async function init() {
+        
+        let CURRENT_HERO_VIEW = 'benchmarks';
+
+        function toggleHeroCards(view, btn) {
+            CURRENT_HERO_VIEW = view;
+            document.getElementById('heroBtnBench').className = view === 'benchmarks' ? 'px-3 py-1 rounded-md font-semibold bg-[#202026] text-white' : 'px-3 py-1 rounded-md font-medium text-zinc-400 hover:text-white';
+            document.getElementById('heroBtnMacro').className = view === 'macro' ? 'px-3 py-1 rounded-md font-semibold bg-[#202026] text-white' : 'px-3 py-1 rounded-md font-medium text-zinc-400 hover:text-white';
+            renderFilamentHeroCards();
+        }
+
+        function renderFilamentHeroCards() {
+            const container = document.getElementById('filamentHeroCards');
+            if (!container || !DATA) return;
+            const b = DATA.benchmarks || {};
+            const macro = DATA.market_data?.macro_assets || {};
+            const r = DATA.market_data?.ratios || {};
+            const spy_rsp = r.SPY_RSP || {};
+
+            let cards = [];
+            if (CURRENT_HERO_VIEW === 'benchmarks') {
+                cards = [
+                    {
+                        label: 'S&P 500 Core', ticker: 'SPY',
+                        val: `$${Number(b.SPY?.close || 0).toFixed(2)}`,
+                        pct: b.SPY?.pct_1d || 0,
+                        sub: `ATH DD: ${b.SPY?.drawdown_ath}% • 5D: ${(b.SPY?.pct_5d || 0) >= 0 ? '+' : ''}${b.SPY?.pct_5d}%`,
+                        sparkPoints: 'M0,18 Q30,8 60,14 T120,6 T180,12 T240,4'
+                    },
+                    {
+                        label: 'Nasdaq 100 Tech', ticker: 'QQQ',
+                        val: `$${Number(b.QQQ?.close || 0).toFixed(2)}`,
+                        pct: b.QQQ?.pct_1d || 0,
+                        sub: `ATH DD: ${b.QQQ?.drawdown_ath}% • 5D: ${(b.QQQ?.pct_5d || 0) >= 0 ? '+' : ''}${b.QQQ?.pct_5d}%`,
+                        sparkPoints: 'M0,16 Q30,12 60,20 T120,10 T180,15 T240,6'
+                    },
+                    {
+                        label: 'Breadth Spread', ticker: 'SPY / RSP',
+                        val: Number(spy_rsp.current || 0).toFixed(4),
+                        pct: spy_rsp.pct_5d || 0,
+                        isSigma: true, sigma: spy_rsp.z_score_50d || 0,
+                        sub: `<span style="color:${spy_rsp.state_color || '#34d399'}; font-weight:600;">${spy_rsp.actionable_state || 'Breadth Expansion'}</span>`,
+                        sparkPoints: 'M0,8 Q30,14 60,10 T120,18 T180,14 T240,22'
+                    },
+                    {
+                        label: 'Russell 2000 Small', ticker: 'IWM',
+                        val: `$${Number(b.IWM?.close || 0).toFixed(2)}`,
+                        pct: b.IWM?.pct_1d || 0,
+                        sub: `ATH DD: ${b.IWM?.drawdown_ath}% • 5D: ${(b.IWM?.pct_5d || 0) >= 0 ? '+' : ''}${b.IWM?.pct_5d}%`,
+                        sparkPoints: 'M0,20 Q30,16 60,12 T120,14 T180,8 T240,4'
+                    }
+                ];
+            } else {
+                cards = [
+                    {
+                        label: 'Gold Debasement', ticker: 'GLD',
+                        val: `$${Number(macro.GLD?.close || 0).toFixed(2)}`,
+                        pct: macro.GLD?.pct_1d || 0,
+                        sub: `5D: ${(macro.GLD?.pct_5d || 0) >= 0 ? '+' : ''}${macro.GLD?.pct_5d?.toFixed(2)}% • Safe Haven`,
+                        sparkPoints: 'M0,14 Q30,10 60,8 T120,12 T180,6 T240,2'
+                    },
+                    {
+                        label: '20Y Treasuries', ticker: 'TLT',
+                        val: `$${Number(macro.TLT?.close || 0).toFixed(2)}`,
+                        pct: macro.TLT?.pct_1d || 0,
+                        sub: `5D: ${(macro.TLT?.pct_5d || 0) >= 0 ? '+' : ''}${macro.TLT?.pct_5d?.toFixed(2)}% • Duration Risk`,
+                        sparkPoints: 'M0,10 Q30,12 60,16 T120,14 T180,20 T240,18'
+                    },
+                    {
+                        label: 'Crude Oil Energy', ticker: 'USO',
+                        val: `$${Number(macro.USO?.close || 0).toFixed(2)}`,
+                        pct: macro.USO?.pct_1d || 0,
+                        sub: `5D: ${(macro.USO?.pct_5d || 0) >= 0 ? '+' : ''}${macro.USO?.pct_5d?.toFixed(2)}% • Energy Input`,
+                        sparkPoints: 'M0,6 Q30,14 60,12 T120,20 T180,18 T240,24'
+                    },
+                    {
+                        label: 'Bitcoin Trust', ticker: 'IBIT',
+                        val: `$${Number(macro.IBIT?.close || 0).toFixed(2)}`,
+                        pct: macro.IBIT?.pct_1d || 0,
+                        sub: `5D: ${(macro.IBIT?.pct_5d || 0) >= 0 ? '+' : ''}${macro.IBIT?.pct_5d?.toFixed(2)}% • Liquidity Proxy`,
+                        sparkPoints: 'M0,18 Q30,10 60,14 T120,6 T180,10 T240,2'
+                    }
+                ];
+            }
+
+            let html = '';
+            cards.forEach(c => {
+                const isPos = c.pct >= 0;
+                const pillClass = isPos ? 'pill-green' : 'pill-red';
+                const sign = isPos ? '+' : '';
+                const badge = c.isSigma ? `<span class="pill-cyan font-mono">${c.sigma > 0 ? '+' : ''}${c.sigma?.toFixed(2)}σ</span>` : `<span class="${pillClass}">${sign}${c.pct?.toFixed(2)}%</span>`;
+                const strokeColor = isPos ? '#34d399' : '#fb7185';
+                html += `
+                    <div class="lux-card p-5 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="text-xs font-medium text-zinc-400">${c.ticker} • ${c.label}</span>
+                                ${badge}
+                            </div>
+                            <div class="text-2xl font-bold text-white tracking-tight">${c.val}</div>
+                        </div>
+                        <div class="mt-4">
+                            <svg class="sparkline-svg" viewBox="0 0 240 28" fill="none">
+                                <path d="${c.sparkPoints}" stroke="${strokeColor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <div class="text-[11px] text-zinc-400 border-t border-[#232328] pt-2 mt-1 truncate">${c.sub}</div>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function handleGlobalSearch(e) {
+            const val = document.getElementById('globalTickerSearch')?.value?.trim().toUpperCase();
+            if (!val) return;
+            if (e && e.key === 'Enter') {
+                const tickerSelect = document.getElementById('tickerSelect');
+                if (tickerSelect) {
+                    tickerSelect.value = val;
+                    switchTab('tab7');
+                    loadSingleTicker();
+                }
+            }
+        }
+
+async function init() {
             updateApiKeyUI();
             try {
                 // 1. Fetch core market numerical metrics instantly (< 300ms)
@@ -1170,6 +1477,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 renderBenchmarks();
                 renderMacroBarometers();
                 renderBriefingBaskets();
+                renderFilamentHeroCards();
                 initAgentChat();
                 populateTickersDropdown();
                 populateOptionsTickersDropdown();
@@ -1316,68 +1624,93 @@ HTML_CONTENT = """<!DOCTYPE html>
             if (sessionBadge && DATA.last_market_session) {
                 sessionBadge.innerText = 'Prices: ' + DATA.last_market_session;
             }
-            const b = DATA.benchmarks;
+            const b = DATA.benchmarks || {};
             const macro = DATA.market_data.macro_assets || {};
 
             const cards = [
                 { 
                     ticker: "SPY", name: "S&P 500", 
-                    price: b.SPY?.close, pct1d: b.SPY?.pct_1d, 
-                    sub1: `ATH DD: <span class="font-bold text-slate-300">${b.SPY?.drawdown_ath}%</span> • 5D: <span class="font-bold ${(b.SPY?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(b.SPY?.pct_5d || 0) >= 0 ? '+' : ''}${b.SPY?.pct_5d}%</span>`,
-                    sub2: `14D RSI: <span class="font-semibold text-slate-300">${b.SPY?.rsi}</span> • Large-Cap Core`
+                    price: b.SPY?.close || 0, pct1d: b.SPY?.pct_1d || 0, pct5d: b.SPY?.pct_5d || 0,
+                    sub1: `ATH DD: <span class="${(b.SPY?.drawdown_ath || 0) < 0 ? 'text-cherry' : 'text-slate-300'} font-medium">${b.SPY?.drawdown_ath || 0}%</span> • 5D: <span class="${(b.SPY?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(b.SPY?.pct_5d || 0) >= 0 ? '+' : ''}${b.SPY?.pct_5d || 0}%</span>`,
+                    sub2: `Large-Cap Core Benchmark`
                 },
                 { 
-                    ticker: "QQQ", name: "Nasdaq 100", 
-                    price: b.QQQ?.close, pct1d: b.QQQ?.pct_1d, 
-                    sub1: `ATH DD: <span class="font-bold text-slate-300">${b.QQQ?.drawdown_ath}%</span> • 5D: <span class="font-bold ${(b.QQQ?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(b.QQQ?.pct_5d || 0) >= 0 ? '+' : ''}${b.QQQ?.pct_5d}%</span>`,
-                    sub2: `14D RSI: <span class="font-semibold text-slate-300">${b.QQQ?.rsi}</span> • Tech Growth`
+                    ticker: "QQQ", name: "NASDAQ 100", 
+                    price: b.QQQ?.close || 0, pct1d: b.QQQ?.pct_1d || 0, pct5d: b.QQQ?.pct_5d || 0,
+                    sub1: `ATH DD: <span class="${(b.QQQ?.drawdown_ath || 0) < 0 ? 'text-cherry' : 'text-slate-300'} font-medium">${b.QQQ?.drawdown_ath || 0}%</span> • 5D: <span class="${(b.QQQ?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(b.QQQ?.pct_5d || 0) >= 0 ? '+' : ''}${b.QQQ?.pct_5d || 0}%</span>`,
+                    sub2: `Tech Growth Benchmark`
                 },
                 { 
-                    ticker: "IWM", name: "Russell 2000", 
-                    price: b.IWM?.close, pct1d: b.IWM?.pct_1d, 
-                    sub1: `ATH DD: <span class="font-bold text-slate-300">${b.IWM?.drawdown_ath}%</span> • 5D: <span class="font-bold ${(b.IWM?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(b.IWM?.pct_5d || 0) >= 0 ? '+' : ''}${b.IWM?.pct_5d}%</span>`,
-                    sub2: `14D RSI: <span class="font-semibold text-slate-300">${b.IWM?.rsi}</span> • Small-Cap Value`
+                    ticker: "IWM", name: "RUSSELL 2000", 
+                    price: b.IWM?.close || 0, pct1d: b.IWM?.pct_1d || 0, pct5d: b.IWM?.pct_5d || 0,
+                    sub1: `ATH DD: <span class="${(b.IWM?.drawdown_ath || 0) < 0 ? 'text-cherry' : 'text-slate-300'} font-medium">${b.IWM?.drawdown_ath || 0}%</span> • 5D: <span class="${(b.IWM?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(b.IWM?.pct_5d || 0) >= 0 ? '+' : ''}${b.IWM?.pct_5d || 0}%</span>`,
+                    sub2: `Small-Cap Value Benchmark`
                 },
                 { 
-                    ticker: "GLD", name: "Gold Trust", 
-                    price: macro.GLD?.close, pct1d: macro.GLD?.pct_1d, 
-                    sub1: `5D: <span class="font-bold ${(macro.GLD?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(macro.GLD?.pct_5d || 0) >= 0 ? '+' : ''}${macro.GLD?.pct_5d?.toFixed(2)}%</span> • 20D: <span class="font-semibold text-slate-300">${macro.GLD?.pct_20d?.toFixed(2)}%</span>`,
+                    ticker: "GLD", name: "GOLD TRUST", 
+                    price: macro.GLD?.close || 0, pct1d: macro.GLD?.pct_1d || 0, pct5d: macro.GLD?.pct_5d || 0,
+                    sub1: `5D: <span class="${(macro.GLD?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(macro.GLD?.pct_5d || 0) >= 0 ? '+' : ''}${Number(macro.GLD?.pct_5d || 0).toFixed(2)}%</span> • 20D: <span class="font-medium text-slate-300">${Number(macro.GLD?.pct_20d || 0).toFixed(2)}%</span>`,
                     sub2: `Safe Haven • Debasement Hedge`
                 },
                 { 
-                    ticker: "TLT", name: "20Y Treasuries", 
-                    price: macro.TLT?.close, pct1d: macro.TLT?.pct_1d, 
-                    sub1: `5D: <span class="font-bold ${(macro.TLT?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(macro.TLT?.pct_5d || 0) >= 0 ? '+' : ''}${macro.TLT?.pct_5d?.toFixed(2)}%</span> • 20D: <span class="font-semibold text-slate-300">${macro.TLT?.pct_20d?.toFixed(2)}%</span>`,
+                    ticker: "TLT", name: "20Y TREASURIES", 
+                    price: macro.TLT?.close || 0, pct1d: macro.TLT?.pct_1d || 0, pct5d: macro.TLT?.pct_5d || 0,
+                    sub1: `5D: <span class="${(macro.TLT?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(macro.TLT?.pct_5d || 0) >= 0 ? '+' : ''}${Number(macro.TLT?.pct_5d || 0).toFixed(2)}%</span> • 20D: <span class="font-medium text-slate-300">${Number(macro.TLT?.pct_20d || 0).toFixed(2)}%</span>`,
                     sub2: `Duration • Real Yield Pressure`
+                },
+                { 
+                    ticker: "IBIT", name: "BITCOIN TRUST", 
+                    price: macro.IBIT?.close || 0, pct1d: macro.IBIT?.pct_1d || 0, pct5d: macro.IBIT?.pct_5d || 0,
+                    sub1: `5D: <span class="${(macro.IBIT?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(macro.IBIT?.pct_5d || 0) >= 0 ? '+' : ''}${Number(macro.IBIT?.pct_5d || 0).toFixed(2)}%</span> • 20D: <span class="font-medium text-slate-300">${Number(macro.IBIT?.pct_20d || 0).toFixed(2)}%</span>`,
+                    sub2: `High-Beta Liquidity Barometer`
+                },
+                { 
+                    ticker: "USO", name: "CRUDE OIL", 
+                    price: macro.USO?.close || 0, pct1d: macro.USO?.pct_1d || 0, pct5d: macro.USO?.pct_5d || 0,
+                    sub1: `5D: <span class="${(macro.USO?.pct_5d || 0) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">${(macro.USO?.pct_5d || 0) >= 0 ? '+' : ''}${Number(macro.USO?.pct_5d || 0).toFixed(2)}%</span> • 20D: <span class="font-medium text-slate-300">${Number(macro.USO?.pct_20d || 0).toFixed(2)}%</span>`,
+                    sub2: `Energy & Inflation Input Cost`
                 }
             ];
 
             let html = '';
             cards.forEach(c => {
                 const p1d = c.pct1d || 0;
-                const pill = p1d >= 0 ? 'pill-green' : 'pill-red';
-                const sign = p1d >= 0 ? '+' : '';
+                const isPos = p1d >= 0;
+                const badgeClass = isPos ? 'badge-mint' : 'badge-cherry';
+                const sign = isPos ? '+' : '';
+                const p5d = c.pct5d || 0;
+                const is5dPos = p5d >= 0;
+                const sparkColor = is5dPos ? '#00F5A0' : '#FF2E55';
+                const sparkPath = is5dPos ? 'M 2 15 Q 16 12, 28 8 T 42 10 T 54 6' : 'M 2 7 Q 15 4, 28 13 T 44 10 T 54 13';
+                const sparkEndY = is5dPos ? 6 : 13;
+
                 html += `
-                    <div class="lux-card p-3.5 flex flex-col justify-between">
-                        <div>
-                            <div class="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                                <span>${c.ticker} <span class="text-slate-500 font-medium">• ${c.name}</span></span>
-                                <span class="${pill} px-2 py-0.5 rounded font-bold text-[11px]">${sign}${p1d.toFixed(2)}%</span>
-                            </div>
-                            <div class="text-2xl font-extrabold text-white tracking-tight mt-0.5">$${Number(c.price || 0).toFixed(2)}</div>
+                    <div class="stealth-card p-3.5 space-y-2">
+                        <div class="flex items-center justify-between">
+                            <div class="text-xs font-bold text-slate-200">${c.ticker} <span class="text-slate-500 font-normal">• ${c.name}</span></div>
+                            <span class="${badgeClass} px-1.5 py-0.5 rounded text-[11px] font-semibold tabular-num">${sign}${Number(p1d).toFixed(2)}%</span>
                         </div>
-                        <div class="mt-2.5 pt-2 border-t border-white/5 text-[11px] text-slate-400 flex flex-col gap-0.5">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xl font-bold text-white tracking-tight tabular-num">$${Number(c.price || 0).toFixed(2)}</span>
+                            <div class="w-14 h-5 flex items-center" title="${c.ticker} 5-Day Trend (${p5d >= 0 ? '+' : ''}${Number(p5d).toFixed(2)}%)">
+                                <svg class="w-full h-full overflow-visible" viewBox="0 0 56 20">
+                                    <path d="${sparkPath}" fill="none" stroke="${sparkColor}" stroke-width="1.5" stroke-linecap="round" />
+                                    <circle cx="54" cy="${sparkEndY}" r="2" fill="${sparkColor}" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="pt-1.5 border-t border-stealth-border/70 space-y-0.5 text-[11px] tabular-num text-slate-400">
                             <div>${c.sub1}</div>
-                            <div class="text-[10px] text-slate-500 truncate">${c.sub2}</div>
+                            <div class="text-slate-500 truncate">${c.sub2}</div>
                         </div>
                     </div>
                 `;
             });
-            document.getElementById('benchmarksRow').innerHTML = html;
+            const row = document.getElementById('benchmarksRow');
+            if (row) row.innerHTML = html;
         }
 
         function renderMacroBarometers() {
-            const macro = DATA.market_data.macro_assets || {};
             const r = DATA.market_data.ratios || {};
             const spy_rsp = r.SPY_RSP || {};
             const qqq_rsp = r.QQQ_RSP || {};
@@ -1385,104 +1718,114 @@ HTML_CONTENT = """<!DOCTYPE html>
 
             const cards = [
                 {
-                    type: 'asset',
-                    ticker: "IBIT", name: "Bitcoin Trust",
-                    price: macro.IBIT?.close, pct1d: macro.IBIT?.pct_1d,
-                    sub1: `5D: <span class="font-bold ${(macro.IBIT?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(macro.IBIT?.pct_5d || 0) >= 0 ? '+' : ''}${macro.IBIT?.pct_5d?.toFixed(2)}%</span> • 20D: <span class="font-semibold text-slate-300">${macro.IBIT?.pct_20d?.toFixed(2)}%</span>`,
-                    sub2: `High-Beta Liquidity Barometer`
-                },
-                {
-                    type: 'asset',
-                    ticker: "USO", name: "Crude Oil",
-                    price: macro.USO?.close, pct1d: macro.USO?.pct_1d,
-                    sub1: `5D: <span class="font-bold ${(macro.USO?.pct_5d || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(macro.USO?.pct_5d || 0) >= 0 ? '+' : ''}${macro.USO?.pct_5d?.toFixed(2)}%</span> • 20D: <span class="font-semibold text-slate-300">${macro.USO?.pct_20d?.toFixed(2)}%</span>`,
-                    sub2: `Energy & Inflation Input Cost`
-                },
-                {
-                    type: 'ratio',
-                    ticker: "SPY / RSP", name: "Market Breadth",
+                    ticker: "SPY / RSP", name: "Market Breadth", subtitle: "Cap-Weighted vs Equal-Weight",
                     value: spy_rsp.current || 0,
                     sigma: spy_rsp.z_score_50d || 0,
-                    state: spy_rsp.actionable_state || "Breadth Expansion",
-                    stateColor: spy_rsp.state_color || "#10b981",
+                    state: spy_rsp.actionable_state || "Broad Breadth Expansion",
                     pct5d: spy_rsp.pct_5d || 0,
                     action: "Equal-Weight RSP Outperforming"
                 },
                 {
-                    type: 'ratio',
-                    ticker: "QQQ / RSP", name: "Tech Breadth",
+                    ticker: "QQQ / RSP", name: "Tech Breadth", subtitle: "Tech Beta vs Broad Market",
                     value: qqq_rsp.current || 0,
                     sigma: qqq_rsp.z_score_50d || 0,
-                    state: qqq_rsp.actionable_state || "Tech Consolidating",
-                    stateColor: qqq_rsp.state_color || "#94a3b8",
+                    state: qqq_rsp.actionable_state || "Range-Bound Ratio",
                     pct5d: qqq_rsp.pct_5d || 0,
                     action: "Broadening Beyond Mega-Tech"
                 },
                 {
-                    type: 'ratio',
-                    ticker: "IWM / QQQ", name: "Small vs Tech",
+                    ticker: "IWM / QQQ", name: "Small vs Tech", subtitle: "Small-Cap vs Mega-Cap Tech",
                     value: iwm_qqq.current || 0,
                     sigma: iwm_qqq.z_score_50d || 0,
-                    state: iwm_qqq.actionable_state || "Small-Cap Bid",
-                    stateColor: iwm_qqq.state_color || "#10b981",
+                    state: iwm_qqq.actionable_state || "Aggressive Small-Cap Momentum",
                     pct5d: iwm_qqq.pct_5d || 0,
-                    action: "Small-Cap Alpha Momentum"
+                    action: "Small-Cap Alpha Acceleration"
                 }
             ];
 
             let html = '';
             cards.forEach(c => {
-                if (c.type === 'asset') {
-                    const p1d = c.pct1d || 0;
-                    const pill = p1d >= 0 ? 'pill-green' : 'pill-red';
-                    const sign = p1d >= 0 ? '+' : '';
-                    html += `
-                        <div class="lux-card p-3.5 flex flex-col justify-between">
-                            <div>
-                                <div class="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                                    <span>${c.ticker} <span class="text-slate-500 font-medium">• ${c.name}</span></span>
-                                    <span class="${pill} px-2 py-0.5 rounded font-bold text-[11px]">${sign}${p1d.toFixed(2)}%</span>
-                                </div>
-                                <div class="text-2xl font-extrabold text-white tracking-tight mt-0.5">$${Number(c.price || 0).toFixed(2)}</div>
-                            </div>
-                            <div class="mt-2.5 pt-2 border-t border-white/5 text-[11px] text-slate-400 flex flex-col gap-0.5">
-                                <div>${c.sub1}</div>
-                                <div class="text-[10px] text-slate-500 truncate">${c.sub2}</div>
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    const sig = c.sigma || 0;
-                    const pill = sig > 0 ? 'pill-cyan' : 'pill-amber';
-                    const sigText = `${sig > 0 ? '+' : ''}${sig.toFixed(2)}σ`;
-                    html += `
-                        <div class="lux-card p-3.5 flex flex-col justify-between border-t-2" style="border-top-color: ${c.stateColor};">
-                            <div>
-                                <div class="flex justify-between items-center text-xs font-bold text-slate-300 uppercase tracking-wider mb-1">
-                                    <span>${c.ticker} <span class="text-slate-500 font-medium">• ${c.name}</span></span>
-                                    <span class="${pill} px-2 py-0.5 rounded font-bold text-[11px] font-mono">${sigText}</span>
-                                </div>
-                                <div class="flex items-baseline gap-2 mt-0.5">
-                                    <span class="text-2xl font-extrabold text-white tracking-tight font-mono">${Number(c.value).toFixed(4)}</span>
-                                    <span class="text-[11px] font-bold truncate" style="color: ${c.stateColor};">${c.state}</span>
-                                </div>
-                            </div>
-                            <div class="mt-2.5 pt-2 border-t border-white/5 text-[11px] text-slate-400 flex flex-col gap-0.5">
-                                <div>5D: <span class="font-bold ${c.pct5d >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${c.pct5d >= 0 ? '+' : ''}${c.pct5d}%</span> • Regime Trend</div>
-                                <div class="text-[10.5px] text-amber-400/90 font-medium truncate">${c.action}</div>
-                            </div>
-                        </div>
-                    `;
+                const z = c.sigma || 0;
+                const isZPos = z >= 0;
+                const zSign = isZPos ? '+' : '';
+                const zText = `${zSign}${z.toFixed(2)}σ`;
+                const badgeCls = isZPos ? 'badge-mint shadow-[0_0_8px_rgba(0,245,160,0.2)]' : 'badge-cherry shadow-[0_0_8px_rgba(255,46,85,0.2)]';
+                const needleColor = isZPos ? 'bg-mint shadow-[0_0_6px_#00F5A0]' : 'bg-cherry shadow-[0_0_6px_#FF2E55]';
+                // Map z (-3 to +3) to percentage (5% to 95%)
+                const needlePct = Math.max(5, Math.min(95, ((z + 3.0) / 6.0) * 100)).toFixed(1);
+
+                const pct5d = c.pct5d || 0;
+                const is5dPos = pct5d >= 0;
+                const trendCol = is5dPos ? 'text-mint' : 'text-cherry';
+                const trendSign = is5dPos ? '+' : '';
+
+                // Pill styling for state
+                let statusPillClass = 'text-xs text-mint font-semibold bg-mint/10 px-2 py-0.5 rounded border border-mint/20';
+                const stLower = (c.state || '').toLowerCase();
+                if (stLower.includes('range') || stLower.includes('neutral') || stLower.includes('consolidat')) {
+                    statusPillClass = 'text-xs text-slate-300 font-semibold bg-stealth-850 px-2 py-0.5 rounded border border-stealth-border';
+                } else if (stLower.includes('risk-off') || stLower.includes('bear') || stLower.includes('narrow')) {
+                    statusPillClass = 'text-xs text-cherry font-semibold bg-cherry/10 px-2 py-0.5 rounded border border-cherry/20';
                 }
+
+                html += `
+                    <div class="stealth-card p-4 space-y-3 border-stealth-border hover:border-slate-700">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-xs font-bold text-white flex items-center space-x-1.5">
+                                    <span>${c.ticker}</span>
+                                    <span class="text-slate-500 font-normal text-[11px]">• ${c.name}</span>
+                                </div>
+                                <div class="text-[11px] text-slate-500">${c.subtitle}</div>
+                            </div>
+                            <span class="${badgeCls} px-2 py-1 rounded text-xs font-bold tabular-num">
+                                ${zText}
+                            </span>
+                        </div>
+
+                        <div class="flex items-baseline justify-between pt-1">
+                            <span class="text-3xl font-bold text-white tracking-tight tabular-num">${Number(c.value).toFixed(4)}</span>
+                            <span class="${statusPillClass}">
+                                ${c.state}
+                            </span>
+                        </div>
+
+                        <!-- Z-Score Gauge Spectrum Meter (-3σ to +3σ) -->
+                        <div class="space-y-1 pt-1">
+                            <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+                                <span>-3.0σ (Oversold)</span>
+                                <span>0.0σ</span>
+                                <span>+3.0σ (Extended)</span>
+                            </div>
+                            <div class="w-full h-1.5 rounded-full bg-stealth-800 relative overflow-hidden">
+                                <div class="absolute left-1/2 top-0 bottom-0 w-0.5 bg-slate-600"></div>
+                                <div class="absolute top-0 bottom-0 ${needleColor} rounded-full" style="left: ${needlePct}%; width: 8px; margin-left: -4px;"></div>
+                            </div>
+                        </div>
+
+                        <div class="pt-2 border-t border-stealth-border/70 flex items-center justify-between text-xs text-slate-400">
+                            <div>
+                                5D Trend: <span class="${trendCol} font-semibold tabular-num">${trendSign}${Number(pct5d).toFixed(2)}%</span>
+                            </div>
+                            <div class="text-slate-500 text-[11px]">
+                                ${c.action}
+                            </div>
+                        </div>
+                    </div>
+                `;
             });
-            document.getElementById('macroBarometersRow').innerHTML = html;
+            const row = document.getElementById('macroBarometersRow');
+            if (row) row.innerHTML = html;
         }
 
         function renderBriefingBaskets() {
             const md = DATA.market_data || {};
-            document.getElementById('briefingTitle').innerText = md.narrative_title || "Secular Uptrend";
-            document.getElementById('briefingDetail').innerText = md.narrative_detail || "";
-            document.getElementById('briefingRiskPill').innerText = md.risk_level || "Moderate";
+            const t = document.getElementById('briefingTitle');
+            if (t) t.innerText = md.narrative_title || "Selective Cyclical Rotation With Mega-Cap Tech Rebound";
+            const d = document.getElementById('briefingDetail');
+            if (d) d.innerText = md.narrative_detail || "Capital is aggressively rotating out of secular tech leadership and into mega-cap anchors and cyclicals.";
+            const r = document.getElementById('briefingRiskPill');
+            if (r) r.innerText = md.risk_level || "Selective / Dispersion";
 
             const b = md.baskets_5d || {};
             const keys = [
@@ -1494,15 +1837,17 @@ HTML_CONTENT = """<!DOCTYPE html>
             let bHtml = '';
             keys.forEach(it => {
                 const val = (b[it.k] !== undefined) ? b[it.k] : (b[it.alt] !== undefined ? b[it.alt] : 0);
-                const col = val >= 0 ? 'text-emerald-400' : 'text-red-400';
+                const col = val >= 0 ? 'text-mint' : 'text-cherry';
+                const sign = val >= 0 ? '+' : '';
                 bHtml += `
-                    <div>
-                        <div class="text-[11px] text-slate-500">${it.n}</div>
-                        <div class="text-base font-extrabold ${col}">${val >= 0 ? '+' : ''}${Number(val).toFixed(2)}%</div>
+                    <div class="space-y-1">
+                        <div class="text-xs text-slate-400 font-medium">${it.n}</div>
+                        <div class="text-xl font-bold ${col} tabular-num tracking-tight">${sign}${Number(val).toFixed(2)}%</div>
                     </div>
                 `;
             });
-            document.getElementById('basketsGrid').innerHTML = bHtml;
+            const grid = document.getElementById('basketsGrid');
+            if (grid) grid.innerHTML = bHtml;
         }
 
         async function loadAiBriefingAsync() {
@@ -1730,7 +2075,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                     const pill = dir.includes("LONG") ? 'pill-green' : (dir.includes("SHORT") || dir.includes("FADE") ? 'pill-red' : 'pill-amber');
                     const execPill = t.execution_pill || (dir.includes("LONG") ? 'pill-green' : 'pill-amber');
                     html += `
-                        <div class="lux-card p-4 sm:p-5 border-l-4" style="border-left-color: ${t.card_color || '#10b981'}">
+                        <div class="lux-card p-4 sm:p-5 border-l-4" style="border-left-color: ${t.card_color || '#0ecb81'}">
                             <div class="flex flex-wrap justify-between items-center gap-2 pb-3 mb-3 border-b border-white/5">
                                 <div class="flex flex-wrap items-center gap-2.5">
                                     <span class="text-2xl font-black text-white">${t.ticker}</span>
@@ -1833,10 +2178,20 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         function renderConfluence() {
             const items = DATA.confluences || [];
+            if (!items || !items.length) {
+                loadConfluence('core');
+                return;
+            }
             const tickers = items.map(c => c.ticker);
             const scores = items.map(c => c.score);
             const colors = items.map(c => c.color_hex);
             const hover = items.map(c => `${c.ticker}: ${c.bias_label} (${c.score})<br>Bull: ${c.bull_count}/7 | Bear: ${c.bear_count}/7`);
+
+            const chartHeight = Math.max(480, items.length * 26 + 100);
+            const chartDiv = document.getElementById('confluenceChart');
+            if (chartDiv) {
+                chartDiv.style.height = chartHeight + 'px';
+            }
 
             const trace = {
                 x: scores,
@@ -1848,12 +2203,22 @@ HTML_CONTENT = """<!DOCTYPE html>
                 hoverinfo: 'text'
             };
             const layout = {
-                plot_bgcolor: "#111319",
-                paper_bgcolor: "#111319",
+                height: chartHeight,
+                plot_bgcolor: "#0D0F14",
+                paper_bgcolor: "#0D0F14",
                 font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 12 },
-                margin: { l: 60, r: 20, t: 30, b: 30 },
-                xaxis: { range: [-100, 100], gridcolor: "rgba(255, 255, 255, 0.04)", zerolinecolor: "#787b86", zerolinewidth: 2, title: "Conviction Score (-100 Bearish to +100 Bullish)" },
-                yaxis: { autorange: "reversed", gridcolor: "rgba(255, 255, 255, 0.04)" }
+                margin: { l: 65, r: 25, t: 25, b: 60 },
+                xaxis: { 
+                    range: [-100, 100], 
+                    gridcolor: "#1B212D", 
+                    zerolinecolor: "#787b86", 
+                    zerolinewidth: 2, 
+                    title: {
+                        text: "Conviction Score (-100 Bearish to +100 Bullish)",
+                        font: { size: 11, color: "#94a3b8" }
+                    }
+                },
+                yaxis: { autorange: "reversed", gridcolor: "#1B212D", dtick: 1 }
             };
             Plotly.newPlot('confluenceChart', [trace], layout, {responsive: true});
 
@@ -1954,7 +2319,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         }
 
         async function loadMag7NormChart() {
-            const palette = ["#f59e0b", "#10b981", "#3b82f6", "#ec4899", "#8b5cf6", "#06b6d4", "#f97316"];
+            const palette = ["#f59e0b", "#0ecb81", "#3b82f6", "#ec4899", "#8b5cf6", "#06b6d4", "#f97316"];
             const tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA'];
             
             const promises = tickers.map(t => fetch(`/api/ticker/${t}?horizon=1 Year`).then(r => r.json()).catch(() => null));
@@ -1978,12 +2343,12 @@ HTML_CONTENT = """<!DOCTYPE html>
                 }
             });
             const layout = {
-                plot_bgcolor: "#111319",
-                paper_bgcolor: "#111319",
+                plot_bgcolor: "#0D0F14",
+                paper_bgcolor: "#0D0F14",
                 font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 12 },
                 margin: { l: 50, r: 20, t: 30, b: 30 },
-                xaxis: { gridcolor: "rgba(255, 255, 255, 0.04)" },
-                yaxis: { gridcolor: "rgba(255, 255, 255, 0.04)", title: "Return (%)" }
+                xaxis: { gridcolor: "#1B212D" },
+                yaxis: { gridcolor: "#1B212D", title: "Return (%)" }
             };
             Plotly.newPlot('mag7NormChart', traces, layout, {responsive: true});
         }
@@ -2021,7 +2386,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             ];
             const bNames = displayKeys.filter(k => k in baskets);
             const bVals = bNames.map(k => baskets[k]);
-            const bColors = bVals.map(v => v >= 0 ? '#10b981' : '#ef4444');
+            const bColors = bVals.map(v => v >= 0 ? '#0ecb81' : '#f6465d');
             const trace = {
                 x: bVals,
                 y: bNames,
@@ -2030,12 +2395,12 @@ HTML_CONTENT = """<!DOCTYPE html>
                 marker: { color: bColors }
             };
             const layout = {
-                plot_bgcolor: "#111319",
-                paper_bgcolor: "#111319",
+                plot_bgcolor: "#0D0F14",
+                paper_bgcolor: "#0D0F14",
                 font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 12 },
                 margin: { l: 80, r: 20, t: 20, b: 30 },
-                xaxis: { gridcolor: "rgba(255, 255, 255, 0.04)", title: "5D Return (%)" },
-                yaxis: { gridcolor: "rgba(255, 255, 255, 0.04)" }
+                xaxis: { gridcolor: "#1B212D", title: "5D Return (%)" },
+                yaxis: { gridcolor: "#1B212D" }
             };
             Plotly.newPlot('basketChart', [trace], layout, {responsive: true});
         }
@@ -2054,12 +2419,12 @@ HTML_CONTENT = """<!DOCTYPE html>
             ];
             const layout = {
                 title: { text: `${ratioName.replace('_', '/')} Ratio with 20/50 EMA & ±2σ Envelopes`, font: { color: '#ffffff', size: 15 } },
-                plot_bgcolor: "#111319",
-                paper_bgcolor: "#111319",
+                plot_bgcolor: "#0D0F14",
+                paper_bgcolor: "#0D0F14",
                 font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 12 },
                 margin: { l: 50, r: 20, t: 50, b: 30 },
-                xaxis: { gridcolor: "rgba(255, 255, 255, 0.04)" },
-                yaxis: { gridcolor: "rgba(255, 255, 255, 0.04)", title: "Ratio Value" }
+                xaxis: { gridcolor: "#1B212D" },
+                yaxis: { gridcolor: "#1B212D", title: "Ratio Value" }
             };
             Plotly.newPlot('ratioChart', traces, layout, {responsive: true});
         }
@@ -2183,20 +2548,20 @@ HTML_CONTENT = """<!DOCTYPE html>
 
             // Synchronized Plotly Subplot (Row 1: Price & EMAs, Row 2: Drawdown Curve)
             const tracePrice = { x: data.dates, y: data.close, name: "Close Price", type: "scatter", mode: "lines", line: { color: "#ffffff", width: 2 }, yaxis: 'y' };
-            const traceEMA20 = { x: data.dates, y: data.ema20, name: "20 EMA (Red)", type: "scatter", mode: "lines", line: { color: "#ef4444", width: 1.5 }, yaxis: 'y' };
+            const traceEMA20 = { x: data.dates, y: data.ema20, name: "20 EMA (Red)", type: "scatter", mode: "lines", line: { color: "#f6465d", width: 1.5 }, yaxis: 'y' };
             const traceEMA50 = { x: data.dates, y: data.ema50, name: "50 EMA (Amber)", type: "scatter", mode: "lines", line: { color: "#f59e0b", width: 1.5 }, yaxis: 'y' };
             const traceEMA200 = { x: data.dates, y: data.ema200, name: "200 EMA (Blue)", type: "scatter", mode: "lines", line: { color: "#3b82f6", width: 2 }, yaxis: 'y' };
-            const traceDD = { x: data.dates, y: data.drawdown_ath, name: "ATH Drawdown (%)", type: "scatter", mode: "lines", fill: "tozeroy", fillcolor: "rgba(239, 68, 68, 0.15)", line: { color: "#ef4444", width: 1.5 }, yaxis: 'y2' };
+            const traceDD = { x: data.dates, y: data.drawdown_ath, name: "ATH Drawdown (%)", type: "scatter", mode: "lines", fill: "tozeroy", fillcolor: "rgba(239, 68, 68, 0.15)", line: { color: "#f6465d", width: 1.5 }, yaxis: 'y2' };
 
             const layout = {
-                plot_bgcolor: "#111319",
-                paper_bgcolor: "#111319",
+                plot_bgcolor: "#0D0F14",
+                paper_bgcolor: "#0D0F14",
                 font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 12 },
                 margin: { l: 50, r: 20, t: 30, b: 30 },
                 grid: { rows: 2, columns: 1, pattern: 'independent', roworder: 'top to bottom' },
-                yaxis: { domain: [0.32, 1], gridcolor: "rgba(255, 255, 255, 0.04)", title: "Price ($)" },
-                yaxis2: { domain: [0, 0.25], gridcolor: "rgba(255, 255, 255, 0.04)", title: "Drawdown (%)" },
-                xaxis: { gridcolor: "rgba(255, 255, 255, 0.04)", anchor: 'y2' },
+                yaxis: { domain: [0.32, 1], gridcolor: "#1B212D", title: "Price ($)" },
+                yaxis2: { domain: [0, 0.25], gridcolor: "#1B212D", title: "Drawdown (%)" },
+                xaxis: { gridcolor: "#1B212D", anchor: 'y2' },
                 hovermode: "x unified",
                 legend: { orientation: "h", y: 1.05, x: 1, xanchor: "right" }
             };
@@ -2354,24 +2719,24 @@ HTML_CONTENT = """<!DOCTYPE html>
                         type: 'scatter',
                         mode: 'markers+text',
                         marker: {
-                            color: '#10b981',
+                            color: '#0ecb81',
                             size: 16,
                             symbol: 'circle',
                             line: { color: '#ffffff', width: 2.5 }
                         },
                         text: (s.top_strikes || []).map(st => `🟢 Buy $${st}`),
                         textposition: 'bottom center',
-                        textfont: { color: '#10b981', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
+                        textfont: { color: '#0ecb81', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
                         hovertemplate: '<b>🟢 RECOMMENDED VALUE BUY</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>'
                     };
 
                     const layout = {
-                        plot_bgcolor: "#111319",
-                        paper_bgcolor: "#111319",
+                        plot_bgcolor: "#0D0F14",
+                        paper_bgcolor: "#0D0F14",
                         font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 11 },
                         margin: { l: 45, r: 25, t: 30, b: 35 },
-                        xaxis: { title: "Strike Price ($)", gridcolor: "rgba(255, 255, 255, 0.05)" },
-                        yaxis: { title: "Implied Volatility (%)", gridcolor: "rgba(255, 255, 255, 0.05)" },
+                        xaxis: { title: "Strike Price ($)", gridcolor: "#1B212D" },
+                        yaxis: { title: "Implied Volatility (%)", gridcolor: "#1B212D" },
                         legend: { orientation: "h", y: 1.12, x: 1, xanchor: "right" },
                         shapes: [
                             {
