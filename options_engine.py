@@ -11,6 +11,7 @@ Institutional Options Volatility Desk & Strike Selection Engine
 """
 
 import math
+import time
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -77,6 +78,297 @@ DIVIDEND_YIELDS = {
 def get_dividend_yield(ticker_symbol):
     """Returns continuous dividend yield estimate for Black-Scholes pricing."""
     return DIVIDEND_YIELDS.get(ticker_symbol.upper(), 0.0075)
+
+# ----------------- DEALER GAMMA EXPOSURE (GEX) STRUCTURAL ENGINE -----------------
+_GAMMA_PROFILE_CACHE = {}
+_GAMMA_PROFILE_TTL = 300  # 5 minutes in-memory cache
+
+def black_scholes_gamma(S, K, T, sigma, r=0.045, q=0.0075):
+    """
+    Computes analytical Black-Scholes gamma with dividend yield q:
+    Γ = (norm_pdf(d1) * e^(-q*T)) / (S * σ * sqrt(T))
+    """
+    if S <= 0 or K <= 0 or T <= 0.0001 or sigma <= 0.01:
+        return 0.0
+    d1 = (np.log(S / K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+    gamma = (norm_pdf(d1) * np.exp(-q * T)) / (S * sigma * np.sqrt(T))
+    return float(gamma)
+
+def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force_refresh=False):
+    """
+    Calculates institutional dealer Gamma Exposure (GEX) profile:
+    - Inverts Black-Scholes gamma across all near-term strike open interest.
+    - Computes Dollar GEX per strike ($ Millions per 1% move):
+        Call GEX_K = (Spot^2) * Gamma * Call_OI * 100 * 0.01 / 1,000,000
+        Put GEX_K  = (Spot^2) * Gamma * Put_OI  * 100 * 0.01 / 1,000,000
+    - Identifies:
+        1. Call Wall (Major dealer hedging resistance ceiling / pin)
+        2. Put Wall (Major dealer hedging support floor / pin)
+        3. Absolute Gamma Strike (Peak total liquidity cluster)
+        4. Zero Gamma Flip Level (Regime inflection boundary)
+        5. Net Dealer Gamma Regime (Long Gamma = Vol Suppressing, Short Gamma = Vol Accelerating)
+    """
+    ticker_up = ticker_symbol.upper()
+    now_ts = time.time()
+    if not force_refresh and ticker_up in _GAMMA_PROFILE_CACHE:
+        cached_entry = _GAMMA_PROFILE_CACHE[ticker_up]
+        if now_ts - cached_entry["timestamp"] < _GAMMA_PROFILE_TTL:
+            return cached_entry["data"]
+
+    t0 = time.time()
+    t = yf.Ticker(ticker_up)
+    try:
+        expirations = t.options
+    except Exception:
+        expirations = None
+    if not expirations:
+        return {"error": f"No options available for {ticker_up}"}
+
+    fast_info = getattr(t, "fast_info", None)
+    spot_price = None
+    if fast_info:
+        spot_price = getattr(fast_info, "last_price", None) or getattr(fast_info, "previous_close", None)
+    if spot_price is None or spot_price <= 0:
+        try:
+            hist = t.history(period="5d")
+            if not hist.empty:
+                spot_price = float(hist["Close"].iloc[-1])
+        except Exception:
+            pass
+    if spot_price is None or spot_price <= 0:
+        return {"error": f"Unable to determine spot price for {ticker_up}"}
+
+    spot_price = float(spot_price)
+    today = pd.Timestamp.now().normalize()
+    div_yield = get_dividend_yield(ticker_up)
+
+    # Filter to active expirations within 1 to 45 DTE
+    valid_exps = []
+    for e in expirations:
+        try:
+            dte = (pd.Timestamp(e) - today).days
+            if 1 <= dte <= 45:
+                valid_exps.append((e, dte))
+        except Exception:
+            continue
+
+    if not valid_exps:
+        for e in expirations[:3]:
+            try:
+                dte = max((pd.Timestamp(e) - today).days, 1)
+                valid_exps.append((e, dte))
+            except Exception:
+                continue
+
+    valid_exps = sorted(valid_exps, key=lambda x: x[1])[:max_expirations]
+    if not valid_exps:
+        return {"error": f"No valid expirations found for {ticker_up}"}
+
+    strikes_gex = {}
+    min_strike = spot_price * 0.88
+    max_strike = spot_price * 1.12
+
+    def process_exp(exp_tuple):
+        exp, dte = exp_tuple
+        try:
+            chain = t.option_chain(exp)
+            T = max(dte, 0.5) / 365.25
+            local_gex = {}
+
+            calls = chain.calls
+            if not calls.empty:
+                calls = calls[(calls["strike"] >= min_strike) & (calls["strike"] <= max_strike)]
+                for _, row in calls.iterrows():
+                    k = float(row["strike"])
+                    val_oi = row.get("openInterest")
+                    if pd.isna(val_oi) or val_oi is None or float(val_oi) <= 0:
+                        continue
+                    oi = int(val_oi)
+                    val_iv = row.get("impliedVolatility")
+                    if pd.isna(val_iv) or val_iv is None:
+                        iv = 0.20
+                    else:
+                        iv = float(val_iv)
+                    if iv < 0.04 or iv > 2.5:
+                        iv = 0.20
+                    gamma = black_scholes_gamma(spot_price, k, T, iv, q=div_yield)
+                    call_dollar_gex = (spot_price ** 2) * gamma * oi * 0.01 * 100 / 1_000_000
+                    if k not in local_gex:
+                        local_gex[k] = {"call_gex": 0.0, "put_gex": 0.0, "call_oi": 0, "put_oi": 0}
+                    local_gex[k]["call_gex"] += call_dollar_gex
+                    local_gex[k]["call_oi"] += oi
+
+            puts = chain.puts
+            if not puts.empty:
+                puts = puts[(puts["strike"] >= min_strike) & (puts["strike"] <= max_strike)]
+                for _, row in puts.iterrows():
+                    k = float(row["strike"])
+                    val_oi = row.get("openInterest")
+                    if pd.isna(val_oi) or val_oi is None or float(val_oi) <= 0:
+                        continue
+                    oi = int(val_oi)
+                    val_iv = row.get("impliedVolatility")
+                    if pd.isna(val_iv) or val_iv is None:
+                        iv = 0.20
+                    else:
+                        iv = float(val_iv)
+                    if iv < 0.04 or iv > 2.5:
+                        iv = 0.20
+                    gamma = black_scholes_gamma(spot_price, k, T, iv, q=div_yield)
+                    put_dollar_gex = (spot_price ** 2) * gamma * oi * 0.01 * 100 / 1_000_000
+                    if k not in local_gex:
+                        local_gex[k] = {"call_gex": 0.0, "put_gex": 0.0, "call_oi": 0, "put_oi": 0}
+                    local_gex[k]["put_gex"] += put_dollar_gex
+                    local_gex[k]["put_oi"] += oi
+
+            return local_gex
+        except Exception:
+            return {}
+
+    with ThreadPoolExecutor(max_workers=min(5, len(valid_exps))) as executor:
+        results = list(executor.map(process_exp, valid_exps))
+
+    for res in results:
+        for k, v in res.items():
+            if k not in strikes_gex:
+                strikes_gex[k] = {"call_gex": 0.0, "put_gex": 0.0, "call_oi": 0, "put_oi": 0}
+            strikes_gex[k]["call_gex"] += v["call_gex"]
+            strikes_gex[k]["put_gex"] += v["put_gex"]
+            strikes_gex[k]["call_oi"] += v["call_oi"]
+            strikes_gex[k]["put_oi"] += v["put_oi"]
+
+    if not strikes_gex:
+        return {"error": f"No liquid gamma profile extracted for {ticker_up}"}
+
+    sorted_strikes = sorted(strikes_gex.keys())
+    call_wall = max(sorted_strikes, key=lambda k: strikes_gex[k]["call_gex"])
+    put_wall = max(sorted_strikes, key=lambda k: strikes_gex[k]["put_gex"])
+    abs_gamma_strike = max(sorted_strikes, key=lambda k: strikes_gex[k]["call_gex"] + strikes_gex[k]["put_gex"])
+
+    total_call_gex = sum(strikes_gex[k]["call_gex"] for k in sorted_strikes)
+    total_put_gex = sum(strikes_gex[k]["put_gex"] for k in sorted_strikes)
+    total_net_gex = total_call_gex - total_put_gex
+
+    zero_gamma_level = spot_price
+    cum_net = 0.0
+    for k in sorted_strikes:
+        net_k = strikes_gex[k]["call_gex"] - strikes_gex[k]["put_gex"]
+        prev_cum = cum_net
+        cum_net += net_k
+        if (prev_cum < 0 and cum_net >= 0) or (prev_cum > 0 and cum_net <= 0):
+            zero_gamma_level = k
+            break
+
+    is_long_gamma = total_net_gex > 0
+    regime = "Long Gamma (Volatility Suppressing / Mean-Reverting)" if is_long_gamma else "Short Gamma (Volatility Amplifying / Directional Trending)"
+    regime_short = "Long Gamma" if is_long_gamma else "Short Gamma"
+
+    strikes_list = []
+    for k in sorted_strikes:
+        c_g = round(strikes_gex[k]["call_gex"], 1)
+        p_g = round(strikes_gex[k]["put_gex"], 1)
+        net_g = round(c_g - p_g, 1)
+        strikes_list.append({
+            "strike": round(k, 1),
+            "call_gex": c_g,
+            "put_gex": p_g,
+            "net_gex": net_g,
+            "call_oi": strikes_gex[k]["call_oi"],
+            "put_oi": strikes_gex[k]["put_oi"]
+        })
+
+    elapsed = round(time.time() - t0, 3)
+    profile = {
+        "ticker": ticker_up,
+        "spot_price": round(spot_price, 2),
+        "call_wall": round(call_wall, 2),
+        "call_wall_gex_m": round(strikes_gex[call_wall]["call_gex"], 1),
+        "call_wall_dist_pct": round(((call_wall / spot_price) - 1) * 100, 2),
+        "put_wall": round(put_wall, 2),
+        "put_wall_gex_m": round(strikes_gex[put_wall]["put_gex"], 1),
+        "put_wall_dist_pct": round(((put_wall / spot_price) - 1) * 100, 2),
+        "absolute_gamma_strike": round(abs_gamma_strike, 2),
+        "zero_gamma_level": round(zero_gamma_level, 2),
+        "zero_gamma_dist_pct": round(((zero_gamma_level / spot_price) - 1) * 100, 2),
+        "total_net_gex_billions": round(total_net_gex / 1000.0, 3),
+        "total_call_gex_billions": round(total_call_gex / 1000.0, 3),
+        "total_put_gex_billions": round(total_put_gex / 1000.0, 3),
+        "is_long_gamma": is_long_gamma,
+        "regime": regime,
+        "regime_short": regime_short,
+        "elapsed_seconds": elapsed,
+        "expirations_scanned": [e[0] for e in valid_exps],
+        "strikes_count": len(sorted_strikes),
+        "strikes": strikes_list
+    }
+
+    _GAMMA_PROFILE_CACHE[ticker_up] = {
+        "timestamp": now_ts,
+        "data": profile
+    }
+    return profile
+
+def plot_gamma_exposure_profile(gamma_data):
+    """
+    Generates institutional Plotly Strike GEX Profile Chart:
+    - Green bars for Call GEX ($M)
+    - Red bars for Put GEX (-$M)
+    - Markers/lines for Spot Price, Call Wall, Put Wall, Zero Gamma Flip
+    """
+    if not go or not gamma_data or "strikes" not in gamma_data:
+        return None
+
+    strikes = [s["strike"] for s in gamma_data["strikes"]]
+    call_gex = [s["call_gex"] for s in gamma_data["strikes"]]
+    put_gex = [-s["put_gex"] for s in gamma_data["strikes"]]
+    spot = gamma_data["spot_price"]
+    cw = gamma_data["call_wall"]
+    pw = gamma_data["put_wall"]
+    zg = gamma_data["zero_gamma_level"]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=strikes, y=call_gex,
+        name="Call GEX ($M)",
+        marker_color="#00F5A0",
+        opacity=0.85
+    ))
+    fig.add_trace(go.Bar(
+        x=strikes, y=put_gex,
+        name="Put GEX ($M)",
+        marker_color="#FF2E55",
+        opacity=0.85
+    ))
+
+    fig.add_vline(x=spot, line_width=2, line_dash="dash", line_color="#ffffff",
+                  annotation_text=f"Spot ${spot:.2f}", annotation_position="top left",
+                  annotation_font=dict(color="#ffffff", size=10))
+    fig.add_vline(x=cw, line_width=2, line_dash="dot", line_color="#00F5A0",
+                  annotation_text=f"Call Wall ${cw:.0f}", annotation_position="top right",
+                  annotation_font=dict(color="#00F5A0", size=10))
+    fig.add_vline(x=pw, line_width=2, line_dash="dot", line_color="#FF2E55",
+                  annotation_text=f"Put Wall ${pw:.0f}", annotation_position="bottom left",
+                  annotation_font=dict(color="#FF2E55", size=10))
+    if abs(zg - spot) > 1.0:
+        fig.add_vline(x=zg, line_width=1.5, line_dash="dashdot", line_color="#38bdf8",
+                      annotation_text=f"Zero Gamma ${zg:.0f}", annotation_position="bottom right",
+                      annotation_font=dict(color="#38bdf8", size=9))
+
+    fig.update_layout(
+        title=f"<b>{gamma_data['ticker']} Dealer Gamma Exposure (GEX) by Strike</b> | Net GEX: ${gamma_data['total_net_gex_billions']:+.2f}B ({gamma_data['regime_short']})",
+        xaxis_title="Strike Price ($)",
+        yaxis_title="Dollar Gamma Exposure ($M / 1% move)",
+        barmode="relative",
+        template="plotly_dark",
+        paper_bgcolor="#0e1117",
+        plot_bgcolor="#0e1117",
+        margin=dict(l=40, r=40, t=50, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        height=380
+    )
+    fig.update_xaxes(gridcolor="rgba(255, 255, 255, 0.05)")
+    fig.update_yaxes(gridcolor="rgba(255, 255, 255, 0.05)")
+    return fig
 
 # ----------------- REALIZED VOLATILITY CALCULATION (WITH DE-JUMPING) -----------------
 def compute_realized_volatilities(df_history=None, ticker_symbol=None):
@@ -862,6 +1154,39 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         else:
             st.metric("Asset Type", "Macro Index / ETF", help="Continuous index with no single earnings report.")
         
+    st.markdown("---")
+
+    # 3.5 Dealer Gamma Exposure (GEX) Profile
+    gex_data = compute_gamma_exposure_profile(selected_ticker, max_expirations=5)
+    if gex_data and "error" not in gex_data:
+        st.markdown("#### ⚡ Institutional Dealer Gamma Exposure (GEX) & Wall Pins")
+        st.caption("Real-time dealer hedging structure: Inverts Black-Scholes gamma across open interest to map market maker positioning, volatility suppression pins, and trend acceleration levels.")
+        gex_col1, gex_col2, gex_col3, gex_col4 = st.columns(4)
+        with gex_col1:
+            cw = gex_data["call_wall"]
+            cw_dist = gex_data["call_wall_dist_pct"]
+            st.metric("Call Wall (Ceiling Pin)", f"${cw:.1f}", f"{cw_dist:+.2f}%", delta_color="normal")
+            st.caption(f"${gex_data['call_wall_gex_m']:.0f}M GEX. Resistance & upside pin.")
+        with gex_col2:
+            pw = gex_data["put_wall"]
+            pw_dist = gex_data["put_wall_dist_pct"]
+            st.metric("Put Wall (Floor Support)", f"${pw:.1f}", f"{pw_dist:+.2f}%", delta_color="inverse")
+            st.caption(f"${gex_data['put_wall_gex_m']:.0f}M GEX. Hedging floor & bounce zone.")
+        with gex_col3:
+            zg = gex_data["zero_gamma_level"]
+            zg_dist = gex_data["zero_gamma_dist_pct"]
+            st.metric("Zero Gamma Flip", f"${zg:.1f}", f"{zg_dist:+.2f}%", delta_color="off")
+            st.caption("Boundary between Low-Vol and High-Vol regimes.")
+        with gex_col4:
+            net_gex = gex_data["total_net_gex_billions"]
+            regime_short = gex_data["regime_short"]
+            st.metric("Total Net GEX", f"${net_gex:+.2f}B", regime_short)
+            st.caption(f"{gex_data['regime']}")
+
+        gex_fig = plot_gamma_exposure_profile(gex_data)
+        if gex_fig:
+            st.plotly_chart(gex_fig, use_container_width=True)
+
     st.markdown("---")
 
     # 4. Scope Selection: Cross-Chain vs. Specific Date

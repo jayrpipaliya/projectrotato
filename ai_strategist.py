@@ -142,9 +142,31 @@ def generate_ai_ideas(market_data: dict, gemini_api_key: str = None) -> dict:
                         "score": c_match["score"]
                     }
 
+            # Dealer Gamma Exposure Profile (Market Positioning)
+            gamma_summary = {}
+            try:
+                from options_engine import compute_gamma_exposure_profile
+                for idx_sym in ["SPY", "QQQ"]:
+                    g_res = compute_gamma_exposure_profile(idx_sym, max_expirations=4)
+                    if g_res and "error" not in g_res:
+                        gamma_summary[idx_sym] = {
+                            "spot": g_res.get("spot_price"),
+                            "call_wall": g_res.get("call_wall"),
+                            "call_wall_dist_pct": f"{g_res.get('call_wall_dist_pct'):+.2f}%",
+                            "put_wall": g_res.get("put_wall"),
+                            "put_wall_dist_pct": f"{g_res.get('put_wall_dist_pct'):+.2f}%",
+                            "zero_gamma_level": g_res.get("zero_gamma_level"),
+                            "net_gex_billions": f"${g_res.get('total_net_gex_billions'):+.2f}B",
+                            "regime": g_res.get("regime_short"),
+                            "regime_detail": g_res.get("regime")
+                        }
+            except Exception:
+                pass
+
             analysis_payload = {
                 "date": datetime.now().strftime("%Y-%m-%d"),
                 "benchmarks": benchmarks_summary,
+                "dealer_gamma_positioning": gamma_summary,
                 "key_breadth_ratios": ratio_summary,
                 "baskets_5d": baskets,
                 "sector_breakdown": sector_summary,
@@ -163,7 +185,11 @@ Analyze the following comprehensive quantitative desk data for {datetime.now().s
 ```
 
 CRITICAL INSTRUCTION:
-Do NOT rely on any pre-set static narrative rules or conditions. Synthesize the raw numbers, cross-asset momentum, sector rotations, and breadth ratios from first principles.
+Do NOT rely on any pre-set static narrative rules or conditions. Synthesize the raw numbers, cross-asset momentum, sector rotations, breadth ratios, AND dealer Gamma Exposure (GEX) levels from first principles.
+Dealer Gamma Mechanics:
+- Long Gamma (>0 Net GEX): Dealers sell strength and buy weakness, dampening volatility and pinning price action between the Put Wall and Call Wall.
+- Short Gamma (<0 Net GEX): Dealers sell drops and buy rallies, amplifying volatility and accelerating trending momentum.
+- Call Wall represents major dealer hedging resistance ceiling / upside pin; Put Wall represents major dealer hedging support floor.
 
 Your response MUST begin with the following structural header block:
 
@@ -290,12 +316,30 @@ def query_ai_agent(
     baskets = market_data.get("baskets_5d", {})
     ratios = market_data.get("ratios", {})
 
+    gamma_context = {}
+    try:
+        from options_engine import compute_gamma_exposure_profile
+        for idx_sym in ["SPY", "QQQ"]:
+            g = compute_gamma_exposure_profile(idx_sym, max_expirations=3)
+            if g and "error" not in g:
+                gamma_context[idx_sym] = {
+                    "spot": g.get("spot_price"),
+                    "call_wall": g.get("call_wall"),
+                    "put_wall": g.get("put_wall"),
+                    "zero_gamma_flip": g.get("zero_gamma_level"),
+                    "net_gex_b": f"${g.get('total_net_gex_billions'):+.2f}B",
+                    "regime": g.get("regime")
+                }
+    except Exception:
+        pass
+
     system_context = f"""
 You are the **Double Edge Quantitative AI Analyst & Portfolio Risk Strategist**, an institutional-grade trading and macro AI agent embedded in the Double Edge Quantitative Dashboard.
 The user is asking you for quantitative analysis, market insight, or trade evaluations.
 
 CURRENT LIVE MARKET SNAPSHOT ({datetime.now().strftime('%Y-%m-%d %H:%M')}):
 - Market Regime: {market_data.get('narrative_title')} | Bias: {market_data.get('macro_context')}
+- Dealer Gamma Exposure (SPY/QQQ): {json.dumps(gamma_context)}
 - 5-Day Sector Velocity Baskets: {json.dumps(baskets)}
 - Key Ratio Analytics (SPY/RSP, QQQ/RSP, IWM/QQQ): {json.dumps({k: {'val': v.get('current'), '5d': v.get('pct_5d'), 'z_score': v.get('z_score_50d')} for k, v in ratios.items() if k in ['SPY_RSP', 'QQQ_RSP', 'IWM_QQQ']})}
 - Core Universe Confluence Snapshot:
@@ -304,8 +348,8 @@ CURRENT LIVE MARKET SNAPSHOT ({datetime.now().strftime('%Y-%m-%d %H:%M')}):
 RULES FOR RESPONDING:
 1. Always be direct, precise, quantitative, and institutional.
 2. Ground your explanations in the mathematical indicators (20/50/200 EMAs, RSI, ATR stretch, RVOL, Confluence Score).
-3. If asked about a specific stock, provide: Trend Status, Support/Resistance (EMAs), Volume Confirmation (RVOL), Overbought/Oversold Stretch (ATR), and Actionable Desk Verdict (Buy/Wait/Fade).
-4. If asked about broader market risk, evaluate breadth (SPY/RSP) and macro assets (TLT, GLD, USO, IBIT).
+3. If asked about broader market risk or price trajectory, evaluate Dealer Gamma Exposure (Call Wall resistance, Put Wall support, Zero Gamma Flip) alongside breadth (SPY/RSP) and macro assets (TLT, GLD, USO, IBIT).
+4. If asked about a specific stock, provide: Trend Status, Support/Resistance (EMAs), Volume Confirmation (RVOL), Overbought/Oversold Stretch (ATR), and Actionable Desk Verdict (Buy/Wait/Fade).
 5. Always provide explicit risk invalidation levels (e.g. "Stop invalidation below 50 EMA at $XXX").
 """
 
@@ -330,15 +374,16 @@ RULES FOR RESPONDING:
     return "**Agent Error:** Unable to generate response from Gemini models at this moment. Please check your API key or network connection."
 
 
-def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = None) -> dict:
+def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = None, gamma_levels: dict = None) -> dict:
     """
     Computes institutional multi-tier entry parameters instead of naive current close:
     1. Current Market Price & Extension Meter (% from 20 EMA, ATR Stretch)
-    2. Execution State (IN BUY ZONE, EXTENDED - AWAIT PULLBACK, OVERSOLD BOUNCE)
+    2. Execution State (IN BUY ZONE, EXTENDED - AWAIT PULLBACK, AT CALL WALL PIN, OVERSOLD BOUNCE)
     3. Optimal Limit Entry Zone (Pullback to 20/50 EMA support)
     4. Breakout Stop-Limit Trigger (Break of 5-day pivot high on RVOL)
-    5. Invalidation Stop Loss (Anchored to structural support)
-    6. Take-Profit Targets & Recalculated Risk-to-Reward Ratio (R:R)
+    5. Invalidation Stop Loss (Anchored to structural support & Put Wall floor)
+    6. Take-Profit Targets & Recalculated Risk-to-Reward Ratio (R:R, aligned with Call Wall)
+    7. Dealer Gamma Exposure (GEX) integration: Call Wall, Put Wall, Zero Gamma Flip
     """
     edge = edge or {}
     close = float(metrics.get("close", 100.0))
@@ -350,11 +395,21 @@ def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = 
     high_5d = float(metrics.get("high_5d") or (close * 1.015))
     low_5d = float(metrics.get("low_5d") or (close * 0.985))
 
+    cw = float(gamma_levels.get("call_wall", 0)) if gamma_levels else 0.0
+    pw = float(gamma_levels.get("put_wall", 0)) if gamma_levels else 0.0
+    zg = float(gamma_levels.get("zero_gamma_level", 0)) if gamma_levels else 0.0
+    g_regime = gamma_levels.get("regime_short") if gamma_levels else None
+    net_gex = gamma_levels.get("total_net_gex_billions") if gamma_levels else None
+
     is_long = "LONG" in direction.upper() or "DIP" in direction.upper()
 
     if is_long:
         # Execution State
-        if abs(dist_20) <= 0.8 and abs(atr_stretch) <= 0.6:
+        if cw > 0 and (abs(close - cw) / close <= 0.008 or (close < cw and (cw - close) / close <= 0.008)):
+            exec_state = f"AT CALL WALL PIN (${cw:,.0f}) — AWAIT PULLBACK"
+            exec_pill = "pill-amber"
+            exec_desc = f"Spot is within {((cw - close)/close)*100:+.1f}% of major Dealer Call Wall (${cw:,.0f}). Heavy dealer long gamma will pin or reject upside without high institutional volume."
+        elif abs(dist_20) <= 0.8 and abs(atr_stretch) <= 0.6:
             exec_state = "IN PRIME BUY ZONE"
             exec_pill = "pill-green"
             exec_desc = "Price consolidating right at 20 EMA support. Immediate limit execution feasible."
@@ -373,13 +428,11 @@ def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = 
 
         # Optimal Limit Zone: Limit buy MUST be at or below current market price
         if close > ema20:
-            # Price is above 20 EMA -> Bid the pullback to the 20 EMA
             limit_high = round(min(close * 0.992, ema20 + 0.35 * atr), 2)
             limit_low = round(max(ema50, ema20 * 0.995), 2)
             if limit_high <= limit_low:
                 limit_low = round(limit_high - 0.3 * atr, 2)
         else:
-            # Price is already below 20 EMA -> Bid support between 50 EMA and current close
             limit_high = round(close * 0.998, 2)
             limit_low = round(max(ema50, close - 0.5 * atr), 2)
             if limit_high <= limit_low:
@@ -390,17 +443,24 @@ def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = 
         # Breakout Trigger: Must be above current close and above 5D high
         breakout_trigger = round(max(high_5d * 1.002, close + 0.25 * atr), 2)
 
-        # Invalidation Stop: Structural support strictly below limit zone
-        mae = abs(float(edge.get("max_adverse_excursion", 2.2))) if edge.get("max_adverse_excursion", 0) != 0 else 2.2
-        stop_price = round(min(limit_low * 0.985, ema50 * 0.99), 2)
+        # Invalidation Stop: Structural support strictly below limit zone, anchored by Put Wall if below entry
+        if pw > 0 and pw < opt_entry_mid:
+            stop_price = round(min(limit_low * 0.985, pw * 0.995), 2)
+        else:
+            stop_price = round(min(limit_low * 0.985, ema50 * 0.99), 2)
         stop_pct = round(((stop_price - opt_entry_mid) / opt_entry_mid) * 100.0, 1)
 
-        # Targets
+        # Targets & Call Wall Pin Alignment
         med_ret = float(edge.get("median_return_20d", 3.8))
         if med_ret <= 0:
             med_ret = 3.8
         target1 = round(opt_entry_mid * (1 + med_ret / 100.0), 2)
         target2 = round(opt_entry_mid * (1 + (med_ret * 1.6) / 100.0), 2)
+        target1_pct_str = f"+{med_ret:.1f}%"
+
+        if cw > opt_entry_mid and cw < target1:
+            target1 = round(cw, 2)
+            target1_pct_str = f"+{((cw - opt_entry_mid) / opt_entry_mid) * 100:.1f}% (Call Wall Pin)"
 
         risk = max(opt_entry_mid - stop_price, 0.01)
         reward = max(target1 - opt_entry_mid, 0.01)
@@ -418,15 +478,24 @@ def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = 
             "stop": f"${stop_price:,.2f}",
             "stop_pct": f"{stop_pct:+.1f}%",
             "target1": f"${target1:,.2f}",
-            "target1_pct": f"+{med_ret:.1f}%",
+            "target1_pct": target1_pct_str,
             "target2": f"${target2:,.2f}",
             "target2_pct": f"+{med_ret * 1.6:.1f}%",
             "risk_reward": f"1 : {rr_ratio:.1f} R:R",
-            "opt_entry_mid": opt_entry_mid
+            "opt_entry_mid": opt_entry_mid,
+            "call_wall": f"${cw:,.1f}" if cw > 0 else None,
+            "put_wall": f"${pw:,.1f}" if pw > 0 else None,
+            "zero_gamma": f"${zg:,.1f}" if zg > 0 else None,
+            "gamma_regime": g_regime,
+            "net_gex_b": f"${net_gex:+.2f}B" if net_gex is not None else None
         }
     else:
         # SHORT / FADE Setup
-        if dist_20 < -2.0 or atr_stretch < -1.5:
+        if pw > 0 and (abs(close - pw) / close <= 0.008 or (close > pw and (close - pw) / close <= 0.008)):
+            exec_state = f"AT PUT WALL FLOOR (${pw:,.0f}) — DO NOT SHORT HOLE"
+            exec_pill = "pill-red"
+            exec_desc = f"Spot is testing major Dealer Put Wall (${pw:,.0f}). Short gamma squeeze rebound risk high. Avoid shorting into major dealer floor."
+        elif dist_20 < -2.0 or atr_stretch < -1.5:
             exec_state = "OVERSOLD TRAP — DO NOT SHORT HOLE"
             exec_pill = "pill-red"
             exec_desc = "Asset is dump-extended. Short-covering squeeze imminent. Await relief bounce to 20 EMA."
@@ -455,6 +524,11 @@ def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = 
 
         target1 = round(opt_entry_mid * 0.95, 2)
         target2 = round(opt_entry_mid * 0.91, 2)
+        target1_pct_str = "-5.0%"
+
+        if pw > 0 and pw < opt_entry_mid and pw > target1:
+            target1 = round(pw, 2)
+            target1_pct_str = f"{((pw - opt_entry_mid) / opt_entry_mid) * 100.0:.1f}% (Put Wall Floor)"
 
         risk = max(stop_price - opt_entry_mid, 0.01)
         reward = max(opt_entry_mid - target1, 0.01)
@@ -472,11 +546,16 @@ def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = 
             "stop": f"${stop_price:,.2f}",
             "stop_pct": f"+{stop_pct:.1f}%",
             "target1": f"${target1:,.2f}",
-            "target1_pct": "-5.0%",
+            "target1_pct": target1_pct_str,
             "target2": f"${target2:,.2f}",
             "target2_pct": "-9.0%",
             "risk_reward": f"1 : {rr_ratio:.1f} R:R",
-            "opt_entry_mid": opt_entry_mid
+            "opt_entry_mid": opt_entry_mid,
+            "call_wall": f"${cw:,.1f}" if cw > 0 else None,
+            "put_wall": f"${pw:,.1f}" if pw > 0 else None,
+            "zero_gamma": f"${zg:,.1f}" if zg > 0 else None,
+            "gamma_regime": g_regime,
+            "net_gex_b": f"${net_gex:+.2f}B" if net_gex is not None else None
         }
 
 
@@ -528,6 +607,16 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
     # 2. Trade Setups
     trades = []
 
+    def _fetch_gex_safe(sym):
+        try:
+            from options_engine import compute_gamma_exposure_profile
+            res = compute_gamma_exposure_profile(sym, max_expirations=3)
+            if res and "error" not in res:
+                return res
+        except Exception:
+            pass
+        return None
+
     # Trade 1: Best Green Asset (Long)
     green_candidates = sorted(
         [c for c in confluences if c["score"] > 0 and c["ticker"] in MAG_7 + INDEXES],
@@ -539,7 +628,8 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
         ticker = best_green["ticker"]
         t_data = best_green["metrics"]
         edge = t_data.get("edge_match", {})
-        opt = calculate_optimized_trade_entry("LONG", t_data, edge)
+        gex = _fetch_gex_safe(ticker)
+        opt = calculate_optimized_trade_entry("LONG", t_data, edge, gamma_levels=gex)
 
         trades.append({
             "ticker": ticker,
@@ -569,7 +659,12 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             "win_rate": f"{edge.get('win_rate_20d', 0)}%",
             "sample_size": edge.get("sample_size", 0),
             "median_alpha": opt["target1_pct"],
-            "card_color": "#00F5A0"
+            "card_color": "#00F5A0",
+            "call_wall": opt.get("call_wall"),
+            "put_wall": opt.get("put_wall"),
+            "zero_gamma": opt.get("zero_gamma"),
+            "gamma_regime": opt.get("gamma_regime"),
+            "net_gex_b": opt.get("net_gex_b")
         })
 
     # Trade 2: Weakest Asset (Fade / De-Risk Warning)
@@ -582,7 +677,8 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
         w_ticker = weakest["ticker"]
         w_data = weakest["metrics"]
         w_edge = w_data.get("edge_match", {})
-        w_opt = calculate_optimized_trade_entry("SHORT", w_data, w_edge)
+        w_gex = _fetch_gex_safe(w_ticker)
+        w_opt = calculate_optimized_trade_entry("SHORT", w_data, w_edge, gamma_levels=w_gex)
 
         trades.append({
             "ticker": w_ticker,
@@ -612,7 +708,12 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             "win_rate": "N/A (Fade Setup)",
             "sample_size": 0,
             "median_alpha": "Downside Bias",
-            "card_color": "#FF2E55"
+            "card_color": "#FF2E55",
+            "call_wall": w_opt.get("call_wall"),
+            "put_wall": w_opt.get("put_wall"),
+            "zero_gamma": w_opt.get("zero_gamma"),
+            "gamma_regime": w_opt.get("gamma_regime"),
+            "net_gex_b": w_opt.get("net_gex_b")
         })
 
     # Trade 3: Orderly Dip-Buy Opportunity (Red on the day, but in uptrend on low volume)
@@ -632,7 +733,8 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             d_ticker = best_dip["ticker"]
             d_data = best_dip["metrics"]
             d_edge = d_data.get("edge_match", {})
-            d_opt = calculate_optimized_trade_entry("DIP BUY", d_data, d_edge)
+            d_gex = _fetch_gex_safe(d_ticker)
+            d_opt = calculate_optimized_trade_entry("DIP BUY", d_data, d_edge, gamma_levels=d_gex)
 
             trades.append({
                 "ticker": d_ticker,
@@ -662,7 +764,12 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
                 "win_rate": f"{d_edge.get('win_rate_20d', 71.0)}%",
                 "sample_size": d_edge.get("sample_size", 34),
                 "median_alpha": d_opt["target1_pct"],
-                "card_color": "#00F5A0"
+                "card_color": "#00F5A0",
+                "call_wall": d_opt.get("call_wall"),
+                "put_wall": d_opt.get("put_wall"),
+                "zero_gamma": d_opt.get("zero_gamma"),
+                "gamma_regime": d_opt.get("gamma_regime"),
+                "net_gex_b": d_opt.get("net_gex_b")
             })
 
     # Trade 3: Pairs Rotation (IWM vs QQQ or SPY vs RSP)

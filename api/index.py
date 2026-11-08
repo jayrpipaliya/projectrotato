@@ -184,6 +184,60 @@ def api_sync_data(payload: dict = None):
             }
         )
 
+@app.post("/api/sync-csv")
+def api_sync_csv():
+    """
+    Reloads all tickers from local raw_csv files on disk, invalidating the in-memory cache,
+    re-generating synthetic ratios, flushing analysis cache, and returning latest dates & counts.
+    """
+    try:
+        t0 = time.time()
+        from data_manager import (
+            _IN_MEMORY_TICKER_DATA, get_available_tickers,
+            load_ticker_data, generate_synthetic_ratios
+        )
+        # Flush in-memory cache so fresh reads occur from local disk raw_csv
+        _IN_MEMORY_TICKER_DATA.clear()
+
+        tickers = get_available_tickers()
+        last_date = "N/A"
+        loaded = []
+        for t in tickers:
+            df = load_ticker_data(t)
+            if not df.empty and "Date" in df.columns:
+                loaded.append(t)
+                d_str = str(df["Date"].iloc[-1]).split()[0]
+                if last_date == "N/A" or d_str > last_date:
+                    last_date = d_str
+
+        # Recalculate synthetic ratios from local CSVs
+        generate_synthetic_ratios()
+
+        # Clear computation cache
+        _CACHE.clear()
+        duration = round(time.time() - t0, 3)
+
+        return {
+            "status": "success",
+            "source": "Local raw_csv files",
+            "loaded_count": len(loaded),
+            "total_available": len(tickers),
+            "last_date": last_date,
+            "sample_tickers": loaded[:8],
+            "duration": duration,
+            "timestamp": datetime.now().strftime("%I:%M:%S %p")
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": f"CSV Sync failed: {str(e)}"
+            }
+        )
+
 @app.get("/api/confluence")
 def api_confluence(scope: str = Query("core")):
     return clean_json(get_cached_confluence(scope))
@@ -246,13 +300,22 @@ def api_ticker(ticker: str, horizon: str = Query("All Historical Data")):
         "drawdown_ath": [round(float(v), 2) for v in sub["Drawdown_ATH"]]
     })
 
+@app.get("/api/gamma/{ticker}")
+def api_gamma(ticker: str, force: bool = Query(False)):
+    try:
+        from options_engine import compute_gamma_exposure_profile
+        data = compute_gamma_exposure_profile(ticker.upper(), max_expirations=5, force_refresh=force)
+        return clean_json(data)
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/api/options/{ticker}")
 def api_options(ticker: str, direction: str = Query("Calls"), side: str = Query("Buy"), expiration: str = Query(None)):
     try:
         t_up = ticker.upper()
         dir_clean = "Calls" if ("Call" in str(direction) or str(direction) == "Bullish") else "Puts"
         side_clean = "Sell" if "Sell" in str(side) else "Buy"
-        from options_engine import compute_realized_volatilities, fetch_term_structure, scan_cross_chain_recommendations, analyze_smile_and_skew
+        from options_engine import compute_realized_volatilities, fetch_term_structure, scan_cross_chain_recommendations, analyze_smile_and_skew, compute_gamma_exposure_profile
         df_hist = load_ticker_data(t_up)
         hvs = compute_realized_volatilities(df_hist, ticker_symbol=t_up)
         term_df, spot_price, next_earnings = fetch_term_structure(t_up, hvs_dict=hvs)
@@ -343,6 +406,14 @@ def api_options(ticker: str, direction: str = Query("Calls"), side: str = Query(
             for _, row in term_df.iterrows()
         ]
             
+        gex_payload = None
+        try:
+            gex_data = compute_gamma_exposure_profile(t_up, max_expirations=5)
+            if gex_data and "error" not in gex_data:
+                gex_payload = gex_data
+        except Exception:
+            pass
+
         return clean_json({
             "ticker": t_up,
             "direction": dir_clean,
@@ -355,7 +426,8 @@ def api_options(ticker: str, direction: str = Query("Calls"), side: str = Query(
             "selected_expiration": chosen_exp,
             "picks": picks,
             "ranked_chain": ranked_chain,
-            "smile": smile_payload
+            "smile": smile_payload,
+            "gamma": gex_payload
         })
     except Exception as e:
         return {"error": str(e)}
@@ -752,16 +824,17 @@ HTML_CONTENT = """<!DOCTYPE html>
           </button>
 
           <!-- Button 2: Sync from CSV -->
-          <button onclick="triggerDataSync()" class="w-full py-2.5 px-3 rounded-lg bg-stealth-900 hover:bg-stealth-850 border border-stealth-border hover:border-slate-600 text-xs font-semibold text-slate-300 hover:text-white transition-all flex items-center justify-between group shadow-sm">
+          <button onclick="triggerCsvSync()" id="syncCsvBtn" class="w-full py-2.5 px-3 rounded-lg bg-stealth-900 hover:bg-stealth-850 border border-stealth-border hover:border-mint/50 text-xs font-semibold text-slate-300 hover:text-white transition-all flex items-center justify-between group shadow-sm">
             <div class="flex items-center space-x-2.5">
-              <div class="w-6 h-6 rounded-md bg-stealth-800 flex items-center justify-center text-slate-400 group-hover:text-slate-200 group-hover:scale-105 transition-transform">
-                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div class="w-6 h-6 rounded-md bg-stealth-800 flex items-center justify-center text-slate-400 group-hover:text-mint group-hover:scale-105 transition-transform">
+                <span id="syncCsvSpinner" class="hidden inline-block animate-spin font-mono">↻</span>
+                <svg id="syncCsvIconDefault" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <span class="tracking-tight">Sync from CSV</span>
+              <span id="syncCsvBtnText" class="tracking-tight">Sync from CSV</span>
             </div>
-            <span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
+            <span class="w-1.5 h-1.5 rounded-full bg-slate-500 group-hover:bg-mint transition-colors"></span>
           </button>
         </div>
       </div>
@@ -773,17 +846,17 @@ HTML_CONTENT = """<!DOCTYPE html>
         <div>
           <label class="block text-xs text-slate-400 mb-1.5 font-medium">Gemini API Key</label>
           <div class="relative">
-            <input type="password" id="sidebarApiKey" value="••••••••••••••••••••••••••••" readonly 
-                   class="w-full bg-stealth-900 border border-stealth-border rounded-lg px-3 py-2 text-xs text-slate-400 font-mono focus:outline-none cursor-default" />
+            <input type="password" id="sidebarApiKey" placeholder="Enter Gemini Key..." onchange="saveSidebarApiKey()"
+                   class="w-full bg-stealth-900 border border-stealth-border focus:border-mint/50 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none transition-colors" />
           </div>
         </div>
 
         <!-- Save Key for Session Button -->
-        <button onclick="promptApiKey()" class="w-full py-2.5 px-3 rounded-lg bg-mint/10 hover:bg-mint hover:text-stealth-950 text-mint border border-mint/30 text-xs font-bold transition-all shadow-[0_0_12px_rgba(0,245,160,0.15)] flex items-center justify-center space-x-1.5">
+        <button onclick="saveSidebarApiKey()" id="saveKeyBtn" class="w-full py-2.5 px-3 rounded-lg bg-mint/10 hover:bg-mint hover:text-stealth-950 text-mint border border-mint/30 text-xs font-bold transition-all shadow-[0_0_12px_rgba(0,245,160,0.15)] flex items-center justify-center space-x-1.5">
           <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
-          <span>Save Key for Session</span>
+          <span id="saveKeyBtnText">Save Key for Session</span>
         </button>
 
         <div class="flex items-center space-x-2 text-xs text-mint font-medium pt-1">
@@ -868,6 +941,9 @@ HTML_CONTENT = """<!DOCTYPE html>
         </button>
         <button onclick="switchTab('tab6')" id="btn-tab6" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Synthetic Ratio Rotations
+        </button>
+        <button onclick="switchTab('tab7')" id="btn-tab7" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          Single Ticker Explorer
         </button>
         <button onclick="switchTab('tab_options')" id="btn-tab_options" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Volatility Pricing
@@ -1125,10 +1201,10 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div class="flex items-center gap-3">
                     <select id="tickerSelect" onchange="loadSingleTicker()" class="bg-[#0b0d12] text-xs text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-amber-500"></select>
                     <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="horizonButtons">
-                        <button onclick="setHorizon('1 Year')" class="horizon-btn px-2.5 py-1 rounded text-slate-400">1Y</button>
-                        <button onclick="setHorizon('2 Years')" class="horizon-btn px-2.5 py-1 rounded text-slate-400">2Y</button>
-                        <button onclick="setHorizon('5 Years')" class="horizon-btn px-2.5 py-1 rounded text-slate-400">5Y</button>
-                        <button onclick="setHorizon('All Historical Data')" class="horizon-btn active bg-[#1c1e27] text-amber-400 font-bold px-2.5 py-1 rounded">All</button>
+                        <button onclick="setHorizon('1 Year', this)" class="horizon-btn px-2.5 py-1 rounded text-slate-400">1Y</button>
+                        <button onclick="setHorizon('2 Years', this)" class="horizon-btn px-2.5 py-1 rounded text-slate-400">2Y</button>
+                        <button onclick="setHorizon('5 Years', this)" class="horizon-btn px-2.5 py-1 rounded text-slate-400">5Y</button>
+                        <button onclick="setHorizon('All Historical Data', this)" class="horizon-btn active bg-[#1c1e27] text-amber-400 font-bold px-2.5 py-1 rounded">All</button>
                     </div>
                 </div>
             </div>
@@ -1277,6 +1353,25 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <!-- Populated dynamically -->
             </div>
 
+            <!-- Dealer Gamma Exposure (GEX) Strip & Profile Chart -->
+            <div id="optionsGammaSection" class="lux-card p-4 mb-6 border border-indigo-500/20 bg-gradient-to-r from-indigo-950/20 via-[#0d1117] to-purple-950/20 hidden">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
+                    <div>
+                        <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                            <span>⚡ Dealer Gamma Exposure (GEX) & Volatility Pinning</span>
+                            <span id="gammaRegimeBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Neutral GEX</span>
+                        </h4>
+                        <p class="text-[11px] text-slate-400">Inverts Black-Scholes gamma across open interest to map market maker hedging obligations, pinning ceilings, and volatility acceleration triggers.</p>
+                    </div>
+                </div>
+
+                <div id="optionsGammaKpiRow" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                    <!-- Populated dynamically: Call Wall, Put Wall, Zero Gamma Flip, Total Net GEX -->
+                </div>
+
+                <div id="optionsGammaChart" style="height: 340px;"></div>
+            </div>
+
             <!-- Cross-Chain Recommendations Header -->
             <div class="flex justify-between items-center mb-3">
                 <div>
@@ -1407,7 +1502,12 @@ HTML_CONTENT = """<!DOCTYPE html>
                 localStorage.removeItem('rotato_gemini_key');
             }
             updateApiKeyUI();
-            init();
+            const btnText = document.getElementById('saveKeyBtnText');
+            if (btnText) {
+                btnText.innerText = key ? 'Key Saved!' : 'Key Cleared!';
+                setTimeout(() => { btnText.innerText = 'Save Key for Session'; }, 1800);
+            }
+            loadAiBriefingAsync(true);
         }
 
         function promptApiKey() {
@@ -1420,7 +1520,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                     localStorage.removeItem('rotato_gemini_key');
                 }
                 updateApiKeyUI();
-                init();
+                loadAiBriefingAsync(true);
             }
         }
 
@@ -1430,14 +1530,16 @@ HTML_CONTENT = """<!DOCTYPE html>
             const hBtnText = document.getElementById('headerSyncBtnText');
             const sBtn = document.getElementById('syncBtn');
             const sSpinner = document.getElementById('syncSpinner');
+            const sIcon = document.getElementById('syncIconDefault');
             const sBtnText = document.getElementById('syncBtnText');
 
             if (hBtn) hBtn.disabled = true;
             if (sBtn) sBtn.disabled = true;
             if (hSpinner) hSpinner.classList.remove('hidden');
             if (sSpinner) sSpinner.classList.remove('hidden');
+            if (sIcon) sIcon.classList.add('hidden');
             if (hBtnText) hBtnText.innerText = 'Syncing...';
-            if (sBtnText) sBtnText.innerText = 'Syncing...';
+            if (sBtnText) sBtnText.innerText = 'Syncing YFinance...';
 
             try {
                 const res = await fetch('/api/sync-data', {
@@ -1449,6 +1551,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 if (!res.ok) {
                     throw new Error(`Sync returned HTTP ${res.status}`);
                 }
+                const syncResult = await res.json();
 
                 const marketRes = await fetch('/api/market-data');
                 DATA = await marketRes.json();
@@ -1456,10 +1559,11 @@ HTML_CONTENT = """<!DOCTYPE html>
                 renderBenchmarks();
                 renderMacroBarometers();
                 renderBriefingBaskets();
+                renderRegime();
                 loadAiBriefingAsync(true);
 
                 if (hBtnText) hBtnText.innerText = 'Synced!';
-                if (sBtnText) sBtnText.innerText = 'Synced!';
+                if (sBtnText) sBtnText.innerText = `YFinance Synced! (${syncResult.last_date || 'Today'})`;
                 setTimeout(() => {
                     if (hBtnText) hBtnText.innerText = 'Sync Market Feeds';
                     if (sBtnText) sBtnText.innerText = 'Sync from YFinance';
@@ -1467,7 +1571,8 @@ HTML_CONTENT = """<!DOCTYPE html>
                     if (sBtn) sBtn.disabled = false;
                     if (hSpinner) hSpinner.classList.add('hidden');
                     if (sSpinner) sSpinner.classList.add('hidden');
-                }, 2000);
+                    if (sIcon) sIcon.classList.remove('hidden');
+                }, 2200);
 
             } catch (err) {
                 console.error("Data sync error:", err);
@@ -1480,6 +1585,61 @@ HTML_CONTENT = """<!DOCTYPE html>
                     if (sBtn) sBtn.disabled = false;
                     if (hSpinner) hSpinner.classList.add('hidden');
                     if (sSpinner) sSpinner.classList.add('hidden');
+                    if (sIcon) sIcon.classList.remove('hidden');
+                }, 2500);
+            }
+        }
+
+        async function triggerCsvSync() {
+            const sBtn = document.getElementById('syncCsvBtn');
+            const sSpinner = document.getElementById('syncCsvSpinner');
+            const sIcon = document.getElementById('syncCsvIconDefault');
+            const sBtnText = document.getElementById('syncCsvBtnText');
+
+            if (sBtn) sBtn.disabled = true;
+            if (sSpinner) sSpinner.classList.remove('hidden');
+            if (sIcon) sIcon.classList.add('hidden');
+            if (sBtnText) sBtnText.innerText = 'Loading CSVs...';
+
+            try {
+                const res = await fetch('/api/sync-csv', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (!res.ok) {
+                    throw new Error(`CSV sync returned HTTP ${res.status}`);
+                }
+                const csvResult = await res.json();
+
+                const marketRes = await fetch('/api/market-data');
+                DATA = await marketRes.json();
+
+                renderBenchmarks();
+                renderMacroBarometers();
+                renderBriefingBaskets();
+                renderRegime();
+                if (DATA.last_market_session) {
+                    const sessionBadge = document.getElementById('sessionDateBadge');
+                    if (sessionBadge) sessionBadge.innerText = 'Prices: ' + DATA.last_market_session;
+                }
+
+                if (sBtnText) sBtnText.innerText = `CSVs Synced! (${csvResult.loaded_count || 0} Assets)`;
+                setTimeout(() => {
+                    if (sBtnText) sBtnText.innerText = 'Sync from CSV';
+                    if (sBtn) sBtn.disabled = false;
+                    if (sSpinner) sSpinner.classList.add('hidden');
+                    if (sIcon) sIcon.classList.remove('hidden');
+                }, 2200);
+
+            } catch (err) {
+                console.error("CSV sync error:", err);
+                if (sBtnText) sBtnText.innerText = 'Sync Error';
+                setTimeout(() => {
+                    if (sBtnText) sBtnText.innerText = 'Sync from CSV';
+                    if (sBtn) sBtn.disabled = false;
+                    if (sSpinner) sSpinner.classList.add('hidden');
+                    if (sIcon) sIcon.classList.remove('hidden');
                 }, 2500);
             }
         }
@@ -1495,6 +1655,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             'tab5': 'Indexes & Sector Flow',
             'tab4': 'Magnificant 7 Flow',
             'tab6': 'Synthetic Ratio Rotations',
+            'tab7': 'Single Ticker Explorer',
             'tab_options': 'Volatility Pricing'
         };
 
@@ -1705,6 +1866,7 @@ async function init() {
                 renderBenchmarks();
                 renderMacroBarometers();
                 renderBriefingBaskets();
+                renderRegime();
                 renderFilamentHeroCards();
                 initAgentChat();
                 populateTickersDropdown();
@@ -1834,16 +1996,17 @@ async function init() {
         }
 
         function renderRegime() {
+            if (!DATA || !DATA.market_data) return;
             const md = DATA.market_data;
-            const t = document.getElementById('regimeTitle');
+            const t = document.getElementById('briefingTitle') || document.getElementById('regimeTitle');
             if (t) t.innerText = md.narrative_title || "Secular Uptrend";
-            const d = document.getElementById('regimeDetail');
+            const d = document.getElementById('briefingDetail') || document.getElementById('regimeDetail');
             if (d) d.innerText = md.narrative_detail || "";
-            const b = document.getElementById('regimeRiskBadge');
+            const b = document.getElementById('briefingRiskPill') || document.getElementById('regimeRiskBadge');
             if (b) b.innerText = md.risk_level || "Moderate";
             const sessionBadge = document.getElementById('sessionDateBadge');
             if (sessionBadge) {
-                sessionBadge.innerText = 'Prices: ' + (DATA.last_market_session || '2026-10-27');
+                sessionBadge.innerText = 'Prices: ' + (DATA.last_market_session || 'Today');
             }
         }
 
@@ -2184,10 +2347,22 @@ async function init() {
             const cards = document.querySelectorAll('.synth-section-card');
             for (let i = 0; i < cards.length; i++) {
                 const card = cards[i];
-                if (key === 'all' || card.getAttribute('data-section') === key) {
+                const sec = card.getAttribute('data-section');
+                if (key === 'all' || !sec || sec === 'all' || sec === key) {
                     card.classList.remove('hidden');
                 } else {
                     card.classList.add('hidden');
+                }
+            }
+            const subPills = document.querySelectorAll('.synth-sub-pill');
+            for (let i = 0; i < subPills.length; i++) {
+                const sp = subPills[i];
+                if (key === 'all' || sp.getAttribute('data-sub') === key) {
+                    sp.classList.remove('opacity-25', 'scale-95');
+                    sp.classList.add('opacity-100');
+                } else {
+                    sp.classList.add('opacity-25', 'scale-95');
+                    sp.classList.remove('opacity-100');
                 }
             }
         }
@@ -2313,19 +2488,19 @@ async function init() {
                             <span class="pill-amber text-[10.5px] font-bold">Awaiting AI Briefing</span>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                            <div class="p-3.5 rounded-xl bg-black/20 border border-sky-500/20 space-y-1.5">
+                            <div class="synth-sub-pill p-3.5 rounded-xl bg-black/20 border border-sky-500/20 space-y-1.5 transition-all" data-sub="macro">
                                 <div class="text-sky-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5">Pillar 1: Macro Liquidity</div>
                                 <div class="text-slate-300">${AI_DATA.regime_title || "Synthesizing yields, gold, oil & crypto liquidity..."}</div>
                             </div>
-                            <div class="p-3.5 rounded-xl bg-black/20 border border-purple-500/20 space-y-1.5">
+                            <div class="synth-sub-pill p-3.5 rounded-xl bg-black/20 border border-purple-500/20 space-y-1.5 transition-all" data-sub="sectors">
                                 <div class="text-purple-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5">Pillar 2: Sector Velocity</div>
                                 <div class="text-slate-300">Tracking 5D capital rotation across Growth, Cyclicals, Defensives & Breadth...</div>
                             </div>
-                            <div class="p-3.5 rounded-xl bg-black/20 border border-mint/20 space-y-1.5">
+                            <div class="synth-sub-pill p-3.5 rounded-xl bg-black/20 border border-mint/20 space-y-1.5 transition-all" data-sub="setups">
                                 <div class="text-mint font-extrabold uppercase text-[11px] flex items-center gap-1.5">Pillar 3: Actionable Setups</div>
                                 <div class="text-slate-300">Filtering algorithmic high-conviction long bids & distribution traps...</div>
                             </div>
-                            <div class="p-3.5 rounded-xl bg-black/20 border border-amber-500/20 space-y-1.5">
+                            <div class="synth-sub-pill p-3.5 rounded-xl bg-black/20 border border-amber-500/20 space-y-1.5 transition-all" data-sub="risk">
                                 <div class="text-amber-400 font-extrabold uppercase text-[11px] flex items-center gap-1.5">Pillar 4: Tactical Game Plan</div>
                                 <div class="text-slate-300">Formulating allocation zones, portfolio hedges & hard invalidation triggers...</div>
                             </div>
@@ -2369,6 +2544,24 @@ async function init() {
                     const entryBg = isLong ? 'from-mint/10 to-transparent border-mint/25' : 'from-cherry/10 to-transparent border-cherry/25';
                     const entryCol = isLong ? 'text-mint' : 'text-cherry';
 
+                    const gexHtml = (t.call_wall && t.put_wall) ? `
+                        <div class="flex flex-wrap items-center justify-between gap-1.5 p-1.5 px-2 mb-2 rounded-lg bg-indigo-950/20 border border-indigo-500/20 text-[10.5px]">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-indigo-400 font-bold">⚡ GEX:</span>
+                                <span class="text-slate-400">Call Wall:</span>
+                                <b class="text-mint font-mono">${t.call_wall}</b>
+                                <span class="text-slate-600">|</span>
+                                <span class="text-slate-400">Put Wall:</span>
+                                <b class="text-cherry font-mono">${t.put_wall}</b>
+                                ${t.zero_gamma ? `<span class="text-slate-600">|</span><span class="text-slate-400">Zero Flip:</span><b class="text-cyan-400 font-mono">${t.zero_gamma}</b>` : ''}
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <span class="px-1.5 py-0.5 rounded text-[9.5px] font-bold ${t.gamma_regime === 'Long Gamma' ? 'bg-mint/15 text-mint' : 'bg-rose-500/15 text-rose-400'}">${t.gamma_regime || 'Dealer GEX'}</span>
+                                ${t.net_gex_b ? `<span class="text-slate-400 font-mono text-[9.5px]">(${t.net_gex_b})</span>` : ''}
+                            </div>
+                        </div>
+                    ` : '';
+
                     html += `
                         <div class="lux-card p-3 sm:p-3.5 border-l-4 flex flex-col justify-between h-full" style="border-left-color: ${borderCol}">
                             <div>
@@ -2399,6 +2592,8 @@ async function init() {
                                         <span class="${payoffPill} px-2 py-0.5 rounded text-[10.5px] font-extrabold tracking-wide">${t.risk_reward || '1 : 3.0 R:R'}</span>
                                     </div>
                                 </div>
+
+                                ${gexHtml}
 
                                 <!-- 4-Box Execution Strategy 2x2 Grid -->
                                 <div class="grid grid-cols-2 gap-2 mb-2">
@@ -2788,14 +2983,17 @@ async function init() {
         }
 
 
-        function setHorizon(h) {
+        function setHorizon(h, btn) {
             CURRENT_HORIZON = h;
             document.querySelectorAll('.horizon-btn').forEach(b => {
                 b.classList.remove('active', 'bg-[#1c1e27]', 'text-amber-400', 'font-bold');
                 b.classList.add('text-slate-400');
             });
-            event.target.classList.add('active', 'bg-[#1c1e27]', 'text-amber-400', 'font-bold');
-            event.target.classList.remove('text-slate-400');
+            const target = btn || (typeof event !== 'undefined' && event ? event.target : null);
+            if (target) {
+                target.classList.add('active', 'bg-[#1c1e27]', 'text-amber-400', 'font-bold');
+                target.classList.remove('text-slate-400');
+            }
             loadSingleTicker();
         }
 
@@ -3072,6 +3270,14 @@ async function init() {
                     `).join('');
                 }
 
+                // Render Dealer Gamma Exposure (GEX) Profile
+                if (data.gamma && !data.gamma.error) {
+                    renderGammaSection(data.gamma);
+                } else {
+                    const gSec = document.getElementById('optionsGammaSection');
+                    if (gSec) gSec.classList.add('hidden');
+                }
+
                 // Render Smile Chart
                 if (data.smile) {
                     renderSmileChart(data.smile, CURRENT_OPTIONS_DIR, isBuy, spot);
@@ -3083,6 +3289,143 @@ async function init() {
             } catch (err) {
                 kpiRow.innerHTML = `<div class="col-span-full text-xs text-cherry bg-cherry/10 p-3 rounded-lg border border-cherry/20">Error loading options desk: ${err.message}</div>`;
                 cardsContainer.innerHTML = '';
+            }
+        }
+
+        function renderGammaSection(g) {
+            const sec = document.getElementById('optionsGammaSection');
+            const kpiRow = document.getElementById('optionsGammaKpiRow');
+            const badge = document.getElementById('gammaRegimeBadge');
+            const chartDiv = document.getElementById('optionsGammaChart');
+            if (!sec || !kpiRow || !chartDiv) return;
+
+            sec.classList.remove('hidden');
+
+            const isLong = g.is_long_gamma;
+            if (badge) {
+                badge.innerText = g.regime_short + " (" + (g.total_net_gex_billions >= 0 ? "+" : "") + g.total_net_gex_billions.toFixed(2) + "B)";
+                badge.className = isLong 
+                    ? "text-[10px] font-bold px-2 py-0.5 rounded bg-mint/15 text-mint border border-mint/30" 
+                    : "text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/30";
+            }
+
+            kpiRow.innerHTML = `
+                <div class="lux-card p-3 border-l-2 border-mint">
+                    <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Call Wall (Ceiling Pin)</div>
+                    <div class="text-lg font-bold text-mint mt-0.5">$${g.call_wall} <span class="text-xs font-normal text-slate-300">(${g.call_wall_dist_pct >= 0 ? '+' : ''}${g.call_wall_dist_pct}%)</span></div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">$${g.call_wall_gex_m}M GEX • Hedging Ceiling</div>
+                </div>
+                <div class="lux-card p-3 border-l-2 border-cherry">
+                    <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Put Wall (Floor Support)</div>
+                    <div class="text-lg font-bold text-cherry mt-0.5">$${g.put_wall} <span class="text-xs font-normal text-slate-300">(${g.put_wall_dist_pct >= 0 ? '+' : ''}${g.put_wall_dist_pct}%)</span></div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">$${g.put_wall_gex_m}M GEX • Hedging Floor</div>
+                </div>
+                <div class="lux-card p-3 border-l-2 border-sky-400">
+                    <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Zero Gamma Flip</div>
+                    <div class="text-lg font-bold text-sky-400 mt-0.5">$${g.zero_gamma_level} <span class="text-xs font-normal text-slate-300">(${g.zero_gamma_dist_pct >= 0 ? '+' : ''}${g.zero_gamma_dist_pct}%)</span></div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">Vol Regime Transition Boundary</div>
+                </div>
+                <div class="lux-card p-3 border-l-2 ${isLong ? 'border-mint' : 'border-rose-500'}">
+                    <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Total Net Dealer GEX</div>
+                    <div class="text-lg font-bold ${isLong ? 'text-mint' : 'text-rose-400'} mt-0.5">${g.total_net_gex_billions >= 0 ? '+' : ''}${g.total_net_gex_billions.toFixed(2)}B</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">${g.regime_short} • ${isLong ? 'Suppresses Volatility' : 'Amplifies Trending Vol'}</div>
+                </div>
+            `;
+
+            if (typeof Plotly !== 'undefined' && g.strikes && g.strikes.length > 0) {
+                const strikes = g.strikes.map(s => s.strike);
+                const callGex = g.strikes.map(s => s.call_gex);
+                const putGex = g.strikes.map(s => -s.put_gex);
+
+                const traceCalls = {
+                    x: strikes,
+                    y: callGex,
+                    name: 'Call GEX ($M)',
+                    type: 'bar',
+                    marker: { color: '#00F5A0', opacity: 0.85 }
+                };
+
+                const tracePuts = {
+                    x: strikes,
+                    y: putGex,
+                    name: 'Put GEX ($M)',
+                    type: 'bar',
+                    marker: { color: '#FF2E55', opacity: 0.85 }
+                };
+
+                const shapes = [
+                    {
+                        type: 'line',
+                        x0: g.spot_price, x1: g.spot_price,
+                        y0: 0, y1: 1, yref: 'paper',
+                        line: { color: '#ffffff', width: 2, dash: 'dash' }
+                    },
+                    {
+                        type: 'line',
+                        x0: g.call_wall, x1: g.call_wall,
+                        y0: 0, y1: 1, yref: 'paper',
+                        line: { color: '#00F5A0', width: 2, dash: 'dot' }
+                    },
+                    {
+                        type: 'line',
+                        x0: g.put_wall, x1: g.put_wall,
+                        y0: 0, y1: 1, yref: 'paper',
+                        line: { color: '#FF2E55', width: 2, dash: 'dot' }
+                    }
+                ];
+
+                const annotations = [
+                    {
+                        x: g.spot_price, y: 1, yref: 'paper',
+                        text: 'Spot $' + g.spot_price.toFixed(2),
+                        showarrow: false,
+                        font: { color: '#ffffff', size: 10 },
+                        xanchor: 'right', yanchor: 'bottom'
+                    },
+                    {
+                        x: g.call_wall, y: 1, yref: 'paper',
+                        text: 'Call Wall $' + g.call_wall,
+                        showarrow: false,
+                        font: { color: '#00F5A0', size: 10 },
+                        xanchor: 'left', yanchor: 'bottom'
+                    },
+                    {
+                        x: g.put_wall, y: 0, yref: 'paper',
+                        text: 'Put Wall $' + g.put_wall,
+                        showarrow: false,
+                        font: { color: '#FF2E55', size: 10 },
+                        xanchor: 'right', yanchor: 'top'
+                    }
+                ];
+
+                const layout = {
+                    title: {
+                        text: `<b>${g.ticker} Dealer Gamma Exposure Profile by Strike</b> | Total Net GEX: $${g.total_net_gex_billions.toFixed(2)}B (${g.regime_short})`,
+                        font: { color: '#f1f5f9', size: 13 }
+                    },
+                    barmode: 'relative',
+                    paper_bgcolor: 'rgba(0,0,0,0)',
+                    plot_bgcolor: 'rgba(0,0,0,0)',
+                    margin: { l: 45, r: 25, t: 35, b: 35 },
+                    xaxis: {
+                        title: { text: 'Strike Price ($)', font: { color: '#94a3b8', size: 11 } },
+                        gridcolor: 'rgba(255, 255, 255, 0.04)',
+                        zerolinecolor: 'rgba(255, 255, 255, 0.1)',
+                        tickfont: { color: '#94a3b8', size: 10 }
+                    },
+                    yaxis: {
+                        title: { text: 'Dollar GEX ($M / 1% move)', font: { color: '#94a3b8', size: 11 } },
+                        gridcolor: 'rgba(255, 255, 255, 0.04)',
+                        zerolinecolor: 'rgba(255, 255, 255, 0.15)',
+                        tickfont: { color: '#94a3b8', size: 10 }
+                    },
+                    shapes: shapes,
+                    annotations: annotations,
+                    showlegend: true,
+                    legend: { orientation: 'h', x: 1, xanchor: 'right', y: 1.1, font: { color: '#94a3b8', size: 10 } }
+                };
+
+                Plotly.newPlot('optionsGammaChart', [traceCalls, tracePuts], layout, { responsive: true, displayModeBar: false });
             }
         }
 

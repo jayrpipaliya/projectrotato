@@ -240,17 +240,38 @@ with st.sidebar:
         </div>
         <div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Data Feeds</div>
     ''', unsafe_allow_html=True)
-    if st.button("Sync Feeds Now", use_container_width=True):
-        with st.status("Syncing core feeds from Yahoo Finance...", expanded=True) as status:
-            from data_manager import sync_tickers_batch
-            target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS
-            results = sync_tickers_batch(tickers=target_tickers, force=True)
-            st.cache_data.clear()
-            last_date = results[0].get("last_date", "Today") if results else "Today"
-            status.update(label=f"Complete! Updated to {last_date}.", state="complete")
-        st.toast(f"Feeds Synced! {len(results)} assets updated.")
-        time.sleep(0.5)
-        st.rerun()
+    col_sync1, col_sync2 = st.columns(2)
+    with col_sync1:
+        if st.button("Sync YFinance", use_container_width=True):
+            with st.status("Syncing core feeds from Yahoo Finance...", expanded=True) as status:
+                from data_manager import sync_tickers_batch
+                target_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS
+                results = sync_tickers_batch(tickers=target_tickers, force=True)
+                st.cache_data.clear()
+                last_date = results[0].get("last_date", "Today") if results else "Today"
+                status.update(label=f"Complete! Updated to {last_date}.", state="complete")
+            st.toast(f"YFinance Synced! {len(results)} assets updated.")
+            time.sleep(0.5)
+            st.rerun()
+    with col_sync2:
+        if st.button("Sync CSV", use_container_width=True):
+            with st.status("Reloading data from local raw_csv...", expanded=True) as status:
+                from data_manager import _IN_MEMORY_TICKER_DATA, get_available_tickers, load_ticker_data, generate_synthetic_ratios
+                _IN_MEMORY_TICKER_DATA.clear()
+                tickers = get_available_tickers()
+                last_date = "N/A"
+                for t in tickers:
+                    df = load_ticker_data(t)
+                    if not df.empty and "Date" in df.columns:
+                        d_str = str(df["Date"].iloc[-1]).split()[0]
+                        if last_date == "N/A" or d_str > last_date:
+                            last_date = d_str
+                generate_synthetic_ratios()
+                st.cache_data.clear()
+                status.update(label=f"Loaded {len(tickers)} CSVs! Date: {last_date}", state="complete")
+            st.toast(f"CSV Synced! {len(tickers)} assets loaded.")
+            time.sleep(0.5)
+            st.rerun()
 
     st.markdown('<div style="font-size:11px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:0.5px; margin-top:16px; margin-bottom:6px;">AI Strategist Engine</div>', unsafe_allow_html=True)
     custom_key = st.text_input("Gemini API Key", value=user_api_key, type="password", placeholder="Enter Gemini Key...", label_visibility="collapsed")
@@ -584,7 +605,7 @@ st.caption(f"**Cross-Asset Macro Barometer Reading:** {macro_reading}")
 st.markdown("<div style='margin-bottom:12px;'></div>", unsafe_allow_html=True)
 
 # ----------------- MODERN TABS (Institutional Options Desk v3.0 Full Suite) -----------------
-tab1, tab_agent, tab2, tab3, tab5, tab4, tab6, tab_options = st.tabs([
+tab1, tab_agent, tab2, tab3, tab5, tab4, tab6, tab7, tab_options = st.tabs([
     "AI Macro Letter",
     "AI Agent",
     "Automated Trade Ideas",
@@ -592,6 +613,7 @@ tab1, tab_agent, tab2, tab3, tab5, tab4, tab6, tab_options = st.tabs([
     "Indexes & Sector Flow",
     "Magnificant 7 Flow",
     "Synthetic Ratio Rotations",
+    "Single Ticker Explorer",
     "Volatility Pricing"
 ])
 
@@ -814,6 +836,32 @@ with tab2:
             entry_border = "rgba(0, 245, 160, 0.25)" if is_long else "rgba(255, 46, 85, 0.25)"
             entry_col = "#00F5A0" if is_long else "#FF2E55"
 
+            cw = t.get("call_wall")
+            pw = t.get("put_wall")
+            zg = t.get("zero_gamma")
+            g_reg = t.get("gamma_regime")
+            net_gex = t.get("net_gex_b")
+            gex_html = ""
+            if cw and pw:
+                g_pill = "green" if g_reg == "Long Gamma" else "red"
+                zg_part = f'<span style="color:#475569; margin:0 2px;">|</span><span style="color:#94a3b8;">Zero Flip:</span> <b style="color:#38bdf8; font-family:monospace;">{zg}</b>' if zg else ""
+                net_part = f'<span style="color:#94a3b8; font-family:monospace; font-size:9.5px; margin-left:3px;">({net_gex})</span>' if net_gex else ""
+                gex_html = (
+                    f'<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(99, 102, 241, 0.08); border:1px solid rgba(99, 102, 241, 0.2); border-radius:6px; padding:4px 8px; margin-bottom:8px; font-size:10.5px; flex-wrap:wrap; gap:4px;">'
+                    f'<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">'
+                    f'<span style="color:#a5b4fc; font-weight:700;">⚡ GEX:</span>'
+                    f'<span style="color:#94a3b8;">Call Wall:</span> <b style="color:#00F5A0; font-family:monospace;">{cw}</b>'
+                    f'<span style="color:#475569; margin:0 2px;">|</span>'
+                    f'<span style="color:#94a3b8;">Put Wall:</span> <b style="color:#FF2E55; font-family:monospace;">{pw}</b>'
+                    f'{zg_part}'
+                    f'</div>'
+                    f'<div style="display:flex; align-items:center;">'
+                    f'<span class="pill-{g_pill}" style="font-size:9.5px; font-weight:700; padding:1px 5px;">{g_reg or "Dealer GEX"}</span>'
+                    f'{net_part}'
+                    f'</div>'
+                    f'</div>'
+                )
+
             return (
                 f'<div class="metric-card-lux" style="border-left:4px solid {border_col}; padding:10px 12px; margin-bottom:12px; display:flex; flex-direction:column; justify-content:space-between; height:100%; box-sizing:border-box;">'
                 f'<div>'
@@ -841,6 +889,7 @@ with tab2:
                 f'<span class="pill-{payoff_pill}" style="font-size:10.5px; font-weight:800; padding:1px 5px;">{rr}</span>'
                 f'</div>'
                 f'</div>'
+                f'{gex_html}'
                 # 4-Box Execution Strategy 2x2 Grid
                 f'<div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:6px; margin-bottom:8px;">'
                 f'<div style="background:{entry_bg}; padding:6px 8px; border-radius:6px; border:1px solid {entry_border};">'
@@ -1248,8 +1297,8 @@ with tab6:
         fig_r.update_layout(yaxis_title="Ratio Value")
         st.plotly_chart(fig_r, use_container_width=True)
 
-# ================= LEGACY TAB: SINGLE TICKER EXPLORER =================
-if False:
+# ================= TAB 7: SINGLE TICKER EXPLORER =================
+with tab7:
     st.subheader("Deep Single Ticker Quantitative Explorer & Historical Odds")
 
     available_tickers = get_available_tickers()
