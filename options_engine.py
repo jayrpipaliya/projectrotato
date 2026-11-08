@@ -260,8 +260,31 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
             break
 
     is_long_gamma = total_net_gex > 0
-    regime = "Long Gamma (Volatility Suppressing / Mean-Reverting)" if is_long_gamma else "Short Gamma (Volatility Amplifying / Directional Trending)"
-    regime_short = "Long Gamma" if is_long_gamma else "Short Gamma"
+    net_gex_b = total_net_gex / 1000.0
+    is_index = ticker_up in ["SPY", "QQQ", "IWM", "DIA", "RSP"]
+
+    # Magnitude & Conviction Thresholds: A minor +$0.02B is effectively neutral compared to multi-billion dealer books
+    neutral_threshold = 0.25 if is_index else 0.05   # $250M for index ETFs, $50M for single stocks
+    dominant_threshold = 1.00 if is_index else 0.15  # $1.0B for index ETFs, $150M for single stocks
+
+    abs_net = abs(net_gex_b)
+    if abs_net < neutral_threshold:
+        gex_intensity = "Neutral / Low Conviction"
+        regime_short = "Gamma Neutral"
+        regime = "Gamma Neutral (Dealers have minimal delta-hedging impact; directional trend & volume dominate)"
+    elif abs_net < dominant_threshold:
+        gex_intensity = "Moderate GEX"
+        regime_short = "Long Gamma" if is_long_gamma else "Short Gamma"
+        regime = f"{'Long' if is_long_gamma else 'Short'} Gamma (Moderate dealer hedging influence)"
+    else:
+        gex_intensity = "Dominant / High Conviction"
+        regime_short = "Deep Long Gamma" if is_long_gamma else "Deep Short Gamma"
+        regime = f"{'Long' if is_long_gamma else 'Short'} Gamma ({'Heavy Volatility Suppression & Pinning' if is_long_gamma else 'Aggressive Volatility Amplification & Cascades'})"
+
+    cw_gex = strikes_gex[call_wall]["call_gex"]
+    pw_gex = strikes_gex[put_wall]["put_gex"]
+    cw_conc = round((cw_gex / total_call_gex * 100), 1) if total_call_gex > 0 else 0.0
+    pw_conc = round((pw_gex / total_put_gex * 100), 1) if total_put_gex > 0 else 0.0
 
     strikes_list = []
     for k in sorted_strikes:
@@ -294,6 +317,9 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         "total_call_gex_billions": round(total_call_gex / 1000.0, 3),
         "total_put_gex_billions": round(total_put_gex / 1000.0, 3),
         "is_long_gamma": is_long_gamma,
+        "gex_intensity": gex_intensity,
+        "call_wall_concentration_pct": cw_conc,
+        "put_wall_concentration_pct": pw_conc,
         "regime": regime,
         "regime_short": regime_short,
         "elapsed_seconds": elapsed,

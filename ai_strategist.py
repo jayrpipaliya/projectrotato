@@ -154,11 +154,14 @@ def generate_ai_ideas(market_data: dict, gemini_api_key: str = None) -> dict:
                             "spot": g_res.get("spot_price"),
                             "call_wall": g_res.get("call_wall"),
                             "call_wall_dist_pct": f"{g_res.get('call_wall_dist_pct'):+.2f}%",
+                            "call_wall_concentration": f"{g_res.get('call_wall_concentration_pct', 0)}%",
                             "put_wall": g_res.get("put_wall"),
                             "put_wall_dist_pct": f"{g_res.get('put_wall_dist_pct'):+.2f}%",
+                            "put_wall_concentration": f"{g_res.get('put_wall_concentration_pct', 0)}%",
                             "zero_gamma_level": g_res.get("zero_gamma_level"),
                             "zero_gamma_dist_pct": f"{g_res.get('zero_gamma_dist_pct'):+.2f}%",
                             "net_gex_billions": f"${g_res.get('total_net_gex_billions'):+.2f}B",
+                            "gex_intensity": g_res.get("gex_intensity"),
                             "regime": g_res.get("regime_short"),
                             "regime_detail": g_res.get("regime")
                         }
@@ -190,9 +193,11 @@ CRITICAL INSTRUCTION:
 Do NOT rely on any pre-set static narrative rules or conditions. Synthesize the raw numbers, cross-asset momentum, sector rotations, breadth ratios, AND dealer Gamma Exposure (GEX) levels from first principles.
 
 INSTITUTIONAL DEALER GAMMA & RISK/REWARD FRAMEWORK:
-1. Gamma Positioning Regimes:
-   - Long Gamma (>0 Net GEX): Dealers are net long gamma; to maintain delta neutrality, they BUY dips and SELL rallies. This acts as a volatility suppressor and price pin. Spot tends to compress between the Put Wall (support floor) and Call Wall (upside ceiling). Strategy: Favor mean-reversion, bidding 20 EMA pullbacks near the Put Wall, taking profit directly at the Call Wall, and harvesting elevated IV.
-   - Short Gamma (<0 Net GEX): Dealers are net short gamma; they MUST SELL as prices fall and BUY as prices rally. This pro-cyclical hedging triggers self-reinforcing trending cascades, gap-and-go moves, and sharp volatility spikes. Strategy: Favor momentum breakouts, wider directional targets, long volatility, and strict trailing stops.
+1. Gamma Positioning & Magnitude Regimes:
+   - Magnitude / Intensity Matters Tremendously: If Net GEX is "Neutral / Low Conviction" (near zero, e.g. <$250M on SPY/QQQ or <$50M on single stocks), dealers have minimal delta-hedging obligations. DO NOT force an artificial gamma pinning narrative; the market is driven primarily by fundamental trend, volume (RVOL), and macro momentum.
+   - Localized Strike Wall Prominence: Even when total Net GEX is neutral, if a single Call Wall or Put Wall holds >= 25% of total gamma (high concentration), that specific strike still functions as an important localized upside pin or downside floor into OpEx.
+   - Long Gamma (>0 Net GEX, Substantial): Dealers are net long gamma; they BUY dips and SELL rallies. This acts as a volatility suppressor and price pin. Spot tends to compress between the Put Wall (support floor) and Call Wall (upside ceiling). Strategy: Favor mean-reversion, bidding 20 EMA pullbacks near the Put Wall, taking profit directly at the Call Wall, and harvesting elevated IV.
+   - Short Gamma (<0 Net GEX, Substantial): Dealers are net short gamma; they MUST SELL as prices fall and BUY as prices rally. This pro-cyclical hedging triggers self-reinforcing trending cascades, gap-and-go moves, and sharp volatility spikes. Strategy: Favor momentum breakouts, wider directional targets, long volatility, and strict trailing stops.
    - Zero-Gamma Vol Flip: The critical boundary price where dealer positioning flips between Long and Short Gamma. Spot breaking below the Zero-Gamma Flip unleashes directional acceleration.
    - Call Wall: Major upside supply ceiling and pinning magnet into weekly OpEx. In Long Gamma, rallies into the Call Wall face heavy dealer supply—fading or de-risking is mandatory unless broken with massive institutional volume.
    - Put Wall: Major downside structural cushion and liquidity floor. In Long Gamma, dealers aggressively defend this level, making it the primary anchor for stop-loss invalidations.
@@ -344,10 +349,13 @@ def query_ai_agent(
                     "spot": g.get("spot_price"),
                     "call_wall": g.get("call_wall"),
                     "call_wall_dist_pct": f"{g.get('call_wall_dist_pct'):+.2f}%",
+                    "call_wall_concentration": f"{g.get('call_wall_concentration_pct', 0)}%",
                     "put_wall": g.get("put_wall"),
                     "put_wall_dist_pct": f"{g.get('put_wall_dist_pct'):+.2f}%",
+                    "put_wall_concentration": f"{g.get('put_wall_concentration_pct', 0)}%",
                     "zero_gamma_flip": g.get("zero_gamma_level"),
                     "net_gex_b": f"${g.get('total_net_gex_billions'):+.2f}B",
+                    "gex_intensity": g.get("gex_intensity"),
                     "regime": g.get("regime_short")
                 }
     except Exception:
@@ -366,9 +374,11 @@ CURRENT LIVE MARKET SNAPSHOT ({datetime.now().strftime('%Y-%m-%d %H:%M')}):
 {json.dumps(confluence_map, indent=1, default=str)}
 
 INSTITUTIONAL DEALER GAMMA & RISK/REWARD MASTER DIRECTIVES:
-1. Gamma Positioning Regimes:
-   - **Net Long Gamma (+$B GEX)**: Dealers are net long options gamma. To maintain delta neutrality, they BUY weakness and SELL strength. This dampens realized intraday volatility, compresses price swings, and pins price between the Put Wall (support) and Call Wall (resistance). High probability for mean-reversion, range fades, bidding pullbacks, and taking profit at Call Walls.
-   - **Net Short Gamma (-$B GEX)**: Dealers are net short options gamma. They MUST SELL as price falls and BUY as price rallies. This creates self-reinforcing trending cascades, gap-and-go volatility expansions, and tail risk. Favor directional momentum breakouts, trailing stops, and long volatility.
+1. Gamma Positioning Regimes & Magnitude Conviction:
+   - **Magnitude / Intensity is Crucial**: If Net GEX is "Neutral / Low Conviction" (near zero, e.g. <$250M on SPY/QQQ or <$50M on single stocks), dealers have minimal delta-hedging impact. Do NOT over-index on gamma pinning. Instead, prioritize Trend Ribbons (20/50 EMA), RVOL, and Macro Baskets.
+   - **Localized Strike Concentration**: Even if total Net GEX is neutral, check if a single Call Wall or Put Wall has high concentration (>= 25%). If so, that individual strike still acts as a localized price magnet or barrier.
+   - **Net Long Gamma (+$B GEX, Substantial)**: Dealers are net long options gamma. To maintain delta neutrality, they BUY weakness and SELL strength. This dampens realized intraday volatility, compresses price swings, and pins price between the Put Wall (support) and Call Wall (resistance). High probability for mean-reversion, range fades, bidding pullbacks, and taking profit at Call Walls.
+   - **Net Short Gamma (-$B GEX, Substantial)**: Dealers are net short options gamma. They MUST SELL as price falls and BUY as price rallies. This creates self-reinforcing trending cascades, gap-and-go volatility expansions, and tail risk. Favor directional momentum breakouts, trailing stops, and long volatility.
    - **Zero-Gamma Vol Flip**: The critical inflection boundary. Trading above it is Long Gamma (mean-reverting); breaking below it unleashes violent Short Gamma acceleration.
    - **Call Wall**: Strike with maximum positive call gamma. Acts as the primary institutional resistance ceiling and pinning magnet into OpEx. Rallies into the Call Wall face dealer sell pressure—take profit or fade unless accompanied by heavy volume breakout.
    - **Put Wall**: Strike with maximum put gamma. Acts as structural downside cushion and liquidity floor. In Long Gamma, dealers aggressively bid dips here, making it the premier anchor for stop-loss placement.
@@ -438,6 +448,8 @@ def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = 
     zg = float(gamma_levels.get("zero_gamma_level", 0)) if gamma_levels else 0.0
     g_regime = gamma_levels.get("regime_short") if gamma_levels else None
     net_gex = gamma_levels.get("total_net_gex_billions") if gamma_levels else None
+    g_intensity = gamma_levels.get("gex_intensity") if gamma_levels else None
+    cw_conc = float(gamma_levels.get("call_wall_concentration_pct", 0)) if gamma_levels else 0.0
 
     is_long = "LONG" in direction.upper() or "DIP" in direction.upper()
 
@@ -519,7 +531,10 @@ def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = 
         rr_ratio = round(reward / risk, 1)
 
         if cw > 0 and pw > 0:
-            exec_desc += f" [GEX Strategy: {g_regime or 'Dealer GEX'} | Put Wall (${pw:,.0f}) floor cushion, Call Wall (${cw:,.0f}) target pin | 1:{rr_ratio:.1f} R:R]"
+            if g_intensity == "Neutral / Low Conviction":
+                exec_desc += f" [GEX: Low/Neutral ({f'${net_gex:+.2f}B' if net_gex else ''}). Minimal dealer hedging impact; technical trend & RVOL dominate. Localized Call Wall (${cw:,.0f}, {cw_conc:.0f}% conc) serves as take-profit pin | 1:{rr_ratio:.1f} R:R]"
+            else:
+                exec_desc += f" [GEX Strategy: {g_regime or 'Dealer GEX'} ({f'${net_gex:+.2f}B' if net_gex else ''}) | Put Wall (${pw:,.0f}) floor cushion, Call Wall (${cw:,.0f}) target pin | 1:{rr_ratio:.1f} R:R]"
 
         return {
             "current_price": f"${close:,.2f}",
@@ -542,6 +557,7 @@ def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = 
             "put_wall": f"${pw:,.1f}" if pw > 0 else None,
             "zero_gamma": f"${zg:,.1f}" if zg > 0 else None,
             "gamma_regime": g_regime,
+            "gex_intensity": g_intensity,
             "net_gex_b": f"${net_gex:+.2f}B" if net_gex is not None else None
         }
     else:
