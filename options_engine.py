@@ -1156,39 +1156,6 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         
     st.markdown("---")
 
-    # 3.5 Dealer Gamma Exposure (GEX) Profile
-    gex_data = compute_gamma_exposure_profile(selected_ticker, max_expirations=5)
-    if gex_data and "error" not in gex_data:
-        st.markdown("#### ⚡ Institutional Dealer Gamma Exposure (GEX) & Wall Pins")
-        st.caption("Real-time dealer hedging structure: Inverts Black-Scholes gamma across open interest to map market maker positioning, volatility suppression pins, and trend acceleration levels.")
-        gex_col1, gex_col2, gex_col3, gex_col4 = st.columns(4)
-        with gex_col1:
-            cw = gex_data["call_wall"]
-            cw_dist = gex_data["call_wall_dist_pct"]
-            st.metric("Call Wall (Ceiling Pin)", f"${cw:.1f}", f"{cw_dist:+.2f}%", delta_color="normal")
-            st.caption(f"${gex_data['call_wall_gex_m']:.0f}M GEX. Resistance & upside pin.")
-        with gex_col2:
-            pw = gex_data["put_wall"]
-            pw_dist = gex_data["put_wall_dist_pct"]
-            st.metric("Put Wall (Floor Support)", f"${pw:.1f}", f"{pw_dist:+.2f}%", delta_color="inverse")
-            st.caption(f"${gex_data['put_wall_gex_m']:.0f}M GEX. Hedging floor & bounce zone.")
-        with gex_col3:
-            zg = gex_data["zero_gamma_level"]
-            zg_dist = gex_data["zero_gamma_dist_pct"]
-            st.metric("Zero Gamma Flip", f"${zg:.1f}", f"{zg_dist:+.2f}%", delta_color="off")
-            st.caption("Boundary between Low-Vol and High-Vol regimes.")
-        with gex_col4:
-            net_gex = gex_data["total_net_gex_billions"]
-            regime_short = gex_data["regime_short"]
-            st.metric("Total Net GEX", f"${net_gex:+.2f}B", regime_short)
-            st.caption(f"{gex_data['regime']}")
-
-        gex_fig = plot_gamma_exposure_profile(gex_data)
-        if gex_fig:
-            st.plotly_chart(gex_fig, use_container_width=True)
-
-    st.markdown("---")
-
     # 4. Scope Selection: Cross-Chain vs. Specific Date
     if side_clean == "Sell":
         chains_df = term_df[term_df['DTE'] >= 8].copy()
@@ -1695,3 +1662,145 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
+
+
+# ----------------- DEDICATED DEALER GAMMA DESK RENDER FUNCTION -----------------
+def render_gamma_desk_page(available_tickers=None):
+    """
+    Renders the dedicated Dealer Gamma Exposure (GEX) & Volatility Pinning Desk in Streamlit.
+    """
+    if not st:
+        return
+
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%);
+                padding: 1.25rem 1.75rem; border-radius: 12px; border: 1px solid rgba(99, 102, 241, 0.25); margin-bottom: 1.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+            <div>
+                <h2 style="margin: 0; color: #f8fafc; font-size: 1.6rem; font-weight: 700;">
+                    ⚡ Institutional Dealer Gamma Exposure (GEX) Desk
+                </h2>
+                <p style="margin: 0.35rem 0 0 0; color: #94a3b8; font-size: 0.95rem;">
+                    Real-time dealer delta-hedging architecture: Inverts Black-Scholes gamma across open interest to identify <b>Call Wall pins</b>, <b>Put Wall hedging floors</b>, <b>Zero-Gamma flip boundaries</b>, and directional acceleration triggers.
+                </p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 1. Controls
+    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([1.5, 1.2, 1.0])
+    universe = ["SPY", "QQQ", "NVDA", "AAPL", "AMZN", "MSFT", "META", "TSLA", "IWM", "GLD", "XLF", "SMH"]
+    if available_tickers:
+        for t in available_tickers:
+            if t not in universe:
+                universe.append(t)
+
+    with ctrl_col1:
+        selected_ticker = st.selectbox("Underlying Ticker", universe, index=0, key="gamma_desk_ticker")
+    with ctrl_col2:
+        max_exp = st.slider("Expirations Horizon (DTE <= 45)", min_value=2, max_value=8, value=5, key="gamma_desk_exps")
+    with ctrl_col3:
+        st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
+        recalc = st.button("↻ Recalculate GEX", key="gamma_recalc_btn", use_container_width=True)
+
+    with st.spinner(f"Computing institutional dealer gamma surface & wall pins for {selected_ticker}..."):
+        gex_data = compute_gamma_exposure_profile(selected_ticker, max_expirations=max_exp, force_refresh=recalc)
+
+    if not gex_data or "error" in gex_data:
+        st.warning(f"Unable to extract gamma profile for {selected_ticker}: {gex_data.get('error') if gex_data else 'Unknown error'}")
+        return
+
+    spot = gex_data["spot_price"]
+    cw = gex_data["call_wall"]
+    cw_dist = gex_data["call_wall_dist_pct"]
+    pw = gex_data["put_wall"]
+    pw_dist = gex_data["put_wall_dist_pct"]
+    zg = gex_data["zero_gamma_level"]
+    zg_dist = gex_data["zero_gamma_dist_pct"]
+    net_gex = gex_data["total_net_gex_billions"]
+    is_long = gex_data["is_long_gamma"]
+    regime_short = gex_data["regime_short"]
+
+    # 2. KPI Strip
+    kpi_col1, kpi_col2, kpi_col3, kpi_col4, kpi_col5 = st.columns(5)
+    with kpi_col1:
+        st.metric("Spot Price", f"${spot:.2f}", selected_ticker)
+        st.caption("Live underlying reference")
+    with kpi_col2:
+        st.metric("Call Wall (Ceiling Pin)", f"${cw:.1f}", f"{cw_dist:+.2f}%", delta_color="normal")
+        st.caption(f"${gex_data['call_wall_gex_m']:.0f}M GEX • Hedging Ceiling")
+    with kpi_col3:
+        st.metric("Put Wall (Floor Support)", f"${pw:.1f}", f"{pw_dist:+.2f}%", delta_color="inverse")
+        st.caption(f"${gex_data['put_wall_gex_m']:.0f}M GEX • Hedging Floor")
+    with kpi_col4:
+        st.metric("Zero Gamma Flip", f"${zg:.1f}", f"{zg_dist:+.2f}%", delta_color="off")
+        st.caption("Volatility Regime Boundary")
+    with kpi_col5:
+        st.metric("Total Net Dealer GEX", f"${net_gex:+.2f}B", regime_short)
+        st.caption(f"{'Suppresses Volatility' if is_long else 'Amplifies Trending Vol'}")
+
+    # 3. Tactical Desk Regime Directive Banner
+    if is_long:
+        st.markdown(f"""
+        <div style="background: rgba(0, 245, 160, 0.08); border: 1px solid rgba(0, 245, 160, 0.25); border-left: 4px solid #00F5A0; padding: 12px 16px; border-radius: 8px; margin: 16px 0;">
+            <b style="color: #00F5A0; font-size: 0.95rem;">🛡️ LONG GAMMA REGIME DETECTED (+${net_gex:.2f}B Net GEX)</b><br>
+            <span style="color: #cbd5e1; font-size: 0.85rem; line-height: 1.4;">
+                Market makers are long gamma and must <b>sell into rallies</b> and <b>buy into pullbacks</b> to maintain delta-neutral books. This dampens realized volatility and creates powerful mean-reversion magnet pin action between <b>Put Wall (${pw:.0f})</b> and <b>Call Wall (${cw:.0f})</b>. Limit orders at edges are favored over chasing breakouts.
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div style="background: rgba(255, 46, 85, 0.08); border: 1px solid rgba(255, 46, 85, 0.25); border-left: 4px solid #FF2E55; padding: 12px 16px; border-radius: 8px; margin: 16px 0;">
+            <b style="color: #FF2E55; font-size: 0.95rem;">⚠️ SHORT GAMMA REGIME DETECTED (${net_gex:.2f}B Net GEX)</b><br>
+            <span style="color: #cbd5e1; font-size: 0.85rem; line-height: 1.4;">
+                Market makers are short gamma and must <b>sell when spot drops</b> and <b>buy when spot rises</b> to hedge exposure. This amplifies market volatility and accelerates directional trending moves. Avoid blind dip-buying until structural support at the <b>Put Wall (${pw:.0f})</b> is confirmed.
+            </span>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # 4. Plotly Interactive Bar Chart
+    gex_fig = plot_gamma_exposure_profile(gex_data)
+    if gex_fig:
+        st.plotly_chart(gex_fig, use_container_width=True)
+
+    # 5. Detailed Strike Breakdown Table
+    strikes_list = gex_data.get("strikes", [])
+    if strikes_list:
+        st.markdown("#### Per-Strike Gamma Exposure & Hedging Breakdown")
+        table_rows = []
+        for s in strikes_list:
+            k = s["strike"]
+            dist_pct = ((k / spot) - 1) * 100
+            role = "Normal Strike"
+            if abs(k - cw) < 0.5:
+                role = "🟢 Call Wall Pin"
+            elif abs(k - pw) < 0.5:
+                role = "🔴 Put Wall Floor"
+            elif abs(k - zg) < 0.5:
+                role = "⚡ Zero Gamma Flip"
+            elif abs(k - spot) / spot < 0.005:
+                role = "🎯 At-The-Money"
+
+            table_rows.append({
+                "Strike ($)": f"${k:,.1f}",
+                "Dist vs Spot (%)": f"{dist_pct:+.2f}%",
+                "Call GEX ($M)": s["call_gex"],
+                "Put GEX ($M)": s["put_gex"],
+                "Net GEX ($M)": s["net_gex"],
+                "Call OI": f"{s['call_oi']:,}",
+                "Put OI": f"{s['put_oi']:,}",
+                "Structural Role": role
+            })
+        df_strikes = pd.DataFrame(table_rows)
+        st.dataframe(df_strikes, use_container_width=True, hide_index=True)
+
+    # 6. Educational Collapsible Guide
+    with st.expander("📘 Institutional Desk Guide: How to Trade Using Gamma Levels"):
+        st.markdown("""
+        * **Call Wall:** The strike with the largest open Call Gamma. Market makers are typically short these calls and long stock. As spot approaches the Call Wall, dealers must sell stock to hedge, acting as a natural ceiling and magnet pin.
+        * **Put Wall:** The strike with the largest open Put Gamma. Market makers who are short these puts must buy stock as the underlying falls into the wall, providing liquidity and rebound support.
+        * **Zero Gamma Flip:** The inflection level where total market net gamma crosses zero. Above this level, volatility is suppressed. Below this level, dealer hedging accelerates market declines.
+        * **Weekly OpEx Pinning:** On expiration days (especially Fridays), gamma sensitivity ($\\Gamma \\propto 1/\\sqrt{T}$) peaks, pinning price action tightly around the highest open interest strikes.
+        """)

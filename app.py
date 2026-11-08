@@ -26,7 +26,7 @@ from confluence_engine import compute_confluence_score, compute_all_confluences
 import importlib
 import options_engine
 importlib.reload(options_engine)
-from options_engine import render_options_vol_page
+from options_engine import render_options_vol_page, render_gamma_desk_page
 
 st.set_page_config(
     page_title="Double Edge | Quantitative Macro & Equity Desk",
@@ -605,7 +605,7 @@ st.caption(f"**Cross-Asset Macro Barometer Reading:** {macro_reading}")
 st.markdown("<div style='margin-bottom:12px;'></div>", unsafe_allow_html=True)
 
 # ----------------- MODERN TABS (Institutional Options Desk v3.0 Full Suite) -----------------
-tab1, tab_agent, tab2, tab3, tab5, tab4, tab6, tab7, tab_options = st.tabs([
+tab1, tab_agent, tab2, tab3, tab5, tab4, tab6, tab7, tab_gamma, tab_options = st.tabs([
     "AI Macro Letter",
     "AI Agent",
     "Automated Trade Ideas",
@@ -614,6 +614,7 @@ tab1, tab_agent, tab2, tab3, tab5, tab4, tab6, tab7, tab_options = st.tabs([
     "Magnificant 7 Flow",
     "Synthetic Ratio Rotations",
     "Single Ticker Explorer",
+    "Dealer Gamma Desk",
     "Volatility Pricing"
 ])
 
@@ -1416,6 +1417,10 @@ with tab7:
         )
 
         st.plotly_chart(fig_combined, use_container_width=True)
+
+# ================= TAB 8: DEALER GAMMA DESK =================
+with tab_gamma:
+    render_gamma_desk_page(get_available_tickers())
 
 # ================= TAB 9: VOLATILITY PRICING =================
 with tab_options:

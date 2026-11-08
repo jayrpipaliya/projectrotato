@@ -945,6 +945,9 @@ HTML_CONTENT = """<!DOCTYPE html>
         <button onclick="switchTab('tab7')" id="btn-tab7" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Single Ticker Explorer
         </button>
+        <button onclick="switchTab('tab_gamma')" id="btn-tab_gamma" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          Dealer Gamma Desk
+        </button>
         <button onclick="switchTab('tab_options')" id="btn-tab_options" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Volatility Pricing
         </button>
@@ -1217,6 +1220,115 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
         </div>
 
+        <!-- Tab Gamma: Dealer Gamma Levels Desk -->
+        <div id="tab_gamma" class="tab-pane hidden">
+            <!-- Header Card -->
+            <div class="lux-card p-5 mb-5 border border-indigo-500/30 bg-gradient-to-r from-indigo-950/30 via-[#0d1117] to-slate-900/50">
+                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h2 class="text-lg font-black text-white tracking-wide">⚡ Institutional Dealer Gamma Exposure (GEX) Desk</h2>
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Live Market Maker Hedging Map</span>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-1 max-w-2xl">
+                            Inverts Black-Scholes gamma across open interest to quantify market maker hedging inventory: <b>Call Wall (Ceiling Pin)</b>, <b>Put Wall (Support Floor)</b>, <b>Zero-Gamma Flip</b>, and aggregate <b>Net Dealer GEX</b> regime.
+                        </p>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Underlying Ticker</label>
+                            <select id="gammaDeskTickerSelect" onchange="loadGammaDesk()" class="bg-[#0b0d12] text-xs font-bold text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-indigo-400">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+
+                        <div class="self-end">
+                            <button onclick="loadGammaDesk(true)" class="px-3.5 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs shadow-lg shadow-indigo-500/20 transition flex items-center gap-1.5">
+                                ↻ Recalculate GEX
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top 5 KPI Strip -->
+            <div id="gammaDeskKpiRow" class="grid grid-cols-2 sm:grid-cols-5 gap-3.5 mb-5">
+                <!-- Populated dynamically: Spot, Call Wall, Put Wall, Zero Gamma Flip, Total Net GEX -->
+            </div>
+
+            <!-- Tactical Regime Directive Banner -->
+            <div id="gammaDeskDirective" class="mb-5">
+                <!-- Populated dynamically with regime intelligence & execution playbook -->
+            </div>
+
+            <!-- Interactive Plotly Strike GEX Bar Chart -->
+            <div class="lux-card p-4 mb-5">
+                <div class="flex justify-between items-center mb-2">
+                    <div>
+                        <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                            <span>Per-Strike Dealer Gamma Exposure Profile ($M per 1% Move)</span>
+                            <span id="gammaDeskChartBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-white/5 text-slate-300">Near-Term Expirations</span>
+                        </h4>
+                        <p class="text-[11px] text-slate-400">Green = Positive Call Gamma (Dealers Long Calls / Hedging Resistance). Red = Negative Put Gamma (Dealers Short Puts / Hedging Floor).</p>
+                    </div>
+                </div>
+                <div id="gammaDeskChart" style="height: 420px;"></div>
+            </div>
+
+            <!-- Comprehensive Per-Strike Table Breakdown -->
+            <div class="lux-card p-4 mb-5">
+                <div class="flex justify-between items-center mb-3">
+                    <div>
+                        <h4 class="text-sm font-bold text-white">Detailed Strike Gamma & Open Interest Breakdown</h4>
+                        <p class="text-[11px] text-slate-400">All liquid strikes within ±12% of spot price, including dealer net delta impact and structural wall tags.</p>
+                    </div>
+                    <span class="text-[10px] font-mono text-slate-400" id="gammaDeskStrikesCount">0 Strikes Mapped</span>
+                </div>
+                <div class="overflow-x-auto rounded-lg border border-white/10 bg-[#0b0d12]">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-white/[0.03] text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/10">
+                            <tr>
+                                <th class="py-2.5 px-3">Strike Price</th>
+                                <th class="py-2.5 px-3">Dist vs Spot</th>
+                                <th class="py-2.5 px-3">Call GEX ($M)</th>
+                                <th class="py-2.5 px-3">Put GEX ($M)</th>
+                                <th class="py-2.5 px-3">Net GEX ($M)</th>
+                                <th class="py-2.5 px-3">Call OI</th>
+                                <th class="py-2.5 px-3">Put OI</th>
+                                <th class="py-2.5 px-3">Structural Role</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gammaDeskStrikesTbody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Institutional Desk Guide 3-Box Educational Strip -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="lux-card p-4 border-t-2 border-mint">
+                    <h5 class="text-xs font-bold text-mint uppercase tracking-wider mb-1.5">1. Call Wall & Dealer Pins</h5>
+                    <p class="text-[11.5px] text-slate-400 leading-relaxed">
+                        The strike with the largest open Call Gamma. Because dealers are typically net short these calls, they must sell futures/stock as spot rallies into the strike, creating a natural upside ceiling and pinning magnet into weekly OpEx.
+                    </p>
+                </div>
+                <div class="lux-card p-4 border-t-2 border-cherry">
+                    <h5 class="text-xs font-bold text-cherry uppercase tracking-wider mb-1.5">2. Put Wall & Cushion Floors</h5>
+                    <p class="text-[11.5px] text-slate-400 leading-relaxed">
+                        The strike with the largest open Put Gamma. Dealers short these puts must buy stock when price drops into the strike, creating institutional liquidity, limiting sell-offs, and triggering violent rebound squeezes.
+                    </p>
+                </div>
+                <div class="lux-card p-4 border-t-2 border-sky-400">
+                    <h5 class="text-xs font-bold text-sky-400 uppercase tracking-wider mb-1.5">3. Zero-Gamma Vol Flip</h5>
+                    <p class="text-[11.5px] text-slate-400 leading-relaxed">
+                        The inflection strike where cumulative dealer gamma crosses zero. Above it, market makers operate in Long Gamma (volatility suppressing). Below it, market makers flip to Short Gamma (selling drops, buying rallies), triggering fast trending expansions.
+                    </p>
+                </div>
+            </div>
+        </div>
+
         <!-- Tab Options: Volatility Pricing Desk -->
         <div id="tab_options" class="tab-pane hidden">
             <div class="lux-card p-5 mb-5 border border-mint/20 bg-gradient-to-r from-mint/5 via-[#0d1117] to-slate-900/40">
@@ -1351,25 +1463,6 @@ HTML_CONTENT = """<!DOCTYPE html>
             <!-- Options KPI Strip -->
             <div id="optionsKpiRow" class="grid grid-cols-2 sm:grid-cols-5 gap-3.5 mb-5">
                 <!-- Populated dynamically -->
-            </div>
-
-            <!-- Dealer Gamma Exposure (GEX) Strip & Profile Chart -->
-            <div id="optionsGammaSection" class="lux-card p-4 mb-6 border border-indigo-500/20 bg-gradient-to-r from-indigo-950/20 via-[#0d1117] to-purple-950/20 hidden">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
-                    <div>
-                        <h4 class="text-sm font-bold text-white flex items-center gap-2">
-                            <span>⚡ Dealer Gamma Exposure (GEX) & Volatility Pinning</span>
-                            <span id="gammaRegimeBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Neutral GEX</span>
-                        </h4>
-                        <p class="text-[11px] text-slate-400">Inverts Black-Scholes gamma across open interest to map market maker hedging obligations, pinning ceilings, and volatility acceleration triggers.</p>
-                    </div>
-                </div>
-
-                <div id="optionsGammaKpiRow" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-                    <!-- Populated dynamically: Call Wall, Put Wall, Zero Gamma Flip, Total Net GEX -->
-                </div>
-
-                <div id="optionsGammaChart" style="height: 340px;"></div>
             </div>
 
             <!-- Cross-Chain Recommendations Header -->
@@ -1656,6 +1749,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             'tab4': 'Magnificant 7 Flow',
             'tab6': 'Synthetic Ratio Rotations',
             'tab7': 'Single Ticker Explorer',
+            'tab_gamma': 'Dealer Gamma Desk',
             'tab_options': 'Volatility Pricing'
         };
 
@@ -1717,6 +1811,14 @@ HTML_CONTENT = """<!DOCTYPE html>
                     loadSingleTicker();
                 } else {
                     setTimeout(() => Plotly.Plots.resize('singleTickerCombinedChart'), 50);
+                }
+            } else if (tabId === 'tab_gamma') {
+                populateGammaDeskTickersDropdown();
+                if (!LOADED_TABS.has('tab_gamma')) {
+                    LOADED_TABS.add('tab_gamma');
+                    loadGammaDesk();
+                } else {
+                    setTimeout(() => Plotly.Plots.resize('gammaDeskChart'), 50);
                 }
             } else if (tabId === 'tab_options') {
                 populateOptionsTickersDropdown();
@@ -1871,6 +1973,7 @@ async function init() {
                 initAgentChat();
                 populateTickersDropdown();
                 populateOptionsTickersDropdown();
+                populateGammaDeskTickersDropdown();
 
                 // 3. Asynchronously load AI briefing in background without blocking UI
                 loadAiBriefingAsync();
@@ -3270,14 +3373,6 @@ async function init() {
                     `).join('');
                 }
 
-                // Render Dealer Gamma Exposure (GEX) Profile
-                if (data.gamma && !data.gamma.error) {
-                    renderGammaSection(data.gamma);
-                } else {
-                    const gSec = document.getElementById('optionsGammaSection');
-                    if (gSec) gSec.classList.add('hidden');
-                }
-
                 // Render Smile Chart
                 if (data.smile) {
                     renderSmileChart(data.smile, CURRENT_OPTIONS_DIR, isBuy, spot);
@@ -3292,140 +3387,285 @@ async function init() {
             }
         }
 
-        function renderGammaSection(g) {
-            const sec = document.getElementById('optionsGammaSection');
-            const kpiRow = document.getElementById('optionsGammaKpiRow');
-            const badge = document.getElementById('gammaRegimeBadge');
-            const chartDiv = document.getElementById('optionsGammaChart');
-            if (!sec || !kpiRow || !chartDiv) return;
+        function populateGammaDeskTickersDropdown() {
+            const select = document.getElementById('gammaDeskTickerSelect');
+            if (!select) return;
+            const currentVal = select.value || 'SPY';
+            const tickers = DATA.available_tickers || [];
+            const priority = ['SPY', 'QQQ', 'IWM', 'NVDA', 'AAPL', 'TSLA', 'AMZN', 'MSFT', 'META', 'SMH', 'GLD', 'TLT'];
+            const tickerLabels = {
+                'SPY': 'SPY (S&P 500 ETF)',
+                'QQQ': 'QQQ (Nasdaq 100 ETF)',
+                'IWM': 'IWM (Russell 2000 ETF)',
+                'NVDA': 'NVDA (Nvidia)',
+                'AAPL': 'AAPL (Apple)',
+                'TSLA': 'TSLA (Tesla)',
+                'AMZN': 'AMZN (Amazon)',
+                'MSFT': 'MSFT (Microsoft)',
+                'META': 'META (Meta)',
+                'SMH': 'SMH (Semiconductors)',
+                'GLD': 'GLD (Gold ETF)',
+                'TLT': 'TLT (20Y Treasury Bond)',
+                'XLF': 'XLF (Financials ETF)',
+                'GOOGL': 'GOOGL (Alphabet)',
+                'AMD': 'AMD (Advanced Micro Devices)'
+            };
 
-            sec.classList.remove('hidden');
+            const universe = [...priority];
+            tickers.forEach(t => {
+                if (!universe.includes(t)) universe.push(t);
+            });
 
-            const isLong = g.is_long_gamma;
-            if (badge) {
-                badge.innerText = g.regime_short + " (" + (g.total_net_gex_billions >= 0 ? "+" : "") + g.total_net_gex_billions.toFixed(2) + "B)";
-                badge.className = isLong 
-                    ? "text-[10px] font-bold px-2 py-0.5 rounded bg-mint/15 text-mint border border-mint/30" 
-                    : "text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/30";
+            let html = '';
+            universe.forEach(t => {
+                const label = tickerLabels[t] || t;
+                html += `<option value="${t}" ${t === currentVal ? 'selected' : ''}>${label}</option>`;
+            });
+            select.innerHTML = html;
+        }
+
+        async function loadGammaDesk(force = false) {
+            const tickerSelect = document.getElementById('gammaDeskTickerSelect');
+            const ticker = (tickerSelect && tickerSelect.value) ? tickerSelect.value : 'SPY';
+            const kpiRow = document.getElementById('gammaDeskKpiRow');
+            const directiveDiv = document.getElementById('gammaDeskDirective');
+            const chartDiv = document.getElementById('gammaDeskChart');
+            const countSpan = document.getElementById('gammaDeskStrikesCount');
+            const tbody = document.getElementById('gammaDeskStrikesTbody');
+
+            if (kpiRow) {
+                kpiRow.innerHTML = `<div class="col-span-full py-4 text-center text-xs text-slate-400">Scanning real-time option chains & computing Black-Scholes Dealer Gamma Exposure (GEX) profile for <b>${ticker}</b>...</div>`;
             }
+            if (directiveDiv) directiveDiv.innerHTML = '';
+            if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-slate-500 animate-pulse">Calculating net dealer hedging delta & strike distribution...</td></tr>`;
 
-            kpiRow.innerHTML = `
-                <div class="lux-card p-3 border-l-2 border-mint">
-                    <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Call Wall (Ceiling Pin)</div>
-                    <div class="text-lg font-bold text-mint mt-0.5">$${g.call_wall} <span class="text-xs font-normal text-slate-300">(${g.call_wall_dist_pct >= 0 ? '+' : ''}${g.call_wall_dist_pct}%)</span></div>
-                    <div class="text-[10px] text-slate-400 mt-0.5">$${g.call_wall_gex_m}M GEX • Hedging Ceiling</div>
-                </div>
-                <div class="lux-card p-3 border-l-2 border-cherry">
-                    <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Put Wall (Floor Support)</div>
-                    <div class="text-lg font-bold text-cherry mt-0.5">$${g.put_wall} <span class="text-xs font-normal text-slate-300">(${g.put_wall_dist_pct >= 0 ? '+' : ''}${g.put_wall_dist_pct}%)</span></div>
-                    <div class="text-[10px] text-slate-400 mt-0.5">$${g.put_wall_gex_m}M GEX • Hedging Floor</div>
-                </div>
-                <div class="lux-card p-3 border-l-2 border-sky-400">
-                    <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Zero Gamma Flip</div>
-                    <div class="text-lg font-bold text-sky-400 mt-0.5">$${g.zero_gamma_level} <span class="text-xs font-normal text-slate-300">(${g.zero_gamma_dist_pct >= 0 ? '+' : ''}${g.zero_gamma_dist_pct}%)</span></div>
-                    <div class="text-[10px] text-slate-400 mt-0.5">Vol Regime Transition Boundary</div>
-                </div>
-                <div class="lux-card p-3 border-l-2 ${isLong ? 'border-mint' : 'border-rose-500'}">
-                    <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Total Net Dealer GEX</div>
-                    <div class="text-lg font-bold ${isLong ? 'text-mint' : 'text-rose-400'} mt-0.5">${g.total_net_gex_billions >= 0 ? '+' : ''}${g.total_net_gex_billions.toFixed(2)}B</div>
-                    <div class="text-[10px] text-slate-400 mt-0.5">${g.regime_short} • ${isLong ? 'Suppresses Volatility' : 'Amplifies Trending Vol'}</div>
-                </div>
-            `;
+            try {
+                const url = `/api/gamma/${encodeURIComponent(ticker)}${force ? '?force=true' : ''}`;
+                const res = await fetch(url);
+                const g = await res.json();
 
-            if (typeof Plotly !== 'undefined' && g.strikes && g.strikes.length > 0) {
-                const strikes = g.strikes.map(s => s.strike);
-                const callGex = g.strikes.map(s => s.call_gex);
-                const putGex = g.strikes.map(s => -s.put_gex);
+                if (g.error) {
+                    if (kpiRow) kpiRow.innerHTML = `<div class="col-span-full text-xs text-amber-400 bg-amber-500/10 p-3 rounded-lg border border-amber-500/20">${g.error}</div>`;
+                    if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="text-center py-4 text-cherry">No options data available for ${ticker}.</td></tr>`;
+                    return;
+                }
 
-                const traceCalls = {
-                    x: strikes,
-                    y: callGex,
-                    name: 'Call GEX ($M)',
-                    type: 'bar',
-                    marker: { color: '#00F5A0', opacity: 0.85 }
-                };
+                const isLong = g.is_long_gamma;
 
-                const tracePuts = {
-                    x: strikes,
-                    y: putGex,
-                    name: 'Put GEX ($M)',
-                    type: 'bar',
-                    marker: { color: '#FF2E55', opacity: 0.85 }
-                };
+                // 1. KPI Strip
+                if (kpiRow) {
+                    kpiRow.innerHTML = `
+                        <div class="lux-card p-3 border-l-2 border-slate-400">
+                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Spot Price</div>
+                            <div class="text-lg font-bold text-white mt-0.5">$${g.spot_price.toFixed(2)}</div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">${g.ticker} Reference Underlying</div>
+                        </div>
+                        <div class="lux-card p-3 border-l-2 border-mint">
+                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Call Wall (Ceiling Pin)</div>
+                            <div class="text-lg font-bold text-mint mt-0.5">$${g.call_wall} <span class="text-xs font-normal text-slate-300">(${g.call_wall_dist_pct >= 0 ? '+' : ''}${g.call_wall_dist_pct}%)</span></div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">$${g.call_wall_gex_m}M GEX • Resistance Magnet</div>
+                        </div>
+                        <div class="lux-card p-3 border-l-2 border-cherry">
+                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Put Wall (Support Floor)</div>
+                            <div class="text-lg font-bold text-cherry mt-0.5">$${g.put_wall} <span class="text-xs font-normal text-slate-300">(${g.put_wall_dist_pct >= 0 ? '+' : ''}${g.put_wall_dist_pct}%)</span></div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">$${g.put_wall_gex_m}M GEX • Liquidity Cushion</div>
+                        </div>
+                        <div class="lux-card p-3 border-l-2 border-sky-400">
+                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Zero Gamma Flip</div>
+                            <div class="text-lg font-bold text-sky-400 mt-0.5">$${g.zero_gamma_level} <span class="text-xs font-normal text-slate-300">(${g.zero_gamma_dist_pct >= 0 ? '+' : ''}${g.zero_gamma_dist_pct}%)</span></div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">Vol Regime Transition Boundary</div>
+                        </div>
+                        <div class="lux-card p-3 border-l-2 ${isLong ? 'border-mint' : 'border-rose-500'}">
+                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Total Net Dealer GEX</div>
+                            <div class="text-lg font-bold ${isLong ? 'text-mint' : 'text-rose-400'} mt-0.5">${g.total_net_gex_billions >= 0 ? '+' : ''}${g.total_net_gex_billions.toFixed(2)}B</div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">${g.regime_short} • ${isLong ? 'Suppresses Volatility' : 'Amplifies Trending Vol'}</div>
+                        </div>
+                    `;
+                }
 
-                const shapes = [
-                    {
-                        type: 'line',
-                        x0: g.spot_price, x1: g.spot_price,
-                        y0: 0, y1: 1, yref: 'paper',
-                        line: { color: '#ffffff', width: 2, dash: 'dash' }
-                    },
-                    {
-                        type: 'line',
-                        x0: g.call_wall, x1: g.call_wall,
-                        y0: 0, y1: 1, yref: 'paper',
-                        line: { color: '#00F5A0', width: 2, dash: 'dot' }
-                    },
-                    {
-                        type: 'line',
-                        x0: g.put_wall, x1: g.put_wall,
-                        y0: 0, y1: 1, yref: 'paper',
-                        line: { color: '#FF2E55', width: 2, dash: 'dot' }
+                // 2. Tactical Directive Banner
+                if (directiveDiv) {
+                    if (isLong) {
+                        directiveDiv.innerHTML = `
+                            <div class="p-4 rounded-xl border border-mint/30 bg-mint/5 flex items-start gap-3">
+                                <div class="text-xl">🛡️</div>
+                                <div>
+                                    <div class="text-xs font-bold text-mint uppercase tracking-wider">Tactical Desk Directive: Net Long Dealer Gamma Regime (+${g.total_net_gex_billions.toFixed(2)}B)</div>
+                                    <div class="text-xs text-slate-300 mt-1 leading-relaxed">
+                                        Market makers are net long options gamma. To maintain delta-neutral books, dealers must <b>buy weakness</b> and <b>sell strength</b>, acting as natural market shock-absorbers that suppress realized intraday volatility. Price action tends to pin between the <b>Put Wall ($${g.put_wall})</b> and <b>Call Wall ($${g.call_wall})</b>.
+                                        <br/><span class="text-mint font-semibold mt-1 inline-block">Institutional Playbook:</span> Favor mean-reversion entries, range-bound credit harvesting, iron condors, and fading breakout attempts at extreme strike walls.
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        directiveDiv.innerHTML = `
+                            <div class="p-4 rounded-xl border border-rose-500/30 bg-rose-500/5 flex items-start gap-3">
+                                <div class="text-xl">⚠️</div>
+                                <div>
+                                    <div class="text-xs font-bold text-rose-400 uppercase tracking-wider">Tactical Desk Directive: Net Short Dealer Gamma Regime (${g.total_net_gex_billions.toFixed(2)}B)</div>
+                                    <div class="text-xs text-slate-300 mt-1 leading-relaxed">
+                                        Market makers are net short options gamma. To hedge portfolio deltas, dealers must <b>sell into falling markets</b> and <b>buy into rising markets</b>. This pro-cyclical hedging creates negative feedback cascades and sharp expansions in realized volatility.
+                                        <br/><span class="text-rose-400 font-semibold mt-1 inline-block">Institutional Playbook:</span> Prepare for swift directional trend acceleration. Favor momentum debit spreads, long straddles/strangles, wider stop losses, and disciplined trend-following below the Zero-Gamma Flip line ($${g.zero_gamma_level}).
+                                    </div>
+                                </div>
+                            </div>
+                        `;
                     }
-                ];
+                }
 
-                const annotations = [
-                    {
-                        x: g.spot_price, y: 1, yref: 'paper',
-                        text: 'Spot $' + g.spot_price.toFixed(2),
-                        showarrow: false,
-                        font: { color: '#ffffff', size: 10 },
-                        xanchor: 'right', yanchor: 'bottom'
-                    },
-                    {
-                        x: g.call_wall, y: 1, yref: 'paper',
-                        text: 'Call Wall $' + g.call_wall,
-                        showarrow: false,
-                        font: { color: '#00F5A0', size: 10 },
-                        xanchor: 'left', yanchor: 'bottom'
-                    },
-                    {
-                        x: g.put_wall, y: 0, yref: 'paper',
-                        text: 'Put Wall $' + g.put_wall,
-                        showarrow: false,
-                        font: { color: '#FF2E55', size: 10 },
-                        xanchor: 'right', yanchor: 'top'
+                // 3. Interactive Plotly Strike GEX Chart
+                if (typeof Plotly !== 'undefined' && g.strikes && g.strikes.length > 0) {
+                    const strikes = g.strikes.map(s => s.strike);
+                    const callGex = g.strikes.map(s => s.call_gex);
+                    const putGex = g.strikes.map(s => -s.put_gex);
+
+                    const traceCalls = {
+                        x: strikes,
+                        y: callGex,
+                        name: 'Call GEX ($M)',
+                        type: 'bar',
+                        marker: { color: '#00F5A0', opacity: 0.85 }
+                    };
+
+                    const tracePuts = {
+                        x: strikes,
+                        y: putGex,
+                        name: 'Put GEX ($M)',
+                        type: 'bar',
+                        marker: { color: '#FF2E55', opacity: 0.85 }
+                    };
+
+                    const shapes = [
+                        {
+                            type: 'line',
+                            x0: g.spot_price, x1: g.spot_price,
+                            y0: 0, y1: 1, yref: 'paper',
+                            line: { color: '#ffffff', width: 2, dash: 'dash' }
+                        },
+                        {
+                            type: 'line',
+                            x0: g.call_wall, x1: g.call_wall,
+                            y0: 0, y1: 1, yref: 'paper',
+                            line: { color: '#00F5A0', width: 2, dash: 'dot' }
+                        },
+                        {
+                            type: 'line',
+                            x0: g.put_wall, x1: g.put_wall,
+                            y0: 0, y1: 1, yref: 'paper',
+                            line: { color: '#FF2E55', width: 2, dash: 'dot' }
+                        }
+                    ];
+
+                    const annotations = [
+                        {
+                            x: g.spot_price, y: 1, yref: 'paper',
+                            text: 'Spot $' + g.spot_price.toFixed(2),
+                            showarrow: false,
+                            font: { color: '#ffffff', size: 10 },
+                            xanchor: 'right', yanchor: 'bottom'
+                        },
+                        {
+                            x: g.call_wall, y: 1, yref: 'paper',
+                            text: 'Call Wall $' + g.call_wall,
+                            showarrow: false,
+                            font: { color: '#00F5A0', size: 10 },
+                            xanchor: 'left', yanchor: 'bottom'
+                        },
+                        {
+                            x: g.put_wall, y: 0, yref: 'paper',
+                            text: 'Put Wall $' + g.put_wall,
+                            showarrow: false,
+                            font: { color: '#FF2E55', size: 10 },
+                            xanchor: 'right', yanchor: 'top'
+                        }
+                    ];
+
+                    if (g.zero_gamma_level && Math.abs(g.zero_gamma_level - g.spot_price) / g.spot_price < 0.15) {
+                        shapes.push({
+                            type: 'line',
+                            x0: g.zero_gamma_level, x1: g.zero_gamma_level,
+                            y0: 0, y1: 1, yref: 'paper',
+                            line: { color: '#38bdf8', width: 1.5, dash: 'dashdot' }
+                        });
+                        annotations.push({
+                            x: g.zero_gamma_level, y: 0.5, yref: 'paper',
+                            text: 'Flip $' + g.zero_gamma_level,
+                            showarrow: false,
+                            font: { color: '#38bdf8', size: 9 },
+                            xanchor: 'center', yanchor: 'middle'
+                        });
                     }
-                ];
 
-                const layout = {
-                    title: {
-                        text: `<b>${g.ticker} Dealer Gamma Exposure Profile by Strike</b> | Total Net GEX: $${g.total_net_gex_billions.toFixed(2)}B (${g.regime_short})`,
-                        font: { color: '#f1f5f9', size: 13 }
-                    },
-                    barmode: 'relative',
-                    paper_bgcolor: 'rgba(0,0,0,0)',
-                    plot_bgcolor: 'rgba(0,0,0,0)',
-                    margin: { l: 45, r: 25, t: 35, b: 35 },
-                    xaxis: {
-                        title: { text: 'Strike Price ($)', font: { color: '#94a3b8', size: 11 } },
-                        gridcolor: 'rgba(255, 255, 255, 0.04)',
-                        zerolinecolor: 'rgba(255, 255, 255, 0.1)',
-                        tickfont: { color: '#94a3b8', size: 10 }
-                    },
-                    yaxis: {
-                        title: { text: 'Dollar GEX ($M / 1% move)', font: { color: '#94a3b8', size: 11 } },
-                        gridcolor: 'rgba(255, 255, 255, 0.04)',
-                        zerolinecolor: 'rgba(255, 255, 255, 0.15)',
-                        tickfont: { color: '#94a3b8', size: 10 }
-                    },
-                    shapes: shapes,
-                    annotations: annotations,
-                    showlegend: true,
-                    legend: { orientation: 'h', x: 1, xanchor: 'right', y: 1.1, font: { color: '#94a3b8', size: 10 } }
-                };
+                    const layout = {
+                        title: {
+                            text: `<b>${g.ticker} Dealer Gamma Exposure Profile by Strike</b> | Total Net GEX: $${g.total_net_gex_billions.toFixed(2)}B (${g.regime_short})`,
+                            font: { color: '#f1f5f9', size: 13 }
+                        },
+                        barmode: 'relative',
+                        paper_bgcolor: 'rgba(0,0,0,0)',
+                        plot_bgcolor: 'rgba(0,0,0,0)',
+                        margin: { l: 45, r: 25, t: 35, b: 35 },
+                        xaxis: {
+                            title: { text: 'Strike Price ($)', font: { color: '#94a3b8', size: 11 } },
+                            gridcolor: 'rgba(255, 255, 255, 0.04)',
+                            zerolinecolor: 'rgba(255, 255, 255, 0.1)',
+                            tickfont: { color: '#94a3b8', size: 10 }
+                        },
+                        yaxis: {
+                            title: { text: 'Dollar GEX ($M / 1% move)', font: { color: '#94a3b8', size: 11 } },
+                            gridcolor: 'rgba(255, 255, 255, 0.04)',
+                            zerolinecolor: 'rgba(255, 255, 255, 0.15)',
+                            tickfont: { color: '#94a3b8', size: 10 }
+                        },
+                        shapes: shapes,
+                        annotations: annotations,
+                        showlegend: true,
+                        legend: { orientation: 'h', x: 1, xanchor: 'right', y: 1.1, font: { color: '#94a3b8', size: 10 } }
+                    };
 
-                Plotly.newPlot('optionsGammaChart', [traceCalls, tracePuts], layout, { responsive: true, displayModeBar: false });
+                    Plotly.newPlot('gammaDeskChart', [traceCalls, tracePuts], layout, { responsive: true, displayModeBar: false });
+                }
+
+                // 4. Tabular Per-Strike Breakdown
+                if (countSpan) countSpan.innerText = `${(g.strikes || []).length} Strikes Mapped`;
+                if (tbody && g.strikes && g.strikes.length > 0) {
+                    const spot = g.spot_price;
+                    tbody.innerHTML = g.strikes.map(s => {
+                        const distPct = ((s.strike / spot) - 1) * 100;
+                        const distStr = (distPct >= 0 ? '+' : '') + distPct.toFixed(1) + '%';
+                        const netClass = s.net_gex >= 0 ? 'text-mint font-semibold' : 'text-cherry font-semibold';
+                        const netSign = s.net_gex >= 0 ? '+' : '';
+
+                        let roleTag = '<span class="text-slate-500 text-[10px]">Normal Liquidity</span>';
+                        if (Math.abs(s.strike - g.call_wall) < 0.01) {
+                            roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/20 text-mint border border-mint/30">CALL WALL (Pin)</span>';
+                        } else if (Math.abs(s.strike - g.put_wall) < 0.01) {
+                            roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">PUT WALL (Floor)</span>';
+                        } else if (Math.abs(s.strike - g.zero_gamma_level) < 0.5) {
+                            roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30">ZERO FLIP</span>';
+                        } else if (Math.abs(s.strike - spot) < (spot * 0.005)) {
+                            roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/10 text-white">ATM SPOT</span>';
+                        }
+
+                        return `
+                            <tr class="border-b border-white/[0.04] hover:bg-white/[0.02] transition">
+                                <td class="py-2.5 px-3 font-bold text-white font-mono">$${s.strike.toFixed(1)}</td>
+                                <td class="py-2.5 px-3 font-mono text-slate-400">${distStr}</td>
+                                <td class="py-2.5 px-3 font-mono text-mint">+$${s.call_gex.toFixed(1)}M</td>
+                                <td class="py-2.5 px-3 font-mono text-cherry">-$${s.put_gex.toFixed(1)}M</td>
+                                <td class="py-2.5 px-3 font-mono ${netClass}">${netSign}$${s.net_gex.toFixed(1)}M</td>
+                                <td class="py-2.5 px-3 font-mono text-slate-300">${(s.call_oi || 0).toLocaleString()}</td>
+                                <td class="py-2.5 px-3 font-mono text-slate-300">${(s.put_oi || 0).toLocaleString()}</td>
+                                <td class="py-2.5 px-3">${roleTag}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+
+            } catch (err) {
+                console.error("Gamma desk fetch error:", err);
+                if (kpiRow) kpiRow.innerHTML = `<div class="col-span-full text-xs text-cherry bg-cherry/10 p-3 rounded-lg border border-cherry/20">Error loading gamma desk: ${err.message}</div>`;
             }
         }
 
