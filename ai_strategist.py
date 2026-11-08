@@ -324,7 +324,8 @@ def query_ai_agent(
             "atr_stretch": c["metrics"].get("atr_stretch"),
             "above_20ema": c["metrics"].get("close", 0) > c["metrics"].get("ema20", 0),
             "above_50ema": c["metrics"].get("close", 0) > c["metrics"].get("ema50", 0),
-            "above_200ema": c["metrics"].get("close", 0) > c["metrics"].get("ema200", 0)
+            "above_200ema": c["metrics"].get("close", 0) > c["metrics"].get("ema200", 0),
+            "edge_match": c["metrics"].get("edge_match", {})
         }
         for c in confluences
     }
@@ -333,8 +334,16 @@ def query_ai_agent(
     ratios = market_data.get("ratios", {})
 
     gamma_context = {}
+    options_vol_context = {}
     try:
-        from options_engine import compute_gamma_exposure_profile
+        from options_engine import (
+            compute_gamma_exposure_profile,
+            compute_realized_volatilities,
+            fetch_term_structure,
+            analyze_smile_and_skew
+        )
+        from data_manager import load_ticker_data
+
         symbols_to_check = ["SPY", "QQQ", "IWM"]
         # Extract any specific stock symbol mentioned in the user's prompt
         for cand in MAG_7 + INDEXES + SECTORS + ["PLTR", "AMD", "SMH", "GLD", "TLT", "IBIT"]:
@@ -358,6 +367,65 @@ def query_ai_agent(
                     "gex_intensity": g.get("gex_intensity"),
                     "regime": g.get("regime_short")
                 }
+
+            # If user query mentions options, contracts, vol, skew, smile, or specific stock
+            is_opt_query = bool(re.search(r'\b(option|options|contract|contracts|vol|volatility|skew|smile|call|calls|put|puts)\b', user_query, re.IGNORECASE))
+            if is_opt_query or sym in ["MSFT", "SPY", "QQQ"]:
+                try:
+                    df_t = load_ticker_data(sym)
+                    if df_t is not None and not df_t.empty:
+                        hvs_t = compute_realized_volatilities(df_t, sym)
+                        term_df_t, spot_t, _ = fetch_term_structure(sym, hvs_t)
+                        if term_df_t is not None and not term_df_t.empty:
+                            term_recs = []
+                            for _, r in term_df_t.head(4).iterrows():
+                                term_recs.append({
+                                    "expiration": str(r.get("Expiration")),
+                                    "dte": int(r.get("DTE", 0)),
+                                    "atm_iv": round(float(r.get("ATM_IV", 0)), 1),
+                                    "iv_hv_ratio": round(float(r.get("IV_HV_Ratio", 1)), 2),
+                                    "is_cheap": bool(r.get("Is_Cheap", False))
+                                })
+
+                            front_exp = str(term_df_t["Expiration"].iloc[0])
+                            smile_calls = analyze_smile_and_skew(sym, front_exp, spot_t, direction="Calls", side="Buy")
+                            smile_puts = analyze_smile_and_skew(sym, front_exp, spot_t, direction="Puts", side="Sell")
+
+                            top_calls_list = []
+                            if smile_calls and "top_strikes" in smile_calls and hasattr(smile_calls["top_strikes"], "iterrows"):
+                                for _, tc in smile_calls["top_strikes"].head(3).iterrows():
+                                    top_calls_list.append({
+                                        "strike": float(tc.get("strike", 0)),
+                                        "ask": float(tc.get("ask", 0)),
+                                        "ask_iv": round(float(tc.get("Ask_IV_Pct", 0)), 1),
+                                        "ask_edge": round(float(tc.get("Ask_Edge", 0)), 2),
+                                        "delta": round(float(tc.get("Est_Delta", 0)), 2)
+                                    })
+
+                            top_puts_list = []
+                            if smile_puts and "top_strikes" in smile_puts and hasattr(smile_puts["top_strikes"], "iterrows"):
+                                for _, tp in smile_puts["top_strikes"].head(3).iterrows():
+                                    top_puts_list.append({
+                                        "strike": float(tp.get("strike", 0)),
+                                        "bid": float(tp.get("bid", 0)),
+                                        "bid_iv": round(float(tp.get("Bid_IV_Pct", 0)), 1),
+                                        "bid_edge": round(float(tp.get("Bid_Edge", 0)), 2),
+                                        "delta": round(float(tp.get("Est_Delta", 0)), 2),
+                                        "cushion": tp.get("Downside_Cushion_Pct")
+                                    })
+
+                            s_metrics = (smile_calls.get("metrics") or {}) if smile_calls else {}
+                            options_vol_context[sym] = {
+                                "spot": spot_t,
+                                "hvs": hvs_t,
+                                "term_structure": term_recs,
+                                "skew_25d": s_metrics.get("skew_25d_text"),
+                                "skew_slope": s_metrics.get("skew_slope_text"),
+                                "top_discount_calls": top_calls_list,
+                                "top_overpriced_puts": top_puts_list
+                            }
+                except Exception:
+                    pass
     except Exception:
         pass
 
@@ -368,6 +436,7 @@ The user is asking you for quantitative analysis, market insight, dealer positio
 CURRENT LIVE MARKET SNAPSHOT ({datetime.now().strftime('%Y-%m-%d %H:%M')}):
 - Market Regime: {market_data.get('narrative_title')} | Bias: {market_data.get('macro_context')}
 - Dealer Gamma Exposure Profiles (Live Options GEX): {json.dumps(gamma_context, indent=1)}
+- Live Options Volatility Skew, Smile & Mispricings: {json.dumps(options_vol_context, indent=1)}
 - 5-Day Sector Velocity Baskets: {json.dumps(baskets)}
 - Key Ratio Analytics (SPY/RSP, QQQ/RSP, IWM/QQQ): {json.dumps({k: {'val': v.get('current'), '5d': v.get('pct_5d'), 'z_score': v.get('z_score_50d')} for k, v in ratios.items() if k in ['SPY_RSP', 'QQQ_RSP', 'IWM_QQQ']})}
 - Core Universe Confluence Snapshot:
@@ -395,7 +464,20 @@ INSTITUTIONAL DEALER GAMMA & RISK/REWARD MASTER DIRECTIVES:
      * Invalidation Stop: Above the Call Wall or 20/50 EMA ribbon.
      * Profit Target: Down to the Put Wall floor or cascade below Zero Gamma Flip.
 
-3. Rules for Responding:
+3. Volatility Skew, Smile & Contract Selection Directives:
+   - **IV/HV Ratio (Volatility Valuation)**:
+     * When IV/HV < 0.80x (Cheap Vol): Implied Volatility is trading at a steep discount to physical realized movement. Recommend buying directional calls/puts rather than shares to gain leveraged convexity without paying an inflated volatility premium.
+     * When IV/HV > 1.25x (Expensive Vol): Harvest elevated premium by selling credit spreads (e.g. Bull Put Spread below the Put Wall).
+   - **25-Delta Skew & Skew Slope**:
+     * Steep Put Skew (Puts rich, downside bid): The options market is paying inflated insurance premiums for downside puts. Exploit this by selling OTM Put Spreads at/below the Put Wall floor, or buying OTM Calls which benefit from the cheaper right-hand side of the smile.
+   - **Exact Contract Recommendations**:
+     * For Call Buyers: Recommend strikes between the spot price and the Call Wall (Delta 0.35–0.50) with positive Ask Edge.
+     * For Credit Sellers: Recommend short strikes directly at or below the Put Wall floor with maximum Bid Edge.
+
+4. Historical Backtested Edge Integration:
+   - Ground conviction in the 20-year empirical track record: cite the sample size, 20-day win rate (e.g. 59.4% to 72%+), and median historical forward return from Layer 7 of the confluence checklist.
+
+5. Rules for Responding:
    - Direct, precise, Wall Street institutional tone. Bold key numbers, levels, and tickers.
    - Ground setups in the confluence of: Trend Ribbons (20/50/200 EMAs), Volume (RVOL), Overbought/Oversold Stretch (ATR), and Dealer Gamma Levels (Call Wall, Put Wall, Zero Flip).
    - Always state the Risk-to-Reward ratio (e.g., "1 : 3.2 R:R") and explicitly explain why the Put Wall provides downside safety and the Call Wall serves as the take-profit ceiling.
