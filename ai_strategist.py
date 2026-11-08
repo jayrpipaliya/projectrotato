@@ -146,8 +146,9 @@ def generate_ai_ideas(market_data: dict, gemini_api_key: str = None) -> dict:
             gamma_summary = {}
             try:
                 from options_engine import compute_gamma_exposure_profile
-                for idx_sym in ["SPY", "QQQ"]:
-                    g_res = compute_gamma_exposure_profile(idx_sym, max_expirations=4)
+                key_gamma_syms = ["SPY", "QQQ", "IWM", "NVDA", "AAPL", "MSFT", "AMZN", "TSLA"]
+                for idx_sym in key_gamma_syms:
+                    g_res = compute_gamma_exposure_profile(idx_sym, max_expirations=3)
                     if g_res and "error" not in g_res:
                         gamma_summary[idx_sym] = {
                             "spot": g_res.get("spot_price"),
@@ -156,6 +157,7 @@ def generate_ai_ideas(market_data: dict, gemini_api_key: str = None) -> dict:
                             "put_wall": g_res.get("put_wall"),
                             "put_wall_dist_pct": f"{g_res.get('put_wall_dist_pct'):+.2f}%",
                             "zero_gamma_level": g_res.get("zero_gamma_level"),
+                            "zero_gamma_dist_pct": f"{g_res.get('zero_gamma_dist_pct'):+.2f}%",
                             "net_gex_billions": f"${g_res.get('total_net_gex_billions'):+.2f}B",
                             "regime": g_res.get("regime_short"),
                             "regime_detail": g_res.get("regime")
@@ -186,16 +188,24 @@ Analyze the following comprehensive quantitative desk data for {datetime.now().s
 
 CRITICAL INSTRUCTION:
 Do NOT rely on any pre-set static narrative rules or conditions. Synthesize the raw numbers, cross-asset momentum, sector rotations, breadth ratios, AND dealer Gamma Exposure (GEX) levels from first principles.
-Dealer Gamma Mechanics:
-- Long Gamma (>0 Net GEX): Dealers sell strength and buy weakness, dampening volatility and pinning price action between the Put Wall and Call Wall.
-- Short Gamma (<0 Net GEX): Dealers sell drops and buy rallies, amplifying volatility and accelerating trending momentum.
-- Call Wall represents major dealer hedging resistance ceiling / upside pin; Put Wall represents major dealer hedging support floor.
+
+INSTITUTIONAL DEALER GAMMA & RISK/REWARD FRAMEWORK:
+1. Gamma Positioning Regimes:
+   - Long Gamma (>0 Net GEX): Dealers are net long gamma; to maintain delta neutrality, they BUY dips and SELL rallies. This acts as a volatility suppressor and price pin. Spot tends to compress between the Put Wall (support floor) and Call Wall (upside ceiling). Strategy: Favor mean-reversion, bidding 20 EMA pullbacks near the Put Wall, taking profit directly at the Call Wall, and harvesting elevated IV.
+   - Short Gamma (<0 Net GEX): Dealers are net short gamma; they MUST SELL as prices fall and BUY as prices rally. This pro-cyclical hedging triggers self-reinforcing trending cascades, gap-and-go moves, and sharp volatility spikes. Strategy: Favor momentum breakouts, wider directional targets, long volatility, and strict trailing stops.
+   - Zero-Gamma Vol Flip: The critical boundary price where dealer positioning flips between Long and Short Gamma. Spot breaking below the Zero-Gamma Flip unleashes directional acceleration.
+   - Call Wall: Major upside supply ceiling and pinning magnet into weekly OpEx. In Long Gamma, rallies into the Call Wall face heavy dealer supply—fading or de-risking is mandatory unless broken with massive institutional volume.
+   - Put Wall: Major downside structural cushion and liquidity floor. In Long Gamma, dealers aggressively defend this level, making it the primary anchor for stop-loss invalidations.
+2. Asymmetric Risk/Reward Execution:
+   - Always structure trade setups with a minimum 1 : 2.5+ R:R.
+   - Longs: Anchor entry at 20 EMA / Put Wall cushion, place hard invalidation stop strictly beneath the Put Wall or Zero Gamma Flip, and target the Call Wall pin for Take Profit 1.
+   - Shorts / Fades: Invalidate above the Call Wall or 20/50 EMA, targeting the Put Wall or cascade expansion below the Zero Gamma Flip.
 
 Your response MUST begin with the following structural header block:
 
 ---AI_REGIME_HEADER---
 REGIME_TITLE: [Formulate a high-conviction, professional 3-7 word regime title based on your analysis of the data, e.g. "Broadening Cyclical Reflation & High-Beta Expansion", "Mega-Cap Tech Exhaustion & Narrow Breadth Squeeze", "Defensive Flight into Yield Proxies", etc.]
-REGIME_DETAIL: [2-3 sentences synthesizing the exact mechanics of capital flows across sectors and breadth based on the numbers.]
+REGIME_DETAIL: [2-3 sentences synthesizing the exact mechanics of capital flows across sectors, breadth ratios, and dealer gamma positioning based on the numbers.]
 RISK_LEVEL: [Choose exactly one: Bullish / Risk-On | Selective / Dispersion | Elevated Caution | High Fragility | Defensive / Risk-Off]
 MACRO_CONTEXT: [1-2 sentences summarizing how Treasury yields (TLT), Gold (GLD), Crude Oil (USO), and Bitcoin (IBIT) are aligning with or diverging from equities.]
 ---END_AI_REGIME_HEADER---
@@ -204,6 +214,7 @@ Follow immediately with the 4-Pillar Daily Institutional Intelligence Briefing:
 
 ### 1. Macro Regime & Cross-Asset Liquidity Assessment
 Provide a 1-sentence executive summary of the prevailing regime you identified above.
+Detail the Market Maker Gamma Regime: State SPY and QQQ Net GEX ($B), Long vs Short Gamma status, and distance to the Call Wall ceiling and Put Wall floor.
 Then break down the 4 macro liquidity pillars with distinct bullets:
 * **TLT (Treasuries):** Detail yield pressure vs easing, duration impact, and relationship to 50 EMA.
 * **GLD (Gold):** Detail real yields, debasement hedging demand, and key price levels.
@@ -221,15 +232,15 @@ Conclude with a clear statement: Current institutional regime is **[Risk-On / Ri
 
 ### 3. Actionable Setups & Trade Confluence
 #### 🟢 High-Conviction Long Setups (Green Confluence)
-* Detail top green confluence assets: Exact technical alignment (Price above 20/50 EMAs, RSI, RVOL, stretch) and trade rationale.
+* Detail top green confluence assets: Exact technical alignment (Price above 20/50 EMAs, RSI, RVOL), Dealer Gamma levels (Put Wall cushion, Call Wall target), and trade rationale with asymmetric R:R.
 #### 🔴 Distribution Warnings & Retail Traps (Red Confluence)
-* Detail top red confluence assets: Specific structural breakdowns and explicitly warn why retail traders must avoid buying the dip on these failing names.
+* Detail top red confluence assets: Specific structural breakdowns, failure at 20/50 EMAs or breach of Put Wall, and explicitly warn why retail traders must avoid buying the dip on these failing names.
 
 ### 4. Desk Game Plan & Tactical Risk Boundaries
 #### Tactical Risk Execution Rules
-* **Capital Deployment (Add Risk):** Where to allocate capital and optimal entry zones.
-* **Portfolio Defense (Hedge / Trim):** Names or sectors to de-risk, trim profits, or hedge.
-* **Hard Invalidation Trigger Levels:** 2-3 specific index or ratio thresholds that will immediately invalidate the current bullish or bearish bias.
+* **Capital Deployment (Add Risk):** Where to allocate capital and optimal limit entry zones relative to Put Walls.
+* **Portfolio Defense (Hedge / Trim):** Names or sectors to de-risk, trim profits into Call Walls, or hedge.
+* **Hard Invalidation Trigger Levels:** 2-3 specific index, gamma (e.g. SPY Put Wall / Zero Flip breach), or ratio thresholds that will immediately invalidate the current bias.
 
 Write in a crisp, Wall Street institutional tone. Bold all key tickers, percentages, and metrics.
 Keep each bullet point to 1-2 dense, high-signal analytical sentences (target 1,800 - 2,500 total characters) to ensure immediate execution speed.
@@ -319,38 +330,65 @@ def query_ai_agent(
     gamma_context = {}
     try:
         from options_engine import compute_gamma_exposure_profile
-        for idx_sym in ["SPY", "QQQ"]:
-            g = compute_gamma_exposure_profile(idx_sym, max_expirations=3)
+        symbols_to_check = ["SPY", "QQQ", "IWM"]
+        # Extract any specific stock symbol mentioned in the user's prompt
+        for cand in MAG_7 + INDEXES + SECTORS + ["PLTR", "AMD", "SMH", "GLD", "TLT", "IBIT"]:
+            if re.search(r'\b' + re.escape(cand) + r'\b', user_query, re.IGNORECASE):
+                if cand not in symbols_to_check:
+                    symbols_to_check.append(cand)
+
+        for sym in symbols_to_check:
+            g = compute_gamma_exposure_profile(sym, max_expirations=3)
             if g and "error" not in g:
-                gamma_context[idx_sym] = {
+                gamma_context[sym] = {
                     "spot": g.get("spot_price"),
                     "call_wall": g.get("call_wall"),
+                    "call_wall_dist_pct": f"{g.get('call_wall_dist_pct'):+.2f}%",
                     "put_wall": g.get("put_wall"),
+                    "put_wall_dist_pct": f"{g.get('put_wall_dist_pct'):+.2f}%",
                     "zero_gamma_flip": g.get("zero_gamma_level"),
                     "net_gex_b": f"${g.get('total_net_gex_billions'):+.2f}B",
-                    "regime": g.get("regime")
+                    "regime": g.get("regime_short")
                 }
     except Exception:
         pass
 
     system_context = f"""
-You are the **Double Edge Quantitative AI Analyst & Portfolio Risk Strategist**, an institutional-grade trading and macro AI agent embedded in the Double Edge Quantitative Dashboard.
-The user is asking you for quantitative analysis, market insight, or trade evaluations.
+You are the **Double Edge Quantitative AI Analyst & Chief Risk Officer**, an institutional-grade macro and systematic trading AI agent embedded in the Double Edge Quantitative Dashboard.
+The user is asking you for quantitative analysis, market insight, dealer positioning evaluations, or trade setups.
 
 CURRENT LIVE MARKET SNAPSHOT ({datetime.now().strftime('%Y-%m-%d %H:%M')}):
 - Market Regime: {market_data.get('narrative_title')} | Bias: {market_data.get('macro_context')}
-- Dealer Gamma Exposure (SPY/QQQ): {json.dumps(gamma_context)}
+- Dealer Gamma Exposure Profiles (Live Options GEX): {json.dumps(gamma_context, indent=1)}
 - 5-Day Sector Velocity Baskets: {json.dumps(baskets)}
 - Key Ratio Analytics (SPY/RSP, QQQ/RSP, IWM/QQQ): {json.dumps({k: {'val': v.get('current'), '5d': v.get('pct_5d'), 'z_score': v.get('z_score_50d')} for k, v in ratios.items() if k in ['SPY_RSP', 'QQQ_RSP', 'IWM_QQQ']})}
 - Core Universe Confluence Snapshot:
 {json.dumps(confluence_map, indent=1, default=str)}
 
-RULES FOR RESPONDING:
-1. Always be direct, precise, quantitative, and institutional.
-2. Ground your explanations in the mathematical indicators (20/50/200 EMAs, RSI, ATR stretch, RVOL, Confluence Score).
-3. If asked about broader market risk or price trajectory, evaluate Dealer Gamma Exposure (Call Wall resistance, Put Wall support, Zero Gamma Flip) alongside breadth (SPY/RSP) and macro assets (TLT, GLD, USO, IBIT).
-4. If asked about a specific stock, provide: Trend Status, Support/Resistance (EMAs), Volume Confirmation (RVOL), Overbought/Oversold Stretch (ATR), and Actionable Desk Verdict (Buy/Wait/Fade).
-5. Always provide explicit risk invalidation levels (e.g. "Stop invalidation below 50 EMA at $XXX").
+INSTITUTIONAL DEALER GAMMA & RISK/REWARD MASTER DIRECTIVES:
+1. Gamma Positioning Regimes:
+   - **Net Long Gamma (+$B GEX)**: Dealers are net long options gamma. To maintain delta neutrality, they BUY weakness and SELL strength. This dampens realized intraday volatility, compresses price swings, and pins price between the Put Wall (support) and Call Wall (resistance). High probability for mean-reversion, range fades, bidding pullbacks, and taking profit at Call Walls.
+   - **Net Short Gamma (-$B GEX)**: Dealers are net short options gamma. They MUST SELL as price falls and BUY as price rallies. This creates self-reinforcing trending cascades, gap-and-go volatility expansions, and tail risk. Favor directional momentum breakouts, trailing stops, and long volatility.
+   - **Zero-Gamma Vol Flip**: The critical inflection boundary. Trading above it is Long Gamma (mean-reverting); breaking below it unleashes violent Short Gamma acceleration.
+   - **Call Wall**: Strike with maximum positive call gamma. Acts as the primary institutional resistance ceiling and pinning magnet into OpEx. Rallies into the Call Wall face dealer sell pressure—take profit or fade unless accompanied by heavy volume breakout.
+   - **Put Wall**: Strike with maximum put gamma. Acts as structural downside cushion and liquidity floor. In Long Gamma, dealers aggressively bid dips here, making it the premier anchor for stop-loss placement.
+
+2. Structuring Asymmetric Risk/Reward (R:R):
+   - Every recommended trade must have mathematically defined entry, stop loss, profit target, and asymmetric Risk-to-Reward (minimum 1 : 2.5+ R:R).
+   - **Long Setups**:
+     * Entry: Limit bids anchored at 20 EMA pullback or near the Put Wall liquidity floor.
+     * Invalidation Stop: Placed strictly below the Put Wall (e.g. Put Wall * 0.995) or below the Zero Gamma Flip.
+     * Take-Profit 1: Anchored directly at the Call Wall Pin (or just in front of it).
+     * Take-Profit 2 (Runner): 5-10% extension or next structural resistance.
+   - **Short / Fade Setups**:
+     * Entry: Fade retests of broken 20/50 EMAs from underneath or exhaustion at the Call Wall.
+     * Invalidation Stop: Above the Call Wall or 20/50 EMA ribbon.
+     * Profit Target: Down to the Put Wall floor or cascade below Zero Gamma Flip.
+
+3. Rules for Responding:
+   - Direct, precise, Wall Street institutional tone. Bold key numbers, levels, and tickers.
+   - Ground setups in the confluence of: Trend Ribbons (20/50/200 EMAs), Volume (RVOL), Overbought/Oversold Stretch (ATR), and Dealer Gamma Levels (Call Wall, Put Wall, Zero Flip).
+   - Always state the Risk-to-Reward ratio (e.g., "1 : 3.2 R:R") and explicitly explain why the Put Wall provides downside safety and the Call Wall serves as the take-profit ceiling.
 """
 
     messages = [{"role": "system", "content": system_context}]
@@ -445,9 +483,19 @@ def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = 
 
         # Invalidation Stop: Structural support strictly below limit zone, anchored by Put Wall if below entry
         if pw > 0 and pw < opt_entry_mid:
-            stop_price = round(min(limit_low * 0.985, pw * 0.995), 2)
+            pw_dist = (opt_entry_mid - pw) / opt_entry_mid
+            # If Put Wall is within 0.8% to 4.5% below entry, anchor stop strictly below dealer Put Wall cushion
+            if 0.008 <= pw_dist <= 0.045:
+                stop_price = round(pw * 0.995, 2)
+            else:
+                stop_price = round(min(limit_low * 0.985, ema50 * 0.99), 2)
         else:
             stop_price = round(min(limit_low * 0.985, ema50 * 0.99), 2)
+
+        # Ensure stop is below limit_low
+        if stop_price >= limit_low:
+            stop_price = round(limit_low * 0.988, 2)
+
         stop_pct = round(((stop_price - opt_entry_mid) / opt_entry_mid) * 100.0, 1)
 
         # Targets & Call Wall Pin Alignment
@@ -458,13 +506,20 @@ def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = 
         target2 = round(opt_entry_mid * (1 + (med_ret * 1.6) / 100.0), 2)
         target1_pct_str = f"+{med_ret:.1f}%"
 
-        if cw > opt_entry_mid and cw < target1:
-            target1 = round(cw, 2)
-            target1_pct_str = f"+{((cw - opt_entry_mid) / opt_entry_mid) * 100:.1f}% (Call Wall Pin)"
+        # If Call Wall is above entry, align Target 1 with Call Wall Pin
+        if cw > opt_entry_mid:
+            cw_dist = (cw - opt_entry_mid) / opt_entry_mid
+            if 0.01 <= cw_dist <= 0.08:
+                target1 = round(cw, 2)
+                target1_pct_str = f"+{cw_dist * 100:.1f}% (Call Wall Pin)"
+                target2 = round(cw * 1.025, 2)
 
         risk = max(opt_entry_mid - stop_price, 0.01)
         reward = max(target1 - opt_entry_mid, 0.01)
         rr_ratio = round(reward / risk, 1)
+
+        if cw > 0 and pw > 0:
+            exec_desc += f" [GEX Strategy: {g_regime or 'Dealer GEX'} | Put Wall (${pw:,.0f}) floor cushion, Call Wall (${cw:,.0f}) target pin | 1:{rr_ratio:.1f} R:R]"
 
         return {
             "current_price": f"${close:,.2f}",
@@ -518,21 +573,29 @@ def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = 
         # Breakdown Trigger
         breakdown_trigger = round(min(low_5d * 0.998, close - 0.25 * atr), 2)
 
-        # Invalidation Stop: Above 50 EMA / resistance
-        stop_price = round(max(opt_entry_mid * 1.03, ema50 * 1.01), 2)
+        # Invalidation Stop: Above 50 EMA / resistance or Call Wall
+        if cw > opt_entry_mid and (cw - opt_entry_mid) / opt_entry_mid <= 0.04:
+            stop_price = round(cw * 1.005, 2)
+        else:
+            stop_price = round(max(opt_entry_mid * 1.03, ema50 * 1.01), 2)
         stop_pct = round(((stop_price - opt_entry_mid) / opt_entry_mid) * 100.0, 1)
 
         target1 = round(opt_entry_mid * 0.95, 2)
         target2 = round(opt_entry_mid * 0.91, 2)
         target1_pct_str = "-5.0%"
 
-        if pw > 0 and pw < opt_entry_mid and pw > target1:
-            target1 = round(pw, 2)
-            target1_pct_str = f"{((pw - opt_entry_mid) / opt_entry_mid) * 100.0:.1f}% (Put Wall Floor)"
+        if pw > 0 and pw < opt_entry_mid:
+            pw_dist = (opt_entry_mid - pw) / opt_entry_mid
+            if 0.01 <= pw_dist <= 0.09:
+                target1 = round(pw, 2)
+                target1_pct_str = f"-{pw_dist * 100.0:.1f}% (Put Wall Floor)"
 
         risk = max(stop_price - opt_entry_mid, 0.01)
         reward = max(opt_entry_mid - target1, 0.01)
         rr_ratio = round(reward / risk, 1)
+
+        if cw > 0 and pw > 0:
+            exec_desc += f" [GEX Strategy: Fade toward Put Wall (${pw:,.0f}) | Call Wall (${cw:,.0f}) invalidation | 1:{rr_ratio:.1f} R:R]"
 
         return {
             "current_price": f"${close:,.2f}",
