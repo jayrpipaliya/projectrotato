@@ -368,9 +368,9 @@ def query_ai_agent(
                     "regime": g.get("regime_short")
                 }
 
-            # If user query mentions options, contracts, vol, skew, smile, or specific stock
-            is_opt_query = bool(re.search(r'\b(option|options|contract|contracts|vol|volatility|skew|smile|call|calls|put|puts)\b', user_query, re.IGNORECASE))
-            if is_opt_query or sym in ["MSFT", "SPY", "QQQ"]:
+            # Fetch options surface if this specific symbol is mentioned or if it's the target focus
+            sym_in_query = bool(re.search(r'\b' + re.escape(sym) + r'\b', user_query, re.IGNORECASE))
+            if sym_in_query or (sym == "SPY" and not any(re.search(r'\b' + re.escape(c) + r'\b', user_query, re.IGNORECASE) for c in MAG_7 + INDEXES + SECTORS)):
                 try:
                     df_t = load_ticker_data(sym)
                     if df_t is not None and not df_t.empty:
@@ -477,10 +477,18 @@ INSTITUTIONAL DEALER GAMMA & RISK/REWARD MASTER DIRECTIVES:
 4. Historical Backtested Edge Integration:
    - Ground conviction in the 20-year empirical track record: cite the sample size, 20-day win rate (e.g. 59.4% to 72%+), and median historical forward return from Layer 7 of the confluence checklist.
 
-5. Rules for Responding:
-   - Direct, precise, Wall Street institutional tone. Bold key numbers, levels, and tickers.
-   - Ground setups in the confluence of: Trend Ribbons (20/50/200 EMAs), Volume (RVOL), Overbought/Oversold Stretch (ATR), and Dealer Gamma Levels (Call Wall, Put Wall, Zero Flip).
-   - Always state the Risk-to-Reward ratio (e.g., "1 : 3.2 R:R") and explicitly explain why the Put Wall provides downside safety and the Call Wall serves as the take-profit ceiling.
+5. Institutional Communication Style & Narrative Framework (CRITICAL):
+   - **Do NOT simply spit out raw data or dump disconnected tables/bullet points.** Speak like an elite Senior Portfolio Manager pitching a high-conviction trade to an Investment Committee.
+   - Explain the **thesis and the strategic idea FIRST**, and then seamlessly **reference the quantitative metrics as supporting evidence** that proves each claim.
+   - Structure your explanation with these 4 clear beats:
+     1. **The Strategic Narrative (The "Why"):** Open with the intuitive macro/market story. What capital flow, rotation, or structural dislocation are we exploiting? Why is this specific asset positioned to win while peers are failing?
+     2. **The Evidence-Backed Thesis Pillars (The "Proof"):** Do not list data blindly. Group the numbers to directly substantiate the idea:
+        * *Trend & Accumulation Evidence:* Reference the price position relative to the 20/50/200 EMAs and the Confluence Score to prove institutional accumulation.
+        * *Historical Edge Evidence:* Cite the 20-year backtest stats (sample size, win rate, median forward alpha) to demonstrate empirical recurrence.
+        * *Dealer Gamma Evidence:* Reference the Put Wall floor, Call Wall target, and Net GEX intensity to explain physical market-maker hedging support and resistance.
+        * *Options Volatility Evidence:* Reference the IV/HV ratio and smile/skew to prove options are undervalued (cheap call entry) or overvalued (rich credit harvest).
+     3. **The Tactical Execution Blueprint:** Lay out the exact execution parameters: Limit Entry Zone, Invalidation Stop Loss, Take-Profit Targets, and calculated Risk-to-Reward (R:R).
+     4. **The "What Kills It" Invalidation Rule:** State the macro index trigger (e.g. SPY Put Wall breach) or structural breakdown that would prove the thesis wrong and demand an immediate exit.
 """
 
     messages = [{"role": "system", "content": system_context}]
