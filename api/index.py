@@ -690,6 +690,99 @@ HTML_CONTENT = """<!DOCTYPE html>
 
     table td, table th { padding: 10px 12px; }
 
+    /* AI Terminal Chat Log Styling */
+    #chatHistory table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin: 10px 0 14px 0;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #1B212D;
+      background: #090B10;
+      font-size: 11.5px;
+    }
+    #chatHistory th {
+      background: #131720;
+      color: #94a3b8;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      padding: 8px 10px;
+      border-bottom: 1px solid #1B212D;
+      text-align: left;
+    }
+    #chatHistory td {
+      padding: 7px 10px;
+      border-bottom: 1px solid rgba(27, 33, 45, 0.7);
+      color: #e2e8f0;
+      font-variant-numeric: tabular-nums;
+    }
+    #chatHistory tr:last-child td {
+      border-bottom: none;
+    }
+    #chatHistory tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    #chatHistory blockquote {
+      margin: 10px 0;
+      padding: 8px 14px;
+      border-left: 3px solid #00F5A0;
+      background: rgba(0, 245, 160, 0.05);
+      border-radius: 0 8px 8px 0;
+      color: #cbd5e1;
+      font-size: 12px;
+    }
+    #chatHistory blockquote p {
+      margin: 0;
+    }
+    #chatHistory blockquote:has(🛑), #chatHistory blockquote:has(⚠️) {
+      border-left: 3px solid #FF2E55;
+      background: rgba(255, 46, 85, 0.06);
+    }
+    #chatHistory h2 {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #ffffff;
+      margin-top: 14px;
+      margin-bottom: 6px;
+    }
+    #chatHistory h3 {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-top: 14px;
+      margin-bottom: 6px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    #chatHistory h4 {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #94a3b8;
+      margin-top: 10px;
+      margin-bottom: 4px;
+    }
+    #chatHistory hr {
+      border: 0;
+      border-top: 1px solid #1B212D;
+      margin: 12px 0;
+    }
+    #chatHistory strong, #chatHistory b {
+      color: #ffffff;
+      font-weight: 600;
+    }
+    #chatHistory code {
+      background: rgba(255, 255, 255, 0.06);
+      padding: 1px 4px;
+      border-radius: 4px;
+      font-size: 11px;
+      color: #38bdf8;
+    }
+
     /* Executive Synthesis Styling */
     .synth-body ul {
       display: flex;
@@ -981,7 +1074,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </div>
 
                 <!-- Chat History Window -->
-                <div id="chatHistory" class="space-y-3 min-h-[300px] max-h-[500px] overflow-y-auto p-4 rounded-xl bg-[#090a0f] border border-white/5 mb-4">
+                <div id="chatHistory" class="space-y-3 min-h-[320px] max-h-[620px] overflow-y-auto p-4 rounded-xl bg-[#090a0f] border border-white/5 mb-4">
                     <!-- Messages dynamically rendered -->
                 </div>
 
@@ -2006,7 +2099,7 @@ async function init() {
                 html += `
                     <div class="p-3 rounded-xl border ${bg}">
                         ${label}
-                        <div class="text-xs leading-relaxed prose prose-invert max-w-none">${parsedContent}</div>
+                        <div class="text-xs leading-relaxed max-w-none overflow-x-auto">${parsedContent}</div>
                     </div>
                 `;
             });

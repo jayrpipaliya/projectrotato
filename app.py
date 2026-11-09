@@ -184,6 +184,65 @@ st.markdown("""
         color: #08090C !important;
         box-shadow: 0 0 15px rgba(0, 245, 160, 0.3) !important;
     }
+    /* Streamlit Chat Log Markdown Tables & Terminal Cards */
+    [data-testid="stChatMessage"] table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        margin: 10px 0 14px 0;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #1B212D;
+        background: #090B10;
+        font-size: 12px;
+    }
+    [data-testid="stChatMessage"] th {
+        background: #131720;
+        color: #94a3b8;
+        font-weight: 700;
+        text-transform: uppercase;
+        font-size: 10.5px;
+        letter-spacing: 0.05em;
+        padding: 8px 12px;
+        border-bottom: 1px solid #1B212D;
+        text-align: left;
+    }
+    [data-testid="stChatMessage"] td {
+        padding: 8px 12px;
+        border-bottom: 1px solid rgba(27, 33, 45, 0.7);
+        color: #e2e8f0;
+        font-variant-numeric: tabular-nums lining-nums;
+    }
+    [data-testid="stChatMessage"] tr:last-child td {
+        border-bottom: none;
+    }
+    [data-testid="stChatMessage"] tr:hover td {
+        background: rgba(255, 255, 255, 0.02);
+    }
+    [data-testid="stChatMessage"] blockquote {
+        margin: 10px 0;
+        padding: 10px 14px;
+        border-left: 3px solid #00F5A0;
+        background: rgba(0, 245, 160, 0.05);
+        border-radius: 0 8px 8px 0;
+        color: #cbd5e1;
+        font-size: 12.5px;
+    }
+    [data-testid="stChatMessage"] h2, [data-testid="stChatMessage"] h3 {
+        color: #ffffff;
+        font-weight: 700;
+        margin-top: 14px;
+        margin-bottom: 6px;
+    }
+    [data-testid="stChatMessage"] h4 {
+        color: #94a3b8;
+        font-size: 11.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: 10px;
+        margin-bottom: 4px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
