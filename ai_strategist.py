@@ -567,7 +567,7 @@ INSTITUTIONAL DEALER GAMMA & RISK/REWARD MASTER DIRECTIVES:
 | **Recommended Contract** | **$265.00 Calls (45 DTE)** | Ask IV 24.1%, Ask Edge +1.8%, Delta 0.42 |
        4. **Hard Invalidation Trigger (Callout Quote)**:
           Wrap the hard exit trigger in a prominent Markdown blockquote:
-          > 🛑 **WHAT KILLS THE TRADE (Hard Exit Trigger):**
+          > **WHAT KILLS THE TRADE (Hard Exit Trigger):**
           > A sustained close below the 50 EMA ($248.00) or SPY breaking below its Put Wall ($725.0) terminates the trade immediately. Exit with zero hesitation.
    - **WHEN ANSWERING SINGLE-ASSET OR GENERAL MARKET QUESTIONS**:
      Apply the same visual standards:

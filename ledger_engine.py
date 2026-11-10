@@ -349,19 +349,19 @@ def compute_mark_to_market(trade: dict, live_spot: float = None) -> dict:
 
     # 4. Trigger Alerts (Direction-aware)
     if target_2 > 0 and ((not is_bearish and ref_spot >= target_2) or (is_bearish and ref_spot <= target_2)):
-        res["trigger_alert"] = f"🚀 Target 2 Runner Hit (${ref_spot:,.2f})! Fully maximize gains or trail hard stop."
+        res["trigger_alert"] = f"Target 2 Runner Hit (${ref_spot:,.2f})! Fully maximize gains or trail hard stop."
         res["alert_type"] = "success"
     elif target_1 > 0 and ((not is_bearish and ref_spot >= target_1) or (is_bearish and ref_spot <= target_1)):
-        res["trigger_alert"] = f"🎯 Target 1 Reached (${ref_spot:,.2f})! Recommended: Harvest 50% profits & move stop to breakeven."
+        res["trigger_alert"] = f"Target 1 Reached (${ref_spot:,.2f})! Recommended: Harvest 50% profits & move stop to breakeven."
         res["alert_type"] = "success"
     elif stop_loss > 0 and ((not is_bearish and ref_spot <= stop_loss) or (is_bearish and ref_spot >= stop_loss)):
-        res["trigger_alert"] = f"🛑 Invalidation Stop Breached (${ref_spot:,.2f})! Thesis broken—desk directive is to exit immediately."
+        res["trigger_alert"] = f"Invalidation Stop Breached (${ref_spot:,.2f})! Thesis broken—desk directive is to exit immediately."
         res["alert_type"] = "error"
     elif stop_loss > 0 and 0.0 <= res["dist_to_stop_pct"] < 1.0:
-        res["trigger_alert"] = f"⚠️ Critical Risk: Within {res['dist_to_stop_pct']:.1f}% of Invalidation Stop (${stop_loss:,.2f})."
+        res["trigger_alert"] = f"Critical Risk: Within {res['dist_to_stop_pct']:.1f}% of Invalidation Stop (${stop_loss:,.2f})."
         res["alert_type"] = "warning"
     elif target_1 > 0 and 0.0 <= res["dist_to_target1_pct"] < 1.0:
-        res["trigger_alert"] = f"⚡ Approaching Target 1: Less than 1.0% away (${target_1:,.2f}). Prepare to lock in gains."
+        res["trigger_alert"] = f"Approaching Target 1: Less than 1.0% away (${target_1:,.2f}). Prepare to lock in gains."
         res["alert_type"] = "info"
 
     return res

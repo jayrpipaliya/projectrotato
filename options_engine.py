@@ -1720,7 +1720,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
             cost_label = f"${r['ask_cost']:.2f}" if side_clean == "Buy" else f"${r['bid_cost']:.2f}"
             edge_val = r['ask_edge'] if side_clean == "Buy" else r['bid_edge']
             edge_label = f"{edge_val:+.2f}%"
-            earn_flag = "⚠️ Spans Earn" if r['spans_earnings'] else "Safe"
+            earn_flag = "Spans Earn" if r['spans_earnings'] else "Safe"
             table_rows.append({
                 "Tier": r['tier'],
                 "Date (DTE)": f"{r['expiration']} ({r['dte']}d)",
@@ -1822,7 +1822,7 @@ def render_gamma_desk_page(available_tickers=None):
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
             <div>
                 <h2 style="margin: 0; color: #f8fafc; font-size: 1.6rem; font-weight: 700;">
-                    ⚡ Institutional Dealer Gamma Exposure (GEX) Desk
+                    Institutional Dealer Gamma Exposure (GEX) Desk
                 </h2>
                 <p style="margin: 0.35rem 0 0 0; color: #94a3b8; font-size: 0.95rem;">
                     Real-time dealer delta-hedging architecture: Inverts Black-Scholes gamma across open interest to identify <b>Call Wall pins</b>, <b>Put Wall hedging floors</b>, <b>Zero-Gamma flip boundaries</b>, and directional acceleration triggers.
@@ -1888,7 +1888,7 @@ def render_gamma_desk_page(available_tickers=None):
     if is_long:
         st.markdown(f"""
         <div style="background: rgba(0, 245, 160, 0.08); border: 1px solid rgba(0, 245, 160, 0.25); border-left: 4px solid #00F5A0; padding: 12px 16px; border-radius: 8px; margin: 16px 0;">
-            <b style="color: #00F5A0; font-size: 0.95rem;">🛡️ LONG GAMMA REGIME DETECTED (+${net_gex:.2f}B Net GEX)</b><br>
+            <b style="color: #00F5A0; font-size: 0.95rem;">LONG GAMMA REGIME DETECTED (+${net_gex:.2f}B Net GEX)</b><br>
             <span style="color: #cbd5e1; font-size: 0.85rem; line-height: 1.4;">
                 Market makers are long gamma and must <b>sell into rallies</b> and <b>buy into pullbacks</b> to maintain delta-neutral books. This dampens realized volatility and creates powerful mean-reversion magnet pin action between <b>Put Wall (${pw:.0f})</b> and <b>Call Wall (${cw:.0f})</b>. Limit orders at edges are favored over chasing breakouts.
             </span>
@@ -1897,7 +1897,7 @@ def render_gamma_desk_page(available_tickers=None):
     else:
         st.markdown(f"""
         <div style="background: rgba(255, 46, 85, 0.08); border: 1px solid rgba(255, 46, 85, 0.25); border-left: 4px solid #FF2E55; padding: 12px 16px; border-radius: 8px; margin: 16px 0;">
-            <b style="color: #FF2E55; font-size: 0.95rem;">⚠️ SHORT GAMMA REGIME DETECTED (${net_gex:.2f}B Net GEX)</b><br>
+            <b style="color: #FF2E55; font-size: 0.95rem;">SHORT GAMMA REGIME DETECTED (${net_gex:.2f}B Net GEX)</b><br>
             <span style="color: #cbd5e1; font-size: 0.85rem; line-height: 1.4;">
                 Market makers are short gamma and must <b>sell when spot drops</b> and <b>buy when spot rises</b> to hedge exposure. This amplifies market volatility and accelerates directional trending moves. Avoid blind dip-buying until structural support at the <b>Put Wall (${pw:.0f})</b> is confirmed.
             </span>
@@ -1934,17 +1934,17 @@ def render_gamma_desk_page(available_tickers=None):
             elif "Put Wall" in role:
                 role = "🔴 " + role
             elif "Zero Flip" in role:
-                role = "⚡ " + role
+                role = role
             elif "ATM" in role:
-                role = "🎯 " + role
+                role = role
             elif "Dual Gamma" in role or "Peak" in role:
-                role = "🟣 " + role
+                role = role
             elif "Top Call" in role:
-                role = "📈 " + role
+                role = role
             elif "Top Put" in role:
-                role = "📉 " + role
+                role = role
             elif "Major Open Interest" in role or "Milestone" in role:
-                role = "🏛️ " + role
+                role = role
 
             table_rows.append({
                 "Strike ($)": f"${k:,.2f}",
@@ -1960,7 +1960,7 @@ def render_gamma_desk_page(available_tickers=None):
         st.dataframe(df_strikes, use_container_width=True, hide_index=True)
 
     # 6. Educational Collapsible Guide
-    with st.expander("📘 Institutional Desk Guide: How to Trade Using Gamma Levels"):
+    with st.expander("Institutional Desk Guide: How to Trade Using Gamma Levels"):
         st.markdown("""
         * **Call Wall:** The strike with the largest open Call Gamma. Market makers are typically assumed net long calls (counterparty to call sellers). As spot approaches the Call Wall, dealers must sell stock to hedge, creating a natural upside ceiling and pinning magnet into OpEx.
         * **Put Wall:** The strike with the largest open Put Gamma. Market makers are typically assumed net short puts (counterparty to protective put buyers). In a net Long Gamma regime, overall dealer dip-buying provides strong cushion and rebound support at this level.

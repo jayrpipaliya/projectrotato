@@ -833,7 +833,7 @@ HTML_CONTENT = """<!DOCTYPE html>
     #chatHistory blockquote p {
       margin: 0;
     }
-    #chatHistory blockquote:has(🛑), #chatHistory blockquote:has(⚠️) {
+    #chatHistory blockquote.danger, #chatHistory blockquote.warning {
       border-left: 3px solid #FF2E55;
       background: rgba(255, 46, 85, 0.06);
     }
@@ -1172,7 +1172,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <b>Best High-Conviction Setups</b>
                     </button>
                     <button onclick="sendQuickPrompt('Audit all active trades currently in my ledger against live market metrics. Check their current prices, distances to stop-loss/targets, gamma regimes, and advise whether to hold, trail stop, take profits, or invalidate.')" class="p-2.5 text-left rounded-lg bg-mint/10 hover:bg-mint/20 border border-mint/30 text-xs text-mint transition flex flex-col justify-between">
-                        <b>⚡ Audit Active Ledger</b>
+                        <b>Audit Active Ledger</b>
                         <span class="text-[10px] text-mint/70 mt-1">Live position checks</span>
                     </button>
                 </div>
@@ -1313,10 +1313,10 @@ HTML_CONTENT = """<!DOCTYPE html>
                     </div>
                     <div class="flex items-center gap-2 w-full sm:w-auto">
                         <button onclick="runLedgerAudit()" id="btnRunLedgerAudit" class="flex-1 sm:flex-none px-3.5 py-2 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 border border-sky-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-[0_0_12px_rgba(56,189,248,0.15)]">
-                            <span>🤖 Run AI Desk Audit</span>
+                            <span>Run AI Desk Audit</span>
                         </button>
                         <button onclick="loadLedger()" class="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-semibold transition flex items-center justify-center gap-1">
-                            <span>🔄 Refresh</span>
+                            <span>Refresh</span>
                         </button>
                     </div>
                 </div>
@@ -1325,9 +1325,9 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div id="ledgerAuditResult" class="hidden mb-4 p-4 rounded-xl bg-stealth-900 border border-sky-500/30 text-xs text-slate-200">
                     <div class="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
                         <b class="text-sky-400 font-bold text-sm flex items-center gap-1.5">
-                            <span>🤖 AI Quant Risk Officer Audit</span>
+                            <span>AI Quant Risk Officer Audit</span>
                         </b>
-                        <button onclick="document.getElementById('ledgerAuditResult').classList.add('hidden')" class="text-slate-500 hover:text-white text-xs">✕ Close</button>
+                        <button onclick="document.getElementById('ledgerAuditResult').classList.add('hidden')" class="text-slate-500 hover:text-white text-xs">Close</button>
                     </div>
                     <div id="ledgerAuditContent" class="space-y-2 leading-relaxed"></div>
                 </div>
@@ -1413,7 +1413,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
                         <div class="mb-4">
                             <button onclick="autoFetchManualConfluence()" id="btnAutoFetchMan" class="px-3 py-1.5 rounded-lg bg-mint/15 hover:bg-mint/25 text-mint border border-mint/30 text-xs font-bold transition flex items-center gap-1.5">
-                                <span>⚡ Auto-Fetch Current Confluence & 20-Year Odds for Ticker</span>
+                                <span>Auto-Fetch Current Confluence & 20-Year Odds for Ticker</span>
                             </button>
                             <div id="manAutoFetchStatus" class="text-[11px] text-slate-400 mt-1 hidden"></div>
                         </div>
@@ -1467,7 +1467,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                         </div>
 
                         <button onclick="submitManualLedgerTrade()" class="w-full py-2.5 rounded-xl bg-mint hover:bg-mint/80 text-black font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-[0_0_12px_rgba(0,245,160,0.2)]">
-                            <span>📌 Commit Custom Setup to Active Ledger</span>
+                            <span>Commit Custom Setup to Active Ledger</span>
                         </button>
                     </div>
                 </div>
@@ -1625,7 +1625,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                     <div>
                         <div class="flex items-center gap-2">
-                            <h2 class="text-lg font-black text-white tracking-wide">⚡ Institutional Dealer Gamma Exposure (GEX) Desk</h2>
+                            <h2 class="text-lg font-black text-white tracking-wide">Institutional Dealer Gamma Exposure (GEX) Desk</h2>
                             <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Live Market Maker Hedging Map</span>
                         </div>
                         <p class="text-xs text-slate-400 mt-1 max-w-2xl">
@@ -1686,7 +1686,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                     </div>
                     <div class="flex items-center gap-2">
                         <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="gammaFilterGroup">
-                            <button onclick="setGammaTableFilter(true)" id="btnGammaRelevant" class="px-2.5 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30">⚡ Relevant Only (<span id="gammaRelCount">0</span>)</button>
+                            <button onclick="setGammaTableFilter(true)" id="btnGammaRelevant" class="px-2.5 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30">Relevant Only (<span id="gammaRelCount">0</span>)</button>
                             <button onclick="setGammaTableFilter(false)" id="btnGammaAll" class="px-2.5 py-1 rounded font-bold transition text-slate-400">All Strikes (<span id="gammaTotalCount">0</span>)</button>
                         </div>
                     </div>
@@ -3060,7 +3060,7 @@ async function init() {
                     const gexHtml = (t.call_wall && t.put_wall) ? `
                         <div class="flex flex-wrap items-center justify-between gap-1.5 p-1.5 px-2 mb-2 rounded-lg bg-indigo-950/20 border border-indigo-500/20 text-[10.5px]">
                             <div class="flex items-center gap-1.5 flex-wrap">
-                                <span class="text-indigo-400 font-bold">⚡ GEX:</span>
+                                <span class="text-indigo-400 font-bold">GEX:</span>
                                 <span class="text-slate-400">Call Wall:</span>
                                 <b class="text-mint font-mono">${t.call_wall}</b>
                                 <span class="text-slate-600">|</span>
@@ -3152,7 +3152,7 @@ async function init() {
                             <!-- Trade Ledger Commit Button & Drawer -->
                             <div class="mt-2.5 pt-2 border-t border-white/5 flex flex-col gap-2">
                                 <button onclick="toggleCardLogger(${cards.indexOf(t)})" class="w-full py-1.5 px-3 rounded-lg bg-mint/15 hover:bg-mint/25 text-mint border border-mint/30 text-xs font-bold transition flex items-center justify-center gap-1.5">
-                                    <span>📥 Log ${t.ticker} Setup to Trade Ledger</span>
+                                    <span>Log ${t.ticker} Setup to Trade Ledger</span>
                                 </button>
                                 <div id="cardLogger-${cards.indexOf(t)}" class="hidden p-3 rounded-xl bg-[#090b10] border border-mint/30 space-y-2.5 text-xs">
                                     <div class="flex items-center justify-between pb-1 border-b border-white/10">
@@ -4033,7 +4033,7 @@ async function init() {
                     if (isLong) {
                         directiveDiv.innerHTML = `
                             <div class="p-4 rounded-xl border border-mint/30 bg-mint/5 flex items-start gap-3">
-                                <div class="text-xl">🛡️</div>
+                                <div class="text-sm shrink-0 mt-0.5">🟢</div>
                                 <div>
                                     <div class="text-xs font-bold text-mint uppercase tracking-wider">Tactical Desk Directive: Net Long Dealer Gamma Regime (+${g.total_net_gex_billions.toFixed(2)}B)</div>
                                     <div class="text-xs text-slate-300 mt-1 leading-relaxed">
@@ -4046,7 +4046,7 @@ async function init() {
                     } else {
                         directiveDiv.innerHTML = `
                             <div class="p-4 rounded-xl border border-rose-500/30 bg-rose-500/5 flex items-start gap-3">
-                                <div class="text-xl">⚠️</div>
+                                <div class="text-sm shrink-0 mt-0.5">🔴</div>
                                 <div>
                                     <div class="text-xs font-bold text-rose-400 uppercase tracking-wider">Tactical Desk Directive: Net Short Dealer Gamma Regime (${g.total_net_gex_billions.toFixed(2)}B)</div>
                                     <div class="text-xs text-slate-300 mt-1 leading-relaxed">
@@ -4805,7 +4805,7 @@ async function init() {
 
                 const instBadge = isOpt ? `
                     <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
-                        ⚡ ${trd.strike || 0} ${trd.contract_type || 'CALL'} (${trd.expiration || ''})
+                        ${trd.strike || 0} ${trd.contract_type || 'CALL'} (${trd.expiration || ''})
                     </span>
                 ` : `
                     <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
@@ -4881,7 +4881,7 @@ async function init() {
                             <!-- Frozen Baseline Dropdown -->
                             <details class="mb-3 p-2.5 rounded-lg bg-[#08090e] border border-white/5 text-[11px] text-slate-300 group">
                                 <summary class="cursor-pointer font-bold text-slate-400 hover:text-white flex items-center justify-between">
-                                    <span>🔍 Frozen AI Baseline at Entry (WR, Odds, GEX)</span>
+                                    <span>Frozen AI Baseline at Entry (WR, Odds, GEX)</span>
                                     <span class="text-xs text-slate-500">▾</span>
                                 </summary>
                                 <div class="mt-2 pt-2 border-t border-white/5 grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -4917,13 +4917,13 @@ async function init() {
                         <!-- Action Toolbar -->
                         <div class="pt-2.5 border-t border-white/5 flex items-center justify-between gap-2">
                             <button onclick="toggleTradeCloseDrawer('${trd.id}')" class="px-3 py-1.5 rounded-lg bg-mint/15 hover:bg-mint/25 text-mint border border-mint/30 text-xs font-bold transition flex items-center gap-1">
-                                <span>✅ Close Position</span>
+                                <span>Close Position</span>
                             </button>
                             <button onclick="toggleTradeAdjustDrawer('${trd.id}')" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-semibold transition flex items-center gap-1">
-                                <span>⚙️ Adjust</span>
+                                <span>Adjust</span>
                             </button>
                             <button onclick="deleteLedgerTrade('${trd.id}')" class="px-2.5 py-1.5 rounded-lg bg-cherry/10 hover:bg-cherry/20 text-cherry border border-cherry/25 text-xs font-semibold transition">
-                                <span>🗑️</span>
+                                <span>Delete</span>
                             </button>
                         </div>
 
@@ -4931,7 +4931,7 @@ async function init() {
                         <div id="closeDrawer-${trd.id}" class="hidden mt-3 p-3 rounded-xl bg-[#090b10] border border-mint/30 space-y-2 text-xs">
                             <div class="font-bold text-white flex justify-between">
                                 <span>Close Position / Realize P&L</span>
-                                <button onclick="toggleTradeCloseDrawer('${trd.id}')" class="text-slate-500 hover:text-white">✕</button>
+                                <button onclick="toggleTradeCloseDrawer('${trd.id}')" class="text-slate-500 hover:text-white">&times;</button>
                             </div>
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
@@ -4941,10 +4941,10 @@ async function init() {
                                 <div>
                                     <label class="text-[9.5px] uppercase font-bold text-slate-400">Outcome</label>
                                     <select id="closeOutcome-${trd.id}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
-                                        <option value="TARGET_1_HIT">🎯 Target 1 Hit</option>
-                                        <option value="TARGET_2_HIT">🚀 Target 2 Runner</option>
-                                        <option value="STOPPED_OUT">🛑 Stopped Out</option>
-                                        <option value="CLOSED_MANUALLY">🔒 Closed Manually</option>
+                                        <option value="TARGET_1_HIT">Target 1 Hit</option>
+                                        <option value="TARGET_2_HIT">Target 2 Runner</option>
+                                        <option value="STOPPED_OUT">Stopped Out</option>
+                                        <option value="CLOSED_MANUALLY">Closed Manually</option>
                                     </select>
                                 </div>
                             </div>
@@ -4956,7 +4956,7 @@ async function init() {
                         <div id="adjustDrawer-${trd.id}" class="hidden mt-3 p-3 rounded-xl bg-[#090b10] border border-white/20 space-y-2 text-xs">
                             <div class="font-bold text-white flex justify-between">
                                 <span>Adjust Invalidation / Target</span>
-                                <button onclick="toggleTradeAdjustDrawer('${trd.id}')" class="text-slate-500 hover:text-white">✕</button>
+                                <button onclick="toggleTradeAdjustDrawer('${trd.id}')" class="text-slate-500 hover:text-white">&times;</button>
                             </div>
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
@@ -5014,7 +5014,7 @@ async function init() {
             const btn = document.getElementById('btnRunLedgerAudit');
             const resBox = document.getElementById('ledgerAuditResult');
             const resContent = document.getElementById('ledgerAuditContent');
-            if (btn) btn.innerHTML = '<span>⏳ Auditing...</span>';
+            if (btn) btn.innerHTML = '<span>Auditing...</span>';
 
             try {
                 const res = await fetch('/api/ledger/audit', {
@@ -5023,14 +5023,14 @@ async function init() {
                     body: JSON.stringify({api_key: USER_API_KEY})
                 });
                 const data = await res.json();
-                if (btn) btn.innerHTML = '<span>🤖 Run AI Desk Audit</span>';
+                if (btn) btn.innerHTML = '<span>Run AI Desk Audit</span>';
                 if (resBox && resContent) {
                     resBox.classList.remove('hidden');
                     const parsed = window.marked ? marked.parse(data.report || 'Audit complete.') : (data.report || '');
                     resContent.innerHTML = parsed;
                 }
             } catch (err) {
-                if (btn) btn.innerHTML = '<span>🤖 Run AI Desk Audit</span>';
+                if (btn) btn.innerHTML = '<span>Run AI Desk Audit</span>';
                 alert('Audit request failed: ' + err.message);
             }
         }
@@ -5119,7 +5119,7 @@ async function init() {
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
-                    if (btn) btn.innerText = '✅ Committed to Ledger!';
+                    if (btn) btn.innerText = 'Committed to Ledger!';
                     setTimeout(() => {
                         toggleCardLogger(idx);
                         if (btn) btn.innerText = 'Confirm & Log to Ledger';
@@ -5157,7 +5157,7 @@ async function init() {
             const ticker = (document.getElementById('manTicker').value || 'NVDA').toUpperCase().trim();
             const btn = document.getElementById('btnAutoFetchMan');
             const status = document.getElementById('manAutoFetchStatus');
-            if (btn) btn.innerText = '⚡ Fetching...';
+            if (btn) btn.innerText = 'Fetching...';
 
             try {
                 const res = await fetch('/api/confluence?scope=core');
@@ -5169,7 +5169,7 @@ async function init() {
                     const wr = edge ? edge.win_rate_20d : 'N/A';
                     if (status) {
                         status.classList.remove('hidden');
-                        status.innerHTML = `<span class="text-mint font-bold">✓ Profile Fetched:</span> Score <b>${match.score}</b> | 20yr Win Rate: <b>${wr}%</b> (N=${edge ? edge.sample_size : 0})`;
+                        status.innerHTML = `<span class="text-mint font-bold">Profile Fetched:</span> Score <b>${match.score}</b> | 20yr Win Rate: <b>${wr}%</b> (N=${edge ? edge.sample_size : 0})`;
                     }
                     if (match.metrics && match.metrics.close) {
                         const pxInput = document.getElementById('manEntryPrice');
@@ -5183,9 +5183,9 @@ async function init() {
                         status.innerHTML = `<span class="text-amber-400">Ticker ${ticker} not in core cache, using discretionary settings.</span>`;
                     }
                 }
-                if (btn) btn.innerText = '⚡ Auto-Fetch Current Confluence & 20-Year Odds for Ticker';
+                if (btn) btn.innerText = 'Auto-Fetch Current Confluence & 20-Year Odds for Ticker';
             } catch (err) {
-                if (btn) btn.innerText = '⚡ Auto-Fetch Current Confluence & 20-Year Odds for Ticker';
+                if (btn) btn.innerText = 'Auto-Fetch Current Confluence & 20-Year Odds for Ticker';
                 console.error("Auto fetch error:", err);
             }
         }
@@ -5248,7 +5248,7 @@ async function init() {
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
-                    alert(`✅ ${ticker} successfully committed to active ledger!`);
+                    alert(`${ticker} successfully committed to active ledger!`);
                     switchLedgerSub('active');
                     loadLedger();
                 } else {

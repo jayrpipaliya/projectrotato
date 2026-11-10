@@ -684,7 +684,7 @@ def parse_clean_num(val, default=0.0):
 
 def render_trade_logging_widget(t, key_suffix):
     """Embeds an expandable trade logger directly underneath each AI trade recommendation card."""
-    with st.expander(f"📥 Log {t['ticker']} Setup to Trade Ledger", expanded=False):
+    with st.expander(f"Log {t['ticker']} Setup to Trade Ledger", expanded=False):
         curr_px = parse_clean_num(t.get("current_price") or t.get("entry"), 100.0)
         stop_px = parse_clean_num(t.get("stop"), curr_px * 0.97)
         tp1_px = parse_clean_num(t.get("target1"), curr_px * 1.05)
@@ -742,7 +742,7 @@ def render_trade_logging_widget(t, key_suffix):
             key=f"notes_{key_suffix}"
         )
 
-        if st.button(f"📌 Confirm & Log {t['ticker']} to Active Ledger", key=f"btn_commit_{key_suffix}", use_container_width=True):
+        if st.button(f"Confirm & Log {t['ticker']} to Active Ledger", key=f"btn_commit_{key_suffix}", use_container_width=True):
             snap = {
                 "win_rate": t.get("win_rate"),
                 "sample_size": t.get("sample_size"),
@@ -775,7 +775,7 @@ def render_trade_logging_widget(t, key_suffix):
                 notes=custom_notes,
                 ai_snapshot=snap
             )
-            st.success(f"🎉 **{t['ticker']}** successfully committed to your Trade Ledger! Switch to the **Trade Ledger & Audit** tab to track live progress and run AI audits.")
+            st.success(f"**{t['ticker']}** successfully committed to your Trade Ledger! Switch to the **Trade Ledger & Audit** tab to track live progress and run AI audits.")
             time.sleep(1)
             st.rerun()
 
@@ -1029,7 +1029,7 @@ with tab2:
                 gex_html = (
                     f'<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(99, 102, 241, 0.08); border:1px solid rgba(99, 102, 241, 0.2); border-radius:6px; padding:4px 8px; margin-bottom:8px; font-size:10.5px; flex-wrap:wrap; gap:4px;">'
                     f'<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">'
-                    f'<span style="color:#a5b4fc; font-weight:700;">⚡ GEX:</span>'
+                    f'<span style="color:#a5b4fc; font-weight:700;">GEX:</span>'
                     f'<span style="color:#94a3b8;">Call Wall:</span> <b style="color:#00F5A0; font-family:monospace;">{cw}</b>'
                     f'<span style="color:#475569; margin:0 2px;">|</span>'
                     f'<span style="color:#94a3b8;">Put Wall:</span> <b style="color:#FF2E55; font-family:monospace;">{pw}</b>'
@@ -1145,9 +1145,9 @@ with tab_ledger:
         st.subheader("Institutional Trade Ledger & AI Forward Performance Auditor")
         st.caption("Live Mark-to-Market, Frozen Quantitative Baseline Snapshots, and On-Demand AI Risk Officer Audits")
     with col_l2:
-        run_audit_btn = st.button("🤖 Run AI Desk Audit", use_container_width=True)
+        run_audit_btn = st.button("Run AI Desk Audit", use_container_width=True)
     with col_l3:
-        if st.button("🔄 Refresh Live Marks", use_container_width=True):
+        if st.button("Refresh Live Marks", use_container_width=True):
             st.rerun()
 
     # AI Audit Output Container
@@ -1155,7 +1155,7 @@ with tab_ledger:
         with st.spinner("AI Quant Officer auditing active positions against live prices, GEX walls, and baseline entry snapshots..."):
             audit_report = generate_ai_portfolio_audit(market_data=market_data, gemini_api_key=user_api_key)
             st.markdown('<div class="metric-card-lux" style="border-left:4px solid #38bdf8; margin-bottom:16px;">', unsafe_allow_html=True)
-            st.markdown("### 🤖 Institutional AI Desk Audit & Position Review")
+            st.markdown("### Institutional AI Desk Audit & Position Review")
             st.markdown(audit_report)
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1242,7 +1242,7 @@ with tab_ledger:
 
                 inst_badge = (
                     f'<span class="pill-cyan" style="font-size:11px; font-weight:700; padding:2px 8px;">'
-                    f'⚡ {trd.get("strike", 0):.0f} {trd.get("contract_type", "CALL")} (Exp: {trd.get("expiration")})'
+                    f'{trd.get("strike", 0):.0f} {trd.get("contract_type", "CALL")} (Exp: {trd.get("expiration")})'
                     f'</span>'
                 ) if is_opt else (
                     f'<span class="pill-amber" style="font-size:11px; font-weight:700; padding:2px 8px;">'
@@ -1309,7 +1309,7 @@ with tab_ledger:
                 st.progress(prog_val / 100.0)
 
                 # Expandable Frozen AI Baseline Snapshot
-                with st.expander(f"🔍 Frozen Quantitative Baseline Snapshot ({trd['ticker']} at Entry)", expanded=False):
+                with st.expander(f"Frozen Quantitative Baseline Snapshot ({trd['ticker']} at Entry)", expanded=False):
                     sb1, sb2, sb3 = st.columns(3)
                     with sb1:
                         st.markdown(f"**20-Year Backtest Win Rate:** `{snap.get('win_rate', 'N/A')}` (N={snap.get('sample_size', 0)})")
@@ -1327,7 +1327,7 @@ with tab_ledger:
                 # Trade Management Action Controls
                 act_col1, act_col2, act_col3 = st.columns([1.5, 1.5, 1])
                 with act_col1:
-                    with st.expander("✅ Close Position / Realize P&L"):
+                    with st.expander("Close Position / Realize P&L"):
                         close_px = st.number_input("Final Exit Price ($)", value=float(mtm.get("est_option_px", trd["entry_price"]) if is_opt else mtm["live_spot"]), format="%.2f", key=f"c_px_{trd['id']}")
                         outcome = st.selectbox("Trade Outcome", ["TARGET_1_HIT", "TARGET_2_HIT", "STOPPED_OUT", "CLOSED_MANUALLY"], key=f"c_out_{trd['id']}")
                         close_note = st.text_input("Exit Rationale / Notes", key=f"c_note_{trd['id']}")
@@ -1338,7 +1338,7 @@ with tab_ledger:
                             st.rerun()
 
                 with act_col2:
-                    with st.expander("⚙️ Adjust Invalidation / Target"):
+                    with st.expander("Adjust Invalidation / Target"):
                         new_stop = st.number_input("New Stop Loss ($)", value=float(trd["stop_loss"]), format="%.2f", key=f"u_stop_{trd['id']}")
                         new_tp1 = st.number_input("New Target 1 ($)", value=float(trd["target_1"]), format="%.2f", key=f"u_tp1_{trd['id']}")
                         new_notes = st.text_input("Append Notes", key=f"u_notes_{trd['id']}")
@@ -1349,7 +1349,7 @@ with tab_ledger:
                             st.rerun()
 
                 with act_col3:
-                    if st.button(f"🗑️ Delete", key=f"del_{trd['id']}", use_container_width=True):
+                    if st.button(f"Delete", key=f"del_{trd['id']}", use_container_width=True):
                         delete_trade(trd["id"])
                         st.rerun()
 
@@ -1369,7 +1369,7 @@ with tab_ledger:
             m_type = st.radio("Asset Type", ["Stock / Equity", "Options Contract"], horizontal=True)
 
         # Dynamic Auto-fetch button to pull live confluence and WR
-        if st.button(f"⚡ Auto-Fetch Current Confluence & Historical Odds for {m_ticker}", use_container_width=True):
+        if st.button(f"Auto-Fetch Current Confluence & Historical Odds for {m_ticker}", use_container_width=True):
             try:
                 c_score = compute_confluence_score(m_ticker)
                 if c_score:
@@ -1418,7 +1418,7 @@ with tab_ledger:
 
         m_thesis = st.text_area("AI Desk Rationale / Thesis Given", value=f"Manual setup based on Quant AI Agent recommendation for {m_ticker}.")
 
-        if st.button(f"📌 Commit {m_ticker} Manual Setup to Ledger", use_container_width=True):
+        if st.button(f"Commit {m_ticker} Manual Setup to Ledger", use_container_width=True):
             # Build baseline snapshot
             edge_info = auto_pulled_data.get("metrics", {}).get("edge_match", {})
             m_snap = {
@@ -1446,7 +1446,7 @@ with tab_ledger:
                 notes=m_thesis,
                 ai_snapshot=m_snap
             )
-            st.success(f"🎉 **{m_ticker}** successfully added to your active ledger!")
+            st.success(f"**{m_ticker}** successfully added to your active ledger!")
             time.sleep(1)
             st.rerun()
 
