@@ -345,18 +345,60 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
     cw_conc = round((cw_gex / total_call_gex * 100), 1) if total_call_gex > 0 else 0.0
     pw_conc = round((pw_gex / total_put_gex * 100), 1) if total_put_gex > 0 else 0.0
 
+    # Curate high-impact / structurally relevant strikes to eliminate table noise
+    atm_k = min(sorted_strikes, key=lambda k: abs(k - spot_price))
+    key_targets = {call_wall, put_wall, closest_zg_strike, abs_gamma_strike, atm_k}
+    top_c_k = set(sorted(sorted_strikes, key=lambda k: strikes_gex[k]["call_gex"], reverse=True)[:5])
+    top_p_k = set(sorted(sorted_strikes, key=lambda k: strikes_gex[k]["put_gex"], reverse=True)[:5])
+    top_net_k = set(sorted(sorted_strikes, key=lambda k: abs(strikes_gex[k]["call_gex"] - strikes_gex[k]["put_gex"]), reverse=True)[:5])
+    top_oi_k = set(sorted(sorted_strikes, key=lambda k: strikes_gex[k]["call_oi"] + strikes_gex[k]["put_oi"], reverse=True)[:5])
+    
+    step = 5.0 if spot_price > 100 else (2.5 if spot_price > 50 else 1.0)
+    round_k = {k for k in sorted_strikes if abs(k - spot_price) / spot_price <= 0.035 and (k % step == 0)}
+    heavy_oi_k = {k for k in sorted_strikes if abs(k - spot_price) / spot_price <= 0.035 and (strikes_gex[k]["call_oi"] + strikes_gex[k]["put_oi"] >= 12000)}
+    relevant_set = key_targets | top_c_k | top_p_k | top_net_k | top_oi_k | round_k | heavy_oi_k
+
     strikes_list = []
     for k in sorted_strikes:
         c_g = round(strikes_gex[k]["call_gex"], 1)
         p_g = round(strikes_gex[k]["put_gex"], 1)
         net_g = round(c_g - p_g, 1)
+        is_rel = k in relevant_set
+
+        if abs(k - call_wall) < 0.01:
+            role = "Call Wall (Pin)"
+        elif abs(k - put_wall) < 0.01:
+            role = "Put Wall (Floor)"
+        elif abs(k - closest_zg_strike) < 0.01:
+            role = "Zero Flip"
+        elif abs(k - atm_k) < 0.01:
+            role = "ATM Spot"
+        elif abs(k - abs_gamma_strike) < 0.01:
+            role = "Absolute Gamma Peak"
+        elif k in top_c_k and k in top_p_k:
+            role = "Dual Gamma Node"
+        elif k in top_c_k:
+            role = "Top Call GEX"
+        elif k in top_p_k:
+            role = "Top Put GEX"
+        elif k in top_net_k:
+            role = "Net GEX Imbalance"
+        elif k in top_oi_k or k in heavy_oi_k:
+            role = "Major Open Interest"
+        elif k in round_k:
+            role = "Milestone Strike"
+        else:
+            role = "Normal Liquidity"
+
         strikes_list.append({
             "strike": round(k, 2),
             "call_gex": c_g,
             "put_gex": p_g,
             "net_gex": net_g,
             "call_oi": strikes_gex[k]["call_oi"],
-            "put_oi": strikes_gex[k]["put_oi"]
+            "put_oi": strikes_gex[k]["put_oi"],
+            "is_relevant": is_rel,
+            "structural_role": role
         })
 
     elapsed = round(time.time() - t0, 3)
@@ -385,7 +427,9 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         "elapsed_seconds": elapsed,
         "expirations_scanned": [e[0] for e in valid_exps],
         "strikes_count": len(sorted_strikes),
-        "strikes": strikes_list
+        "relevant_strikes_count": sum(1 for s in strikes_list if s["is_relevant"]),
+        "strikes": strikes_list,
+        "relevant_strikes": [s for s in strikes_list if s["is_relevant"]]
     }
 
     _GAMMA_PROFILE_CACHE[ticker_up] = {
@@ -452,6 +496,16 @@ def plot_gamma_exposure_profile(gamma_data):
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         height=380
     )
+    
+    # Auto-focus the default x-axis view on the relevant strikes window
+    relevant_k = [s["strike"] for s in gamma_data.get("relevant_strikes", [])]
+    if relevant_k:
+        k_min = min(relevant_k)
+        k_max = max(relevant_k)
+        span = k_max - k_min
+        pad = max(span * 0.08, spot * 0.015)
+        fig.update_xaxes(range=[k_min - pad, k_max + pad])
+        
     fig.update_xaxes(gridcolor="rgba(255, 255, 255, 0.05)")
     fig.update_yaxes(gridcolor="rgba(255, 255, 255, 0.05)")
     return fig
@@ -1855,24 +1909,42 @@ def render_gamma_desk_page(available_tickers=None):
     if gex_fig:
         st.plotly_chart(gex_fig, use_container_width=True)
 
-    # 5. Detailed Strike Breakdown Table
+    # 5. Detailed Strike Breakdown Table (Filtered to Relevant Strikes by default)
     strikes_list = gex_data.get("strikes", [])
     if strikes_list:
         st.markdown("#### Per-Strike Gamma Exposure & Hedging Breakdown")
+        rel_count = gex_data.get("relevant_strikes_count", len([s for s in strikes_list if s.get("is_relevant")]))
+        total_count = len(strikes_list)
+
+        tb_col1, tb_col2 = st.columns([3, 1])
+        with tb_col1:
+            st.caption(f"Displaying institutional structural walls (Call/Put Walls, Zero Flip, ATM) and top dealer open interest battlegrounds.")
+        with tb_col2:
+            show_all = st.checkbox(f"Show all {total_count} mapped strikes", value=False, help="Uncheck to hide low-liquidity noise strikes and focus on high-conviction levels.")
+
+        display_strikes = strikes_list if show_all else [s for s in strikes_list if s.get("is_relevant", True)]
         table_rows = []
         zg_strike = gex_data.get("closest_zero_gamma_strike", zg)
-        for s in strikes_list:
+        for s in display_strikes:
             k = s["strike"]
             dist_pct = ((k / spot) - 1) * 100
-            role = "Normal Strike"
-            if abs(k - cw) < 0.01:
-                role = "🟢 Call Wall Pin"
-            elif abs(k - pw) < 0.01:
-                role = "🔴 Put Wall Floor"
-            elif abs(k - zg_strike) < 0.01:
-                role = "⚡ Zero Gamma Flip"
-            elif abs(k - spot) / spot < 0.005:
-                role = "🎯 At-The-Money"
+            role = s.get("structural_role", "Normal Strike")
+            if "Call Wall" in role:
+                role = "🟢 " + role
+            elif "Put Wall" in role:
+                role = "🔴 " + role
+            elif "Zero Flip" in role:
+                role = "⚡ " + role
+            elif "ATM" in role:
+                role = "🎯 " + role
+            elif "Dual Gamma" in role or "Peak" in role:
+                role = "🟣 " + role
+            elif "Top Call" in role:
+                role = "📈 " + role
+            elif "Top Put" in role:
+                role = "📉 " + role
+            elif "Major Open Interest" in role or "Milestone" in role:
+                role = "🏛️ " + role
 
             table_rows.append({
                 "Strike ($)": f"${k:,.2f}",

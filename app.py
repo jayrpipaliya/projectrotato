@@ -27,6 +27,12 @@ import importlib
 import options_engine
 importlib.reload(options_engine)
 from options_engine import render_options_vol_page, render_gamma_desk_page
+import ledger_engine
+importlib.reload(ledger_engine)
+from ledger_engine import (
+    load_ledger, save_ledger, add_trade, close_trade, update_trade,
+    delete_trade, compute_mark_to_market, get_ledger_stats, generate_ai_portfolio_audit
+)
 
 st.set_page_config(
     page_title="Double Edge | Quantitative Macro & Equity Desk",
@@ -663,11 +669,122 @@ with r_col3:
 st.caption(f"**Cross-Asset Macro Barometer Reading:** {macro_reading}")
 st.markdown("<div style='margin-bottom:12px;'></div>", unsafe_allow_html=True)
 
+
+def parse_clean_num(val, default=0.0):
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    try:
+        s = str(val).split('–')[0].split('-')[0].strip()
+        nums = re.findall(r'[\d.]+', s)
+        return float(nums[0]) if nums else default
+    except Exception:
+        return default
+
+def render_trade_logging_widget(t, key_suffix):
+    """Embeds an expandable trade logger directly underneath each AI trade recommendation card."""
+    with st.expander(f"📥 Log {t['ticker']} Setup to Trade Ledger", expanded=False):
+        curr_px = parse_clean_num(t.get("current_price") or t.get("entry"), 100.0)
+        stop_px = parse_clean_num(t.get("stop"), curr_px * 0.97)
+        tp1_px = parse_clean_num(t.get("target1"), curr_px * 1.05)
+        tp2_px = parse_clean_num(t.get("target2"), curr_px * 1.10)
+        cw = parse_clean_num(t.get("call_wall"), tp1_px)
+        pw = parse_clean_num(t.get("put_wall"), stop_px)
+
+        asset_type = st.radio(
+            "Instrument Type",
+            ["Stock / Equity", "Options Contract"],
+            horizontal=True,
+            key=f"asset_type_{key_suffix}"
+        )
+
+        if asset_type == "Stock / Equity":
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                in_entry = st.number_input("Entry Fill Price ($)", value=float(curr_px), format="%.2f", key=f"entry_{key_suffix}")
+            with c2:
+                in_size = st.number_input("Shares Quantity", value=10, min_value=1, step=1, key=f"size_{key_suffix}")
+            with c3:
+                in_stop = st.number_input("Invalidation Stop ($)", value=float(stop_px), format="%.2f", key=f"stop_{key_suffix}")
+            with c4:
+                in_tp1 = st.number_input("Target 1 Take Profit ($)", value=float(tp1_px), format="%.2f", key=f"tp1_{key_suffix}")
+
+            in_contract_type = "STOCK"
+            in_strike = None
+            in_expiry = None
+        else:
+            is_long = "LONG" in t.get("direction", "LONG").upper() or "DIP" in t.get("direction", "LONG").upper()
+            c1, c2, c3, c4, c5 = st.columns(5)
+            with c1:
+                in_contract_type = st.selectbox("Contract Type", ["CALL", "PUT"], index=0 if is_long else 1, key=f"ctype_{key_suffix}")
+            with c2:
+                suggested_strike = round(curr_px)
+                in_strike = st.number_input("Strike Price ($)", value=float(suggested_strike), step=1.0, format="%.2f", key=f"strike_{key_suffix}")
+            with c3:
+                from datetime import timedelta
+                default_exp = (datetime.now() + timedelta(days=35)).strftime("%Y-%m-%d")
+                in_expiry = st.text_input("Expiration (YYYY-MM-DD)", value=default_exp, key=f"exp_{key_suffix}")
+            with c4:
+                in_entry = st.number_input("Contract Premium ($)", value=3.50, min_value=0.01, step=0.10, format="%.2f", key=f"premium_{key_suffix}")
+            with c5:
+                in_size = st.number_input("Contracts Quantity", value=2, min_value=1, step=1, key=f"contracts_{key_suffix}")
+
+            cs1, cs2 = st.columns(2)
+            with cs1:
+                in_stop = st.number_input("Underlying Stop Invalidation ($)", value=float(stop_px), format="%.2f", key=f"opt_stop_{key_suffix}")
+            with cs2:
+                in_tp1 = st.number_input("Underlying Target 1 ($)", value=float(tp1_px), format="%.2f", key=f"opt_tp1_{key_suffix}")
+
+        custom_notes = st.text_input(
+            "Personal Notes / Execution Strategy",
+            value=f"Automated AI Setup. Target R:R {t.get('risk_reward', '1:3')}. Stop: {t.get('stop')}",
+            key=f"notes_{key_suffix}"
+        )
+
+        if st.button(f"📌 Confirm & Log {t['ticker']} to Active Ledger", key=f"btn_commit_{key_suffix}", use_container_width=True):
+            snap = {
+                "win_rate": t.get("win_rate"),
+                "sample_size": t.get("sample_size"),
+                "median_alpha": t.get("median_alpha"),
+                "confluence_score": t.get("score"),
+                "bias_label": t.get("bias_label"),
+                "confirmations": t.get("confirmations"),
+                "thesis": t.get("thesis"),
+                "entry_price_spot": curr_px,
+                "call_wall": t.get("call_wall"),
+                "put_wall": t.get("put_wall"),
+                "zero_gamma": t.get("zero_gamma"),
+                "net_gex_b": t.get("net_gex_b"),
+                "gamma_regime": t.get("gamma_regime"),
+                "risk_reward": t.get("risk_reward")
+            }
+            new_trd = add_trade(
+                ticker=t["ticker"],
+                direction=t["direction"],
+                asset_type="OPTION" if asset_type == "Options Contract" else "STOCK",
+                entry_price=in_entry,
+                size=in_size,
+                stop_loss=in_stop,
+                target_1=in_tp1,
+                target_2=tp2_px,
+                contract_type=in_contract_type,
+                strike=in_strike,
+                expiration=in_expiry,
+                underlying_entry_spot=curr_px,
+                notes=custom_notes,
+                ai_snapshot=snap
+            )
+            st.success(f"🎉 **{t['ticker']}** successfully committed to your Trade Ledger! Switch to the **Trade Ledger & Audit** tab to track live progress and run AI audits.")
+            time.sleep(1)
+            st.rerun()
+
 # ----------------- MODERN TABS (Institutional Options Desk v3.0 Full Suite) -----------------
-tab1, tab_agent, tab2, tab3, tab5, tab4, tab6, tab7, tab_gamma, tab_options = st.tabs([
+tab1, tab_agent, tab2, tab_ledger, tab3, tab5, tab4, tab6, tab7, tab_gamma, tab_options = st.tabs([
     "AI Macro Letter",
     "AI Agent",
     "Automated Trade Ideas",
+    "Trade Ledger & Audit",
     "Bias Matrix",
     "Indexes & Sector Flow",
     "Magnificant 7 Flow",
@@ -809,7 +926,7 @@ with tab_agent:
 
     # Quick Prompts Row
     st.markdown("<div style='font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:6px;'>Quick Desk Inquiries:</div>", unsafe_allow_html=True)
-    qp1, qp2, qp3, qp4 = st.columns(4)
+    qp1, qp2, qp3, qp4, qp5 = st.columns(5)
     prompt_clicked = None
     with qp1:
         if st.button("Mag 7 Divergence & Risks", use_container_width=True):
@@ -823,6 +940,9 @@ with tab_agent:
     with qp4:
         if st.button("Best High-Conviction Setups", use_container_width=True):
             prompt_clicked = "Give me the top 3 high-probability setups from today's confluence radar with exact entry rationale, targets, and stop-loss levels."
+    with qp5:
+        if st.button("Audit Active Ledger Trades", use_container_width=True):
+            prompt_clicked = "Audit all active trades currently in my ledger against live market metrics. Check their current prices, distances to stop-loss/targets, gamma regimes, and advise whether to hold, trail stop, take profits, or invalidate."
 
     # Render Chat History
     for msg in st.session_state["agent_chat"]:
@@ -992,14 +1112,16 @@ with tab2:
                 f'</div>'
             )
 
-        # Render trade cards side by side in pairs of 2
+        # Render trade cards side by side in pairs of 2 with logging widgets
         for i in range(0, len(trade_cards), 2):
             cols = st.columns(2)
             with cols[0]:
                 st.markdown(render_compact_trade_card_html(trade_cards[i]), unsafe_allow_html=True)
+                render_trade_logging_widget(trade_cards[i], f"tc_{i}")
             if i + 1 < len(trade_cards):
                 with cols[1]:
                     st.markdown(render_compact_trade_card_html(trade_cards[i + 1]), unsafe_allow_html=True)
+                    render_trade_logging_widget(trade_cards[i + 1], f"tc_{i+1}")
 
     with st.expander("Quantitative Desk Rules: How We Evaluate 'Buy the Dip' Opportunities on Red Days"):
         st.markdown(
@@ -1014,6 +1136,341 @@ with tab2:
             '</div>',
             unsafe_allow_html=True
         )
+
+
+# ================= TAB: TRADE LEDGER & FORWARD AI AUDITOR =================
+with tab_ledger:
+    col_l1, col_l2, col_l3 = st.columns([2.8, 1.1, 1.1])
+    with col_l1:
+        st.subheader("Institutional Trade Ledger & AI Forward Performance Auditor")
+        st.caption("Live Mark-to-Market, Frozen Quantitative Baseline Snapshots, and On-Demand AI Risk Officer Audits")
+    with col_l2:
+        run_audit_btn = st.button("🤖 Run AI Desk Audit", use_container_width=True)
+    with col_l3:
+        if st.button("🔄 Refresh Live Marks", use_container_width=True):
+            st.rerun()
+
+    # AI Audit Output Container
+    if run_audit_btn:
+        with st.spinner("AI Quant Officer auditing active positions against live prices, GEX walls, and baseline entry snapshots..."):
+            audit_report = generate_ai_portfolio_audit(market_data=market_data, gemini_api_key=user_api_key)
+            st.markdown('<div class="metric-card-lux" style="border-left:4px solid #38bdf8; margin-bottom:16px;">', unsafe_allow_html=True)
+            st.markdown("### 🤖 Institutional AI Desk Audit & Position Review")
+            st.markdown(audit_report)
+            st.markdown('</div>', unsafe_allow_html=True)
+
+    # Executive KPI Stats Ribbon
+    ledger_stats = get_ledger_stats()
+    active_trades = ledger_stats["active_trades"]
+    closed_trades = ledger_stats["closed_trades"]
+
+    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+    with kpi1:
+        st.markdown(
+            f'<div class="metric-card-lux" style="padding:10px 14px;">'
+            f'<div class="card-label">Total Logged</div>'
+            f'<div class="card-val">{ledger_stats["total_trades"]}</div>'
+            f'<div style="font-size:10px; color:#64748b; margin-top:2px;">Cumulative Setups</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    with kpi2:
+        st.markdown(
+            f'<div class="metric-card-lux" style="padding:10px 14px; border-left:3px solid #38bdf8;">'
+            f'<div class="card-label">Active Open</div>'
+            f'<div class="card-val" style="color:#38bdf8;">{ledger_stats["active_trades_count"]}</div>'
+            f'<div style="font-size:10px; color:#94a3b8; margin-top:2px;">Under AI Monitoring</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    with kpi3:
+        unreal_val = ledger_stats["open_unrealized_pnl"]
+        unreal_col = "#00F5A0" if unreal_val >= 0 else "#FF2E55"
+        sign_u = "+" if unreal_val >= 0 else ""
+        st.markdown(
+            f'<div class="metric-card-lux" style="padding:10px 14px; border-left:3px solid {unreal_col};">'
+            f'<div class="card-label">Active Unrealized P&L</div>'
+            f'<div class="card-val" style="color:{unreal_col};">{sign_u}${unreal_val:,.2f}</div>'
+            f'<div style="font-size:10px; color:#94a3b8; margin-top:2px;">Open Risk Mark</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    with kpi4:
+        real_val = ledger_stats["realized_pnl"]
+        real_col = "#00F5A0" if real_val >= 0 else "#FF2E55"
+        sign_r = "+" if real_val >= 0 else ""
+        st.markdown(
+            f'<div class="metric-card-lux" style="padding:10px 14px; border-left:3px solid {real_col};">'
+            f'<div class="card-label">Realized Net P&L</div>'
+            f'<div class="card-val" style="color:{real_col};">{sign_r}${real_val:,.2f}</div>'
+            f'<div style="font-size:10px; color:#94a3b8; margin-top:2px;">Closed Performance</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+    with kpi5:
+        wr_val = ledger_stats["win_rate_closed"]
+        st.markdown(
+            f'<div class="metric-card-lux" style="padding:10px 14px;">'
+            f'<div class="card-label">Closed Win Rate</div>'
+            f'<div class="card-val">{wr_val:.1f}%</div>'
+            f'<div style="font-size:10px; color:#64748b; margin-top:2px;">N={ledger_stats["closed_trades_count"]} Closed Trades</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
+
+    # Sub-tabs for Ledger Management
+    sub_l1, sub_l2, sub_l3 = st.tabs([
+        f"Active Positions Radar ({len(active_trades)})",
+        "Manual / AI Prompt Trade Logger",
+        f"Closed Trades History ({len(closed_trades)})"
+    ])
+
+    # ---------------- SUB-TAB 1: ACTIVE POSITIONS ----------------
+    with sub_l1:
+        if not active_trades:
+            st.info("No active trades currently open in the ledger. Go to **'Automated Trade Ideas'** to log an algorithmic setup, or use the **'Manual / AI Prompt Trade Logger'** sub-tab.")
+        else:
+            for idx, trd in enumerate(active_trades):
+                mtm = compute_mark_to_market(trd)
+                snap = trd.get("ai_snapshot", {})
+                is_opt = trd.get("asset_type") == "OPTION"
+                direction = trd.get("direction", "LONG").upper()
+                is_long = "LONG" in direction or "DIP" in direction
+                dir_col = "#00F5A0" if is_long else "#FF2E55"
+                pnl_col = "#00F5A0" if mtm["unrealized_pnl"] >= 0 else "#FF2E55"
+                sign_pnl = "+" if mtm["unrealized_pnl"] >= 0 else ""
+
+                inst_badge = (
+                    f'<span class="pill-cyan" style="font-size:11px; font-weight:700; padding:2px 8px;">'
+                    f'⚡ {trd.get("strike", 0):.0f} {trd.get("contract_type", "CALL")} (Exp: {trd.get("expiration")})'
+                    f'</span>'
+                ) if is_opt else (
+                    f'<span class="pill-amber" style="font-size:11px; font-weight:700; padding:2px 8px;">'
+                    f'STOCK / EQUITY'
+                    f'</span>'
+                )
+
+                alert_banner = ""
+                if mtm.get("trigger_alert"):
+                    al_col = "#00F5A0" if mtm["alert_type"] == "success" else ("#FF2E55" if mtm["alert_type"] == "error" else "#fbbf24")
+                    alert_banner = (
+                        f'<div style="background:rgba(255,255,255,0.03); border:1px solid {al_col}; border-radius:6px; padding:6px 10px; margin-bottom:10px; font-size:11.5px; color:{al_col}; font-weight:600;">'
+                        f'{mtm["trigger_alert"]}'
+                        f'</div>'
+                    )
+
+                # Render Card HTML
+                card_html = (
+                    f'<div class="metric-card-lux" style="border-left:4px solid {dir_col}; padding:14px; margin-bottom:14px;">'
+                    f'<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px; margin-bottom:10px; flex-wrap:wrap; gap:8px;">'
+                    f'<div style="display:flex; align-items:center; gap:8px;">'
+                    f'<span style="font-size:22px; font-weight:800; color:#ffffff;">{trd["ticker"]}</span>'
+                    f'<span class="pill-{"green" if is_long else "red"}" style="font-size:11px; font-weight:700; padding:2px 8px;">{direction}</span>'
+                    f'{inst_badge}'
+                    f'</div>'
+                    f'<div style="display:flex; align-items:center; gap:8px;">'
+                    f'<span style="font-size:11px; color:#64748b;">Logged: {trd["logged_at"]}</span>'
+                    f'<span class="pill-{"green" if mtm["unrealized_pnl"] >= 0 else "red"}" style="font-size:13px; font-weight:800; padding:2px 10px;">'
+                    f'{sign_pnl}${mtm["unrealized_pnl"]:,.2f} ({mtm["unrealized_pct"]:+.2f}%)'
+                    f'</span>'
+                    f'</div>'
+                    f'</div>'
+                    f'{alert_banner}'
+                    # 4-Metrics Execution Snapshot Grid
+                    f'<div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:8px; margin-bottom:10px;">'
+                    f'<div style="background:rgba(255,255,255,0.02); padding:6px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.05);">'
+                    f'<div style="font-size:9.5px; color:#94a3b8; text-transform:uppercase;">Entry Fill Price</div>'
+                    f'<div style="font-size:15px; font-weight:800; color:#ffffff; margin-top:2px;">${trd["entry_price"]:,.2f}</div>'
+                    f'<div style="font-size:9px; color:#64748b;">Size: {trd["size"]} {"Contracts" if is_opt else "Shares"}</div>'
+                    f'</div>'
+                    f'<div style="background:rgba(255,255,255,0.02); padding:6px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.05);">'
+                    f'<div style="font-size:9.5px; color:#94a3b8; text-transform:uppercase;">Live Spot Print</div>'
+                    f'<div style="font-size:15px; font-weight:800; color:#38bdf8; margin-top:2px;">${mtm["live_spot"]:,.2f}</div>'
+                    f'<div style="font-size:9px; color:#64748b;">Underlying Spot</div>'
+                    f'</div>'
+                    f'<div style="background:rgba(255, 46, 85, 0.06); padding:6px 10px; border-radius:6px; border:1px solid rgba(255, 46, 85, 0.25);">'
+                    f'<div style="font-size:9.5px; color:#FF2E55; text-transform:uppercase; font-weight:700;">Invalidation Stop</div>'
+                    f'<div style="font-size:15px; font-weight:800; color:#FF2E55; margin-top:2px;">${trd["stop_loss"]:,.2f}</div>'
+                    f'<div style="font-size:9px; color:#fda4af;">Buffer: {mtm["dist_to_stop_pct"]:.2f}%</div>'
+                    f'</div>'
+                    f'<div style="background:rgba(0, 245, 160, 0.06); padding:6px 10px; border-radius:6px; border:1px solid rgba(0, 245, 160, 0.25);">'
+                    f'<div style="font-size:9.5px; color:#00F5A0; text-transform:uppercase; font-weight:700;">Take Profit Target 1</div>'
+                    f'<div style="font-size:15px; font-weight:800; color:#00F5A0; margin-top:2px;">${trd["target_1"]:,.2f}</div>'
+                    f'<div style="font-size:9px; color:#6ee7b7;">Distance: {mtm["dist_to_target1_pct"]:.2f}%</div>'
+                    f'</div>'
+                    f'</div>'
+                    f'</div>'
+                )
+                st.markdown(card_html, unsafe_allow_html=True)
+
+                # Progress to Target 1 Bar
+                prog_val = max(0.0, min(100.0, float(mtm.get("progress_pct", 0.0))))
+                st.caption(f"Path Progress toward Target 1 (${trd['target_1']:,.2f}): **{prog_val:.1f}%**")
+                st.progress(prog_val / 100.0)
+
+                # Expandable Frozen AI Baseline Snapshot
+                with st.expander(f"🔍 Frozen Quantitative Baseline Snapshot ({trd['ticker']} at Entry)", expanded=False):
+                    sb1, sb2, sb3 = st.columns(3)
+                    with sb1:
+                        st.markdown(f"**20-Year Backtest Win Rate:** `{snap.get('win_rate', 'N/A')}` (N={snap.get('sample_size', 0)})")
+                        st.markdown(f"**Confluence Score at Entry:** `{snap.get('confluence_score', 'N/A')}` ({snap.get('bias_label', 'Neutral')})")
+                    with sb2:
+                        st.markdown(f"**Dealer Call Wall at Entry:** `${snap.get('call_wall', 'N/A')}`")
+                        st.markdown(f"**Dealer Put Wall at Entry:** `${snap.get('put_wall', 'N/A')}`")
+                    with sb3:
+                        st.markdown(f"**Zero-Gamma Flip:** `${snap.get('zero_gamma', 'N/A')}`")
+                        st.markdown(f"**Net GEX Regime:** `{snap.get('gamma_regime', 'N/A')} ({snap.get('net_gex_b', 'N/A')})`")
+
+                    if snap.get("thesis"):
+                        st.markdown(f"> **Original AI Thesis:** {snap.get('thesis')}")
+
+                # Trade Management Action Controls
+                act_col1, act_col2, act_col3 = st.columns([1.5, 1.5, 1])
+                with act_col1:
+                    with st.expander("✅ Close Position / Realize P&L"):
+                        close_px = st.number_input("Final Exit Price ($)", value=float(mtm.get("est_option_px", trd["entry_price"]) if is_opt else mtm["live_spot"]), format="%.2f", key=f"c_px_{trd['id']}")
+                        outcome = st.selectbox("Trade Outcome", ["TARGET_1_HIT", "TARGET_2_HIT", "STOPPED_OUT", "CLOSED_MANUALLY"], key=f"c_out_{trd['id']}")
+                        close_note = st.text_input("Exit Rationale / Notes", key=f"c_note_{trd['id']}")
+                        if st.button("Confirm Close Trade", key=f"btn_close_{trd['id']}", use_container_width=True):
+                            close_trade(trd["id"], exit_price=close_px, outcome=outcome, notes=close_note)
+                            st.success(f"Trade {trd['ticker']} closed successfully!")
+                            time.sleep(0.5)
+                            st.rerun()
+
+                with act_col2:
+                    with st.expander("⚙️ Adjust Invalidation / Target"):
+                        new_stop = st.number_input("New Stop Loss ($)", value=float(trd["stop_loss"]), format="%.2f", key=f"u_stop_{trd['id']}")
+                        new_tp1 = st.number_input("New Target 1 ($)", value=float(trd["target_1"]), format="%.2f", key=f"u_tp1_{trd['id']}")
+                        new_notes = st.text_input("Append Notes", key=f"u_notes_{trd['id']}")
+                        if st.button("Save Updates", key=f"btn_upd_{trd['id']}", use_container_width=True):
+                            update_trade(trd["id"], {"stop_loss": new_stop, "target_1": new_tp1, "notes": f"{trd.get('notes', '')} | {new_notes}".strip()})
+                            st.success("Trade updated!")
+                            time.sleep(0.5)
+                            st.rerun()
+
+                with act_col3:
+                    if st.button(f"🗑️ Delete", key=f"del_{trd['id']}", use_container_width=True):
+                        delete_trade(trd["id"])
+                        st.rerun()
+
+                st.markdown("<hr style='border:0; border-top:1px solid #1B212D; margin:16px 0;'>", unsafe_allow_html=True)
+
+    # ---------------- SUB-TAB 2: MANUAL / AI PROMPT TRADE LOGGER ----------------
+    with sub_l2:
+        st.markdown("### Log Custom Setup Recommended by AI Quant Agent")
+        st.caption("Enter parameters from your interactive conversations in the AI Agent tab, and freeze today's live technical and historical backtest metrics.")
+
+        ml1, ml2, ml3 = st.columns(3)
+        with ml1:
+            m_ticker = st.text_input("Ticker Symbol", value="NVDA").upper().strip()
+        with ml2:
+            m_dir = st.selectbox("Direction", ["LONG", "SHORT / FADE", "DIP BUY", "CALL", "PUT"])
+        with ml3:
+            m_type = st.radio("Asset Type", ["Stock / Equity", "Options Contract"], horizontal=True)
+
+        # Dynamic Auto-fetch button to pull live confluence and WR
+        if st.button(f"⚡ Auto-Fetch Current Confluence & Historical Odds for {m_ticker}", use_container_width=True):
+            try:
+                c_score = compute_confluence_score(m_ticker)
+                if c_score:
+                    st.session_state[f"auto_data_{m_ticker}"] = c_score
+                    st.success(f"Fetched live quantitative profile for {m_ticker}: Score {c_score.get('score')} | Win Rate: {c_score.get('metrics', {}).get('edge_match', {}).get('win_rate_20d', 'N/A')}%")
+            except Exception as e:
+                st.warning(f"Unable to auto-pull metrics: {e}")
+
+        auto_pulled_data = st.session_state.get(f"auto_data_{m_ticker}", {})
+
+        m_opt = m_type == "Options Contract"
+        m_curr_spot = fetch_live_price(m_ticker) or 100.0
+
+        if not m_opt:
+            mc1, mc2, mc3, mc4 = st.columns(4)
+            with mc1:
+                m_entry = st.number_input("Entry Fill Price ($)", value=float(m_curr_spot), format="%.2f", key="m_stock_entry")
+            with mc2:
+                m_size = st.number_input("Shares Quantity", value=10, min_value=1, step=1, key="m_stock_size")
+            with mc3:
+                m_stop = st.number_input("Invalidation Stop ($)", value=float(m_curr_spot * 0.97), format="%.2f", key="m_stock_stop")
+            with mc4:
+                m_tp1 = st.number_input("Take Profit Target 1 ($)", value=float(m_curr_spot * 1.05), format="%.2f", key="m_stock_tp1")
+            m_strike = None
+            m_exp = None
+            m_ctype = "STOCK"
+        else:
+            moc1, moc2, moc3, moc4, moc5 = st.columns(5)
+            with moc1:
+                m_ctype = st.selectbox("Contract Type", ["CALL", "PUT"], key="m_opt_ctype")
+            with moc2:
+                m_strike = st.number_input("Contract Strike ($)", value=float(round(m_curr_spot)), format="%.2f", key="m_opt_strike")
+            with moc3:
+                from datetime import timedelta
+                m_exp = st.text_input("Expiration (YYYY-MM-DD)", value=(datetime.now() + timedelta(days=35)).strftime("%Y-%m-%d"), key="m_opt_exp")
+            with moc4:
+                m_entry = st.number_input("Option Premium ($)", value=3.50, min_value=0.01, step=0.10, format="%.2f", key="m_opt_entry")
+            with moc5:
+                m_size = st.number_input("Contracts Quantity", value=2, min_value=1, step=1, key="m_opt_size")
+
+            mos1, mos2 = st.columns(2)
+            with mos1:
+                m_stop = st.number_input("Underlying Stop Invalidation ($)", value=float(m_curr_spot * 0.97), format="%.2f", key="m_opt_und_stop")
+            with mos2:
+                m_tp1 = st.number_input("Underlying Target 1 ($)", value=float(m_curr_spot * 1.05), format="%.2f", key="m_opt_und_tp1")
+
+        m_thesis = st.text_area("AI Desk Rationale / Thesis Given", value=f"Manual setup based on Quant AI Agent recommendation for {m_ticker}.")
+
+        if st.button(f"📌 Commit {m_ticker} Manual Setup to Ledger", use_container_width=True):
+            # Build baseline snapshot
+            edge_info = auto_pulled_data.get("metrics", {}).get("edge_match", {})
+            m_snap = {
+                "win_rate": f"{edge_info.get('win_rate_20d', 'N/A')}%" if edge_info else "Manual Setup",
+                "sample_size": edge_info.get("sample_size", 0),
+                "confluence_score": str(auto_pulled_data.get("score", "N/A")),
+                "bias_label": auto_pulled_data.get("bias_label", "Desk Discretionary"),
+                "thesis": m_thesis,
+                "entry_price_spot": m_curr_spot
+            }
+
+            add_trade(
+                ticker=m_ticker,
+                direction=m_dir,
+                asset_type="OPTION" if m_opt else "STOCK",
+                entry_price=m_entry,
+                size=m_size,
+                stop_loss=m_stop,
+                target_1=m_tp1,
+                target_2=float(m_curr_spot * 1.10) if not m_opt else 0.0,
+                contract_type=m_ctype,
+                strike=m_strike,
+                expiration=m_exp,
+                underlying_entry_spot=m_curr_spot,
+                notes=m_thesis,
+                ai_snapshot=m_snap
+            )
+            st.success(f"🎉 **{m_ticker}** successfully added to your active ledger!")
+            time.sleep(1)
+            st.rerun()
+
+    # ---------------- SUB-TAB 3: CLOSED TRADES HISTORY ----------------
+    with sub_l3:
+        if not closed_trades:
+            st.info("No closed trades recorded yet. Once positions are closed, their realized performance and historical accuracy vs AI backtest odds will appear here.")
+        else:
+            closed_table = []
+            for ct in closed_trades:
+                closed_table.append({
+                    "Ticker": ct.get("ticker"),
+                    "Type": f"{ct.get('asset_type')} {ct.get('contract_type', '')}".strip(),
+                    "Logged Date": ct.get("logged_at"),
+                    "Closed Date": ct.get("closed_at"),
+                    "Entry ($)": f"${ct.get('entry_price', 0):,.2f}",
+                    "Exit ($)": f"${ct.get('exit_price', 0):,.2f}",
+                    "Realized P&L ($)": f"${ct.get('realized_pnl', 0):+,.2f}",
+                    "Return (%)": f"{ct.get('realized_pct', 0):+.2f}%",
+                    "Outcome": ct.get("status"),
+                    "AI Backtest WR": ct.get("ai_snapshot", {}).get("win_rate", "N/A")
+                })
+            df_closed = pd.DataFrame(closed_table)
+            st.dataframe(df_closed, use_container_width=True)
 
 # ================= TAB 3: BIAS MATRIX =================
 with tab3:

@@ -351,6 +351,17 @@ def query_ai_agent(
                 if cand not in symbols_to_check:
                     symbols_to_check.append(cand)
 
+        # Automatically index active ledger trades so their live GEX profile is always available
+        try:
+            from ledger_engine import load_ledger
+            for trd in load_ledger():
+                if trd.get("status") == "ACTIVE" and trd.get("ticker"):
+                    t_sym = trd["ticker"].upper().strip()
+                    if t_sym not in symbols_to_check:
+                        symbols_to_check.append(t_sym)
+        except Exception:
+            pass
+
         for sym in symbols_to_check:
             g = compute_gamma_exposure_profile(sym, max_expirations=3)
             if g and "error" not in g:
@@ -429,6 +440,41 @@ def query_ai_agent(
     except Exception:
         pass
 
+    # Active Trades Ledger Context for AI Monitoring
+    active_ledger_summary = []
+    try:
+        from ledger_engine import load_ledger, compute_mark_to_market
+        all_ledger_trades = load_ledger()
+        for t in all_ledger_trades:
+            if t.get("status") == "ACTIVE":
+                mtm = compute_mark_to_market(t)
+                snap = t.get("ai_snapshot", {})
+                active_ledger_summary.append({
+                    "id": t.get("id"),
+                    "ticker": t.get("ticker"),
+                    "direction": t.get("direction"),
+                    "asset_type": t.get("asset_type"),
+                    "contract": f"{t.get('strike')} {t.get('contract_type')} (Exp: {t.get('expiration')})" if t.get("asset_type") == "OPTION" else "STOCK",
+                    "entry_price": t.get("entry_price"),
+                    "live_spot_price": mtm.get("live_spot"),
+                    "unrealized_return_pct": f"{mtm.get('unrealized_pct'):+.2f}%",
+                    "unrealized_pnl_dollars": f"${mtm.get('unrealized_pnl'):+,.2f}",
+                    "stop_loss_invalidation": t.get("stop_loss"),
+                    "dist_to_stop_pct": f"{mtm.get('dist_to_stop_pct'):.2f}%",
+                    "take_profit_target_1": t.get("target_1"),
+                    "take_profit_target_2": t.get("target_2"),
+                    "progress_to_target_pct": f"{mtm.get('progress_pct'):.1f}%",
+                    "system_alert": mtm.get("trigger_alert"),
+                    "original_entry_confluence": snap.get("confluence_score"),
+                    "original_historical_win_rate": snap.get("win_rate"),
+                    "original_sample_size": snap.get("sample_size"),
+                    "original_entry_call_wall": snap.get("call_wall"),
+                    "original_entry_put_wall": snap.get("put_wall"),
+                    "original_ai_thesis": snap.get("thesis")
+                })
+    except Exception:
+        pass
+
     system_context = f"""
 You are the **Double Edge Quantitative AI Analyst & Chief Risk Officer**, an institutional-grade macro and systematic trading AI agent embedded in the Double Edge Quantitative Dashboard.
 The user is asking you for quantitative analysis, market insight, dealer positioning evaluations, or trade setups.
@@ -441,6 +487,8 @@ CURRENT LIVE MARKET SNAPSHOT ({datetime.now().strftime('%Y-%m-%d %H:%M')}):
 - Key Ratio Analytics (SPY/RSP, QQQ/RSP, IWM/QQQ): {json.dumps({k: {'val': v.get('current'), '5d': v.get('pct_5d'), 'z_score': v.get('z_score_50d')} for k, v in ratios.items() if k in ['SPY_RSP', 'QQQ_RSP', 'IWM_QQQ']})}
 - Core Universe Confluence Snapshot:
 {json.dumps(confluence_map, indent=1, default=str)}
+- USER'S ACTIVE TRADE LEDGER (LIVE POSITIONS TRACKED):
+{json.dumps(active_ledger_summary, indent=1) if active_ledger_summary else "No active trades currently open in ledger."}
 
 INSTITUTIONAL DEALER GAMMA & RISK/REWARD MASTER DIRECTIVES:
 1. Gamma Positioning Regimes & Magnitude Conviction:
@@ -528,6 +576,16 @@ INSTITUTIONAL DEALER GAMMA & RISK/REWARD MASTER DIRECTIVES:
      * High-contrast Markdown tables for metrics (EMAs, RSI, RVOL, Gamma Walls, Vol Skew)
      * Dedicated Execution Table or actionable levels table
      * Blockquote callout for critical risks or invalidation triggers.
+
+6. ACTIVE USER TRADE LEDGER AUDIT & FORWARD PROGRESS DIRECTIVES:
+   - **WHEN USER ASKS ABOUT THEIR TRADES / PORTFOLIO / LEDGER**:
+     * Open with an Executive Progress Table comparing all active trades:
+| Ticker | Type / Strike | Entry Spot | Live Spot | Unrealized P&L | Progress to TP1 | Stop Risk | Action Directive |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+     * Then for each active trade, provide a 3-bullet forward audit:
+       1. **Thesis & Historical Odds Audit**: Compare live market action against the original AI entry thesis and 20-year win rate.
+       2. **Dealer Gamma & Technical Shifts**: Check if current price is confronting the Call Wall or losing Put Wall support.
+       3. **Risk Management Action**: Give explicit instruction (HOLD, TRAIL STOP TO BREAKEVEN, TAKE 50% PROFIT, or CUT/INVALIDATE).
 """
 
     messages = [{"role": "system", "content": system_context}]

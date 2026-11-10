@@ -1371,12 +1371,20 @@ HTML_CONTENT = """<!DOCTYPE html>
 
             <!-- Comprehensive Per-Strike Table Breakdown -->
             <div class="lux-card p-4 mb-5">
-                <div class="flex justify-between items-center mb-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                     <div>
-                        <h4 class="text-sm font-bold text-white">Detailed Strike Gamma & Open Interest Breakdown</h4>
-                        <p class="text-[11px] text-slate-400">All liquid strikes within ±12% of spot price, including dealer net delta impact and structural wall tags.</p>
+                        <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                            <span>Detailed Strike Gamma & Open Interest Breakdown</span>
+                            <span id="gammaFilterBadge" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/20">Relevant Strikes</span>
+                        </h4>
+                        <p class="text-[11px] text-slate-400">Institutional structural walls (Call/Put Walls, Zero Flip, ATM) and top dealer open interest battlegrounds.</p>
                     </div>
-                    <span class="text-[10px] font-mono text-slate-400" id="gammaDeskStrikesCount">0 Strikes Mapped</span>
+                    <div class="flex items-center gap-2">
+                        <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="gammaFilterGroup">
+                            <button onclick="setGammaTableFilter(true)" id="btnGammaRelevant" class="px-2.5 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30">⚡ Relevant Only (<span id="gammaRelCount">0</span>)</button>
+                            <button onclick="setGammaTableFilter(false)" id="btnGammaAll" class="px-2.5 py-1 rounded font-bold transition text-slate-400">All Strikes (<span id="gammaTotalCount">0</span>)</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="overflow-x-auto rounded-lg border border-white/10 bg-[#0b0d12]">
                     <table class="w-full text-left text-xs">
@@ -3517,6 +3525,81 @@ async function init() {
             select.innerHTML = html;
         }
 
+        let CURRENT_GAMMA_ONLY_RELEVANT = true;
+        let CURRENT_GAMMA_DATA = null;
+
+        function setGammaTableFilter(onlyRelevant) {
+            CURRENT_GAMMA_ONLY_RELEVANT = onlyRelevant;
+            const btnRel = document.getElementById('btnGammaRelevant');
+            const btnAll = document.getElementById('btnGammaAll');
+            const badge = document.getElementById('gammaFilterBadge');
+            if (btnRel && btnAll) {
+                if (onlyRelevant) {
+                    btnRel.className = 'px-2.5 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30';
+                    btnAll.className = 'px-2.5 py-1 rounded font-bold transition text-slate-400';
+                    if (badge) {
+                        badge.innerText = 'Relevant Strikes';
+                        badge.className = 'text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/20';
+                    }
+                } else {
+                    btnRel.className = 'px-2.5 py-1 rounded font-bold transition text-slate-400';
+                    btnAll.className = 'px-2.5 py-1 rounded font-bold transition bg-white/10 text-white border border-white/20';
+                    if (badge) {
+                        badge.innerText = 'All Mapped Strikes';
+                        badge.className = 'text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-white/10 text-slate-300 border border-white/20';
+                    }
+                }
+            }
+            if (CURRENT_GAMMA_DATA) {
+                renderGammaTableRows(CURRENT_GAMMA_DATA);
+            }
+        }
+
+        function renderGammaTableRows(g) {
+            const tbody = document.getElementById('gammaDeskStrikesTbody');
+            if (!tbody || !g.strikes || g.strikes.length === 0) return;
+            const spot = g.spot_price;
+            const targetZgStrike = g.closest_zero_gamma_strike !== undefined ? g.closest_zero_gamma_strike : g.zero_gamma_level;
+            
+            const displayList = CURRENT_GAMMA_ONLY_RELEVANT 
+                ? g.strikes.filter(s => s.is_relevant) 
+                : g.strikes;
+
+            const rowsToRender = displayList.length > 0 ? displayList : g.strikes;
+            tbody.innerHTML = rowsToRender.map(s => {
+                const distPct = ((s.strike / spot) - 1) * 100;
+                const distStr = (distPct >= 0 ? '+' : '') + distPct.toFixed(1) + '%';
+                const netClass = s.net_gex >= 0 ? 'text-mint font-semibold' : 'text-cherry font-semibold';
+                const netSign = s.net_gex >= 0 ? '+' : '';
+
+                let roleTag = '<span class="text-slate-500 text-[10px]">Normal Liquidity</span>';
+                if (Math.abs(s.strike - g.call_wall) < 0.01) {
+                    roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/20 text-mint border border-mint/30">CALL WALL (Pin)</span>';
+                } else if (Math.abs(s.strike - g.put_wall) < 0.01) {
+                    roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">PUT WALL (Floor)</span>';
+                } else if (Math.abs(s.strike - targetZgStrike) < 0.01) {
+                    roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30">ZERO FLIP</span>';
+                } else if (Math.abs(s.strike - spot) < (spot * 0.0075)) {
+                    roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/10 text-white">ATM SPOT</span>';
+                } else if (s.structural_role && s.structural_role !== "Normal Liquidity") {
+                    roleTag = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-white/5 text-slate-300 border border-white/10">${s.structural_role}</span>`;
+                }
+
+                return `
+                    <tr class="border-b border-white/[0.04] hover:bg-white/[0.02] transition">
+                        <td class="py-2.5 px-3 font-bold text-white font-mono">$${s.strike.toFixed(2)}</td>
+                        <td class="py-2.5 px-3 font-mono text-slate-400">${distStr}</td>
+                        <td class="py-2.5 px-3 font-mono text-mint">+$${s.call_gex.toFixed(1)}M</td>
+                        <td class="py-2.5 px-3 font-mono text-cherry">-$${s.put_gex.toFixed(1)}M</td>
+                        <td class="py-2.5 px-3 font-mono ${netClass}">${netSign}$${s.net_gex.toFixed(1)}M</td>
+                        <td class="py-2.5 px-3 font-mono text-slate-300">${(s.call_oi || 0).toLocaleString()}</td>
+                        <td class="py-2.5 px-3 font-mono text-slate-300">${(s.put_oi || 0).toLocaleString()}</td>
+                        <td class="py-2.5 px-3">${roleTag}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
         async function loadGammaDesk(force = false) {
             const tickerSelect = document.getElementById('gammaDeskTickerSelect');
             const ticker = (tickerSelect && tickerSelect.value) ? tickerSelect.value : 'SPY';
@@ -3717,45 +3800,30 @@ async function init() {
                         legend: { orientation: 'h', x: 1, xanchor: 'right', y: 1.1, font: { color: '#94a3b8', size: 10 } }
                     };
 
+                    // Auto-focus default view on the relevant strikes window
+                    const relStrikes = (g.strikes || []).filter(s => s.is_relevant).map(s => s.strike);
+                    if (relStrikes.length > 0) {
+                        const kMin = Math.min(...relStrikes);
+                        const kMax = Math.max(...relStrikes);
+                        const span = kMax - kMin;
+                        const pad = Math.max(span * 0.08, g.spot_price * 0.015);
+                        layout.xaxis.range = [kMin - pad, kMax + pad];
+                    }
+
                     Plotly.newPlot('gammaDeskChart', [traceCalls, tracePuts], layout, { responsive: true, displayModeBar: false });
                 }
 
-                // 4. Tabular Per-Strike Breakdown
-                if (countSpan) countSpan.innerText = `${(g.strikes || []).length} Strikes Mapped`;
-                if (tbody && g.strikes && g.strikes.length > 0) {
-                    const spot = g.spot_price;
-                    tbody.innerHTML = g.strikes.map(s => {
-                        const distPct = ((s.strike / spot) - 1) * 100;
-                        const distStr = (distPct >= 0 ? '+' : '') + distPct.toFixed(1) + '%';
-                        const netClass = s.net_gex >= 0 ? 'text-mint font-semibold' : 'text-cherry font-semibold';
-                        const netSign = s.net_gex >= 0 ? '+' : '';
+                // 4. Tabular Per-Strike Breakdown (Curated Relevant Strikes)
+                CURRENT_GAMMA_DATA = g;
+                const relCount = (g.strikes || []).filter(s => s.is_relevant).length;
+                const totCount = (g.strikes || []).length;
+                const relSpan = document.getElementById('gammaRelCount');
+                const totSpan = document.getElementById('gammaTotalCount');
+                if (relSpan) relSpan.innerText = relCount;
+                if (totSpan) totSpan.innerText = totCount;
+                if (countSpan) countSpan.innerText = `${relCount} Relevant / ${totCount} Total Mapped`;
 
-                        const targetZgStrike = g.closest_zero_gamma_strike !== undefined ? g.closest_zero_gamma_strike : g.zero_gamma_level;
-                        let roleTag = '<span class="text-slate-500 text-[10px]">Normal Liquidity</span>';
-                        if (Math.abs(s.strike - g.call_wall) < 0.01) {
-                            roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/20 text-mint border border-mint/30">CALL WALL (Pin)</span>';
-                        } else if (Math.abs(s.strike - g.put_wall) < 0.01) {
-                            roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">PUT WALL (Floor)</span>';
-                        } else if (Math.abs(s.strike - targetZgStrike) < 0.01) {
-                            roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30">ZERO FLIP</span>';
-                        } else if (Math.abs(s.strike - spot) < (spot * 0.005)) {
-                            roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/10 text-white">ATM SPOT</span>';
-                        }
-
-                        return `
-                            <tr class="border-b border-white/[0.04] hover:bg-white/[0.02] transition">
-                                <td class="py-2.5 px-3 font-bold text-white font-mono">$${s.strike.toFixed(1)}</td>
-                                <td class="py-2.5 px-3 font-mono text-slate-400">${distStr}</td>
-                                <td class="py-2.5 px-3 font-mono text-mint">+$${s.call_gex.toFixed(1)}M</td>
-                                <td class="py-2.5 px-3 font-mono text-cherry">-$${s.put_gex.toFixed(1)}M</td>
-                                <td class="py-2.5 px-3 font-mono ${netClass}">${netSign}$${s.net_gex.toFixed(1)}M</td>
-                                <td class="py-2.5 px-3 font-mono text-slate-300">${(s.call_oi || 0).toLocaleString()}</td>
-                                <td class="py-2.5 px-3 font-mono text-slate-300">${(s.put_oi || 0).toLocaleString()}</td>
-                                <td class="py-2.5 px-3">${roleTag}</td>
-                            </tr>
-                        `;
-                    }).join('');
-                }
+                renderGammaTableRows(g);
 
             } catch (err) {
                 console.error("Gamma desk fetch error:", err);
