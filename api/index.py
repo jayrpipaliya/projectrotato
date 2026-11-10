@@ -129,6 +129,102 @@ async def api_agent_chat(payload: dict):
     answer = query_ai_agent(user_query, market_data, confluences, gemini_api_key=api_key, chat_history=history)
     return {"answer": answer}
 
+
+# ================= TRADE LEDGER API ENDPOINTS =================
+@app.get("/api/ledger")
+def api_get_ledger():
+    try:
+        from ledger_engine import get_ledger_stats, load_ledger, compute_mark_to_market
+        stats = get_ledger_stats()
+        enriched_active = []
+        for t in stats.get("active_trades", []):
+            mtm = compute_mark_to_market(t)
+            enriched_active.append({**t, "mtm": mtm})
+
+        return clean_json({
+            "status": "success",
+            "stats": {
+                "total_trades": stats.get("total_trades", 0),
+                "active_trades_count": stats.get("active_trades_count", 0),
+                "closed_trades_count": stats.get("closed_trades_count", 0),
+                "win_rate_closed": stats.get("win_rate_closed", 0.0),
+                "realized_pnl": stats.get("realized_pnl", 0.0),
+                "open_unrealized_pnl": stats.get("open_unrealized_pnl", 0.0),
+            },
+            "active_trades": enriched_active,
+            "closed_trades": stats.get("closed_trades", [])
+        })
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.post("/api/ledger/add")
+async def api_ledger_add(payload: dict):
+    try:
+        from ledger_engine import add_trade
+        trd = add_trade(
+            ticker=payload.get("ticker", "SPY"),
+            direction=payload.get("direction", "LONG"),
+            asset_type=payload.get("asset_type", "STOCK"),
+            entry_price=float(payload.get("entry_price") or 0.0),
+            size=float(payload.get("size") or 1.0),
+            stop_loss=float(payload.get("stop_loss") or 0.0),
+            target_1=float(payload.get("target_1") or 0.0),
+            target_2=float(payload.get("target_2") or 0.0),
+            contract_type=payload.get("contract_type"),
+            strike=float(payload.get("strike")) if payload.get("strike") is not None else None,
+            expiration=payload.get("expiration"),
+            underlying_entry_spot=float(payload.get("underlying_entry_spot")) if payload.get("underlying_entry_spot") else None,
+            notes=payload.get("notes", ""),
+            ai_snapshot=payload.get("ai_snapshot", {})
+        )
+        return {"status": "success", "trade": clean_json(trd)}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.post("/api/ledger/close")
+async def api_ledger_close(payload: dict):
+    try:
+        from ledger_engine import close_trade
+        trade_id = payload.get("id")
+        exit_price = float(payload.get("exit_price") or 0.0)
+        outcome = payload.get("outcome", "CLOSED_MANUALLY")
+        notes = payload.get("notes")
+        trd = close_trade(trade_id, exit_price=exit_price, outcome=outcome, notes=notes)
+        return {"status": "success", "trade": clean_json(trd) if trd else None}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.post("/api/ledger/update")
+async def api_ledger_update(payload: dict):
+    try:
+        from ledger_engine import update_trade
+        trade_id = payload.get("id")
+        updates = payload.get("updates", {})
+        trd = update_trade(trade_id, updates)
+        return {"status": "success", "trade": clean_json(trd) if trd else None}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.delete("/api/ledger/{trade_id}")
+def api_ledger_delete(trade_id: str):
+    try:
+        from ledger_engine import delete_trade
+        ok = delete_trade(trade_id)
+        return {"status": "success" if ok else "not_found"}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
+@app.post("/api/ledger/audit")
+async def api_ledger_audit(payload: dict = None):
+    try:
+        from ledger_engine import generate_ai_portfolio_audit
+        api_key = (payload or {}).get("api_key") or os.getenv("GEMINI_API_KEY") or DEFAULT_GEMINI_KEY
+        market_data = get_cached_analysis()
+        report = generate_ai_portfolio_audit(market_data=market_data, gemini_api_key=api_key)
+        return {"report": report}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
+
 @app.post("/api/sync-data")
 def api_sync_data(payload: dict = None):
     try:
@@ -1023,6 +1119,10 @@ HTML_CONTENT = """<!DOCTYPE html>
         <button onclick="switchTab('tab2')" id="btn-tab2" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Automated Trade Ideas
         </button>
+        <button onclick="switchTab('tab_ledger')" id="btn-tab_ledger" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0 flex items-center gap-1.5">
+          <span>Trade Ledger & Audit</span>
+          <span id="ledgerTabBadge" class="hidden text-[10px] bg-mint/20 text-mint font-bold px-1.5 py-0.5 rounded-full border border-mint/30">0</span>
+        </button>
         <button onclick="switchTab('tab3')" id="btn-tab3" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Bias Matrix
         </button>
@@ -1058,7 +1158,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 
                 <!-- Quick Prompts -->
                 <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Quick Desk Inquiries:</div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 mb-4">
                     <button onclick="sendQuickPrompt('Analyze todays Mag 7 divergence. Which tech leaders are showing institutional accumulation vs distribution, and what are the key invalidation levels?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
                         <b>Mag 7 Divergence & Risks</b>
                     </button>
@@ -1070,6 +1170,10 @@ HTML_CONTENT = """<!DOCTYPE html>
                     </button>
                     <button onclick="sendQuickPrompt('Give me the top 3 high-probability setups from todays confluence radar with exact entry rationale, targets, and stop-loss levels.')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
                         <b>Best High-Conviction Setups</b>
+                    </button>
+                    <button onclick="sendQuickPrompt('Audit all active trades currently in my ledger against live market metrics. Check their current prices, distances to stop-loss/targets, gamma regimes, and advise whether to hold, trail stop, take profits, or invalidate.')" class="p-2.5 text-left rounded-lg bg-mint/10 hover:bg-mint/20 border border-mint/30 text-xs text-mint transition flex flex-col justify-between">
+                        <b>⚡ Audit Active Ledger</b>
+                        <span class="text-[10px] text-mint/70 mt-1">Live position checks</span>
                     </button>
                 </div>
 
@@ -1194,6 +1298,207 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div class="text-xs text-slate-400">Loading high-probability trade setups...</div>
             </div>
         </div>
+
+                <!-- Tab Ledger: Institutional Trade Ledger & AI Forward Performance Auditor -->
+        <div id="tab_ledger" class="tab-pane hidden">
+            <!-- Header & Desk Controls -->
+            <div class="lux-card p-4 sm:p-5 mb-4">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-3 mb-4 border-b border-white/10 gap-3">
+                    <div>
+                        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                            <span>Institutional Trade Ledger & AI Forward Auditor</span>
+                            <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-mint/15 text-mint border border-mint/20">Live Forward Radar</span>
+                        </h2>
+                        <p class="text-xs text-slate-400">Live Mark-to-Market, Frozen Quantitative Baseline Snapshots, and On-Demand AI Risk Officer Audits</p>
+                    </div>
+                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                        <button onclick="runLedgerAudit()" id="btnRunLedgerAudit" class="flex-1 sm:flex-none px-3.5 py-2 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 border border-sky-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-[0_0_12px_rgba(56,189,248,0.15)]">
+                            <span>🤖 Run AI Desk Audit</span>
+                        </button>
+                        <button onclick="loadLedger()" class="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-semibold transition flex items-center justify-center gap-1">
+                            <span>🔄 Refresh</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- AI Audit Output Banner (Dynamically shown) -->
+                <div id="ledgerAuditResult" class="hidden mb-4 p-4 rounded-xl bg-stealth-900 border border-sky-500/30 text-xs text-slate-200">
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
+                        <b class="text-sky-400 font-bold text-sm flex items-center gap-1.5">
+                            <span>🤖 AI Quant Risk Officer Audit</span>
+                        </b>
+                        <button onclick="document.getElementById('ledgerAuditResult').classList.add('hidden')" class="text-slate-500 hover:text-white text-xs">✕ Close</button>
+                    </div>
+                    <div id="ledgerAuditContent" class="space-y-2 leading-relaxed"></div>
+                </div>
+
+                <!-- Executive 5-KPI Stats Ribbon -->
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+                    <div class="p-3 rounded-lg bg-white/[0.02] border border-white/5">
+                        <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Total Logged</div>
+                        <div id="kpiLedgerTotal" class="text-xl font-black text-white tabular-num mt-1">0</div>
+                        <div class="text-[9.5px] text-slate-500 mt-0.5">Cumulative Setups</div>
+                    </div>
+                    <div class="p-3 rounded-lg bg-white/[0.02] border border-white/5 border-l-2 border-l-sky-400">
+                        <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Active Open</div>
+                        <div id="kpiLedgerActive" class="text-xl font-black text-sky-400 tabular-num mt-1">0</div>
+                        <div class="text-[9.5px] text-slate-500 mt-0.5">Under Monitoring</div>
+                    </div>
+                    <div class="p-3 rounded-lg bg-white/[0.02] border border-white/5 border-l-2 border-l-mint" id="kpiLedgerUnrealCard">
+                        <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Unrealized P&L</div>
+                        <div id="kpiLedgerUnreal" class="text-xl font-black text-mint tabular-num mt-1">$0.00</div>
+                        <div class="text-[9.5px] text-slate-500 mt-0.5">Open Risk Mark</div>
+                    </div>
+                    <div class="p-3 rounded-lg bg-white/[0.02] border border-white/5 border-l-2 border-l-emerald-400" id="kpiLedgerRealCard">
+                        <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Realized Net P&L</div>
+                        <div id="kpiLedgerReal" class="text-xl font-black text-white tabular-num mt-1">$0.00</div>
+                        <div class="text-[9.5px] text-slate-500 mt-0.5">Closed Performance</div>
+                    </div>
+                    <div class="p-3 rounded-lg bg-white/[0.02] border border-white/5 col-span-2 sm:col-span-1">
+                        <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Closed Win Rate</div>
+                        <div id="kpiLedgerWinRate" class="text-xl font-black text-white tabular-num mt-1">0.0%</div>
+                        <div id="kpiLedgerClosedCount" class="text-[9.5px] text-slate-500 mt-0.5">N=0 Closed Trades</div>
+                    </div>
+                </div>
+
+                <!-- Sub-Navigation Navigation Pills -->
+                <div class="flex border-b border-white/10 mb-4 text-xs font-semibold gap-1">
+                    <button onclick="switchLedgerSub('active')" id="btnSubLedgerActive" class="px-3.5 py-1.5 border-b-2 border-mint text-white font-bold transition flex items-center gap-1.5">
+                        <span>Active Positions Radar</span>
+                        <span id="subBadgeActive" class="px-1.5 py-0.2 rounded-full text-[10px] bg-mint/20 text-mint">0</span>
+                    </button>
+                    <button onclick="switchLedgerSub('manual')" id="btnSubLedgerManual" class="px-3.5 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-white transition">
+                        <span>Manual / AI Prompt Logger</span>
+                    </button>
+                    <button onclick="switchLedgerSub('closed')" id="btnSubLedgerClosed" class="px-3.5 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-white transition flex items-center gap-1.5">
+                        <span>Closed Trades History</span>
+                        <span id="subBadgeClosed" class="px-1.5 py-0.2 rounded-full text-[10px] bg-white/10 text-slate-400">0</span>
+                    </button>
+                </div>
+
+                <!-- Sub-Pane 1: Active Positions Grid -->
+                <div id="ledgerSubActive" class="space-y-3">
+                    <div id="ledgerActiveList" class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                        <div class="text-xs text-slate-400 p-4">Loading active positions...</div>
+                    </div>
+                </div>
+
+                <!-- Sub-Pane 2: Manual / AI Prompt Trade Logger -->
+                <div id="ledgerSubManual" class="hidden">
+                    <div class="p-4 rounded-xl bg-[#0b0d13] border border-white/5 max-w-3xl">
+                        <h3 class="text-sm font-bold text-white mb-1">Log Custom Setup from AI Quant Agent Chat</h3>
+                        <p class="text-xs text-slate-400 mb-4">Paste trade parameters recommended during interactive chats, and auto-pull today's live confluence and 20-year backtest win rate.</p>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-slate-400">Ticker Symbol</label>
+                                <input id="manTicker" type="text" value="NVDA" class="w-full mt-1 bg-[#161722] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white uppercase font-bold focus:outline-none focus:border-mint" oninput="this.value = this.value.toUpperCase()">
+                            </div>
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-slate-400">Direction</label>
+                                <select id="manDirection" class="w-full mt-1 bg-[#161722] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-mint">
+                                    <option value="LONG">🟢 LONG</option>
+                                    <option value="SHORT / FADE">🔴 SHORT / FADE</option>
+                                    <option value="DIP BUY">🔵 DIP BUY</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-slate-400">Instrument Type</label>
+                                <select id="manAssetType" onchange="toggleManualInstrumentFields()" class="w-full mt-1 bg-[#161722] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-mint">
+                                    <option value="STOCK">Stock / Equity</option>
+                                    <option value="OPTION">Options Contract</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <button onclick="autoFetchManualConfluence()" id="btnAutoFetchMan" class="px-3 py-1.5 rounded-lg bg-mint/15 hover:bg-mint/25 text-mint border border-mint/30 text-xs font-bold transition flex items-center gap-1.5">
+                                <span>⚡ Auto-Fetch Current Confluence & 20-Year Odds for Ticker</span>
+                            </button>
+                            <div id="manAutoFetchStatus" class="text-[11px] text-slate-400 mt-1 hidden"></div>
+                        </div>
+
+                        <!-- Options specifics (toggled) -->
+                        <div id="manOptionsRow" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3 p-3 rounded-lg bg-white/[0.02] border border-white/5">
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-slate-400">Contract Type</label>
+                                <select id="manContractType" class="w-full mt-1 bg-[#161722] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white">
+                                    <option value="CALL">CALL</option>
+                                    <option value="PUT">PUT</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-slate-400">Strike Price ($)</label>
+                                <input id="manStrike" type="number" step="0.5" placeholder="145.0" class="w-full mt-1 bg-[#161722] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white">
+                            </div>
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-slate-400">Expiration Date</label>
+                                <input id="manExpiration" type="text" placeholder="YYYY-MM-DD" class="w-full mt-1 bg-[#161722] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white">
+                            </div>
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-slate-400">Contracts Qty</label>
+                                <input id="manOptSize" type="number" min="1" value="2" class="w-full mt-1 bg-[#161722] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white">
+                            </div>
+                        </div>
+
+                        <!-- Stock & Options Common Execution Fields -->
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+                            <div>
+                                <label id="manEntryLabel" class="text-[10px] uppercase font-bold text-slate-400">Entry Fill Price ($)</label>
+                                <input id="manEntryPrice" type="number" step="0.01" placeholder="140.50" class="w-full mt-1 bg-[#161722] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white">
+                            </div>
+                            <div id="manStockSizeDiv">
+                                <label class="text-[10px] uppercase font-bold text-slate-400">Shares Quantity</label>
+                                <input id="manStockSize" type="number" min="1" value="10" class="w-full mt-1 bg-[#161722] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white">
+                            </div>
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-cherry">Invalidation Stop ($)</label>
+                                <input id="manStopLoss" type="number" step="0.01" placeholder="136.00" class="w-full mt-1 bg-[#161722] border border-cherry/30 rounded-lg px-3 py-1.5 text-xs text-cherry">
+                            </div>
+                            <div>
+                                <label class="text-[10px] uppercase font-bold text-mint">Target 1 ($)</label>
+                                <input id="manTarget1" type="number" step="0.01" placeholder="150.00" class="w-full mt-1 bg-[#161722] border border-mint/30 rounded-lg px-3 py-1.5 text-xs text-mint">
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="text-[10px] uppercase font-bold text-slate-400">AI Desk Thesis / Recommendation Notes</label>
+                            <textarea id="manThesis" rows="2" placeholder="Thesis given by Quant AI Agent..." class="w-full mt-1 bg-[#161722] border border-white/10 rounded-lg p-2.5 text-xs text-white"></textarea>
+                        </div>
+
+                        <button onclick="submitManualLedgerTrade()" class="w-full py-2.5 rounded-xl bg-mint hover:bg-mint/80 text-black font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-[0_0_12px_rgba(0,245,160,0.2)]">
+                            <span>📌 Commit Custom Setup to Active Ledger</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Sub-Pane 3: Closed Trades History -->
+                <div id="ledgerSubClosed" class="hidden">
+                    <div class="overflow-x-auto rounded-lg border border-white/10 bg-[#090a0f]">
+                        <table class="w-full text-left text-xs">
+                            <thead>
+                                <tr class="border-b border-white/10 bg-white/[0.02] text-slate-400">
+                                    <th class="p-2.5">Ticker</th>
+                                    <th class="p-2.5">Instrument</th>
+                                    <th class="p-2.5">Logged Date</th>
+                                    <th class="p-2.5">Closed Date</th>
+                                    <th class="p-2.5">Entry ($)</th>
+                                    <th class="p-2.5">Exit ($)</th>
+                                    <th class="p-2.5">Realized P&L</th>
+                                    <th class="p-2.5">Return (%)</th>
+                                    <th class="p-2.5">Outcome</th>
+                                    <th class="p-2.5">AI Backtest WR</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ledgerClosedTbody" class="divide-y divide-white/5">
+                                <tr><td colspan="10" class="p-4 text-center text-slate-500">No closed trades yet.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
 
         <!-- Tab 3: Bias Matrix -->
         <div id="tab3" class="tab-pane hidden">
@@ -1845,6 +2150,7 @@ HTML_CONTENT = """<!DOCTYPE html>
             'tab1': 'AI Macro Letter',
             'tab_agent': 'AI Agent',
             'tab2': 'Automated Trade Ideas Desk',
+            'tab_ledger': 'Trade Ledger & Forward AI Auditor',
             'tab3': 'Bias Matrix',
             'tab5': 'Indexes & Sector Flow',
             'tab4': 'Magnificant 7 Flow',
@@ -1875,7 +2181,9 @@ HTML_CONTENT = """<!DOCTYPE html>
             if (breadcrumb && TAB_NAMES[tabId]) breadcrumb.innerText = TAB_NAMES[tabId];
 
             // Lazy load tabs on demand
-            if (tabId === 'tab2') {
+            if (tabId === 'tab_ledger') {
+                loadLedger();
+            } else if (tabId === 'tab2') {
                 LOADED_TABS.add('tab2');
                 renderTradeCards();
             } else if (tabId === 'tab3') {
@@ -2078,6 +2386,7 @@ async function init() {
 
                 // 3. Asynchronously load AI briefing in background without blocking UI
                 loadAiBriefingAsync();
+                loadLedger();
 
             } catch (err) {
                 console.error("Failed to load market data:", err);
@@ -2837,6 +3146,66 @@ async function init() {
                                 </div>
                                 <div class="text-[11px] text-slate-300 mt-1.5 leading-snug">
                                     <b class="text-white">Desk Rationale:</b> ${t.thesis}
+                                </div>
+                            </div>
+
+                            <!-- Trade Ledger Commit Button & Drawer -->
+                            <div class="mt-2.5 pt-2 border-t border-white/5 flex flex-col gap-2">
+                                <button onclick="toggleCardLogger(${cards.indexOf(t)})" class="w-full py-1.5 px-3 rounded-lg bg-mint/15 hover:bg-mint/25 text-mint border border-mint/30 text-xs font-bold transition flex items-center justify-center gap-1.5">
+                                    <span>📥 Log ${t.ticker} Setup to Trade Ledger</span>
+                                </button>
+                                <div id="cardLogger-${cards.indexOf(t)}" class="hidden p-3 rounded-xl bg-[#090b10] border border-mint/30 space-y-2.5 text-xs">
+                                    <div class="flex items-center justify-between pb-1 border-b border-white/10">
+                                        <span class="font-bold text-white">Execution Parameters</span>
+                                        <span class="text-[10px] text-slate-400">Locks in frozen AI snapshot</span>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="text-[9.5px] uppercase font-bold text-slate-400">Instrument</label>
+                                            <select id="cardInstType-${cards.indexOf(t)}" onchange="toggleCardLoggerFields(${cards.indexOf(t)})" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                                <option value="STOCK">Stock / Equity</option>
+                                                <option value="OPTION">Options Contract</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label id="cardEntryLabel-${cards.indexOf(t)}" class="text-[9.5px] uppercase font-bold text-slate-400">Entry Fill ($)</label>
+                                            <input id="cardEntryPrice-${cards.indexOf(t)}" type="number" step="0.01" value="${parseFloat(String(t.optimal_entry_zone || t.current_price || t.entry || '100').replace(/[^0-9.]/g, '')) || 100}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                        </div>
+                                    </div>
+                                    <div id="cardOptFields-${cards.indexOf(t)}" class="hidden grid grid-cols-3 gap-2">
+                                        <div>
+                                            <label class="text-[9.5px] uppercase font-bold text-slate-400">Type</label>
+                                            <select id="cardOptType-${cards.indexOf(t)}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                                <option value="CALL" ${isLong ? 'selected' : ''}>CALL</option>
+                                                <option value="PUT" ${!isLong ? 'selected' : ''}>PUT</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="text-[9.5px] uppercase font-bold text-slate-400">Strike ($)</label>
+                                            <input id="cardStrike-${cards.indexOf(t)}" type="number" step="0.5" value="${Math.round(parseFloat(String(t.current_price || t.entry || '100').replace(/[^0-9.]/g, '')) || 100)}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-[9.5px] uppercase font-bold text-slate-400">Expiration</label>
+                                            <input id="cardExpiry-${cards.indexOf(t)}" type="text" value="${getFutureDateStr(35)}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-3 gap-2">
+                                        <div>
+                                            <label id="cardSizeLabel-${cards.indexOf(t)}" class="text-[9.5px] uppercase font-bold text-slate-400">Shares</label>
+                                            <input id="cardSize-${cards.indexOf(t)}" type="number" min="1" value="10" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-[9.5px] uppercase font-bold text-cherry">Stop ($)</label>
+                                            <input id="cardStop-${cards.indexOf(t)}" type="number" step="0.01" value="${parseFloat(String(t.stop || '0').replace(/[^0-9.]/g, '')) || 0}" class="w-full mt-0.5 bg-[#161722] border border-cherry/30 rounded px-2 py-1 text-cherry text-xs">
+                                        </div>
+                                        <div>
+                                            <label class="text-[9.5px] uppercase font-bold text-mint">Target ($)</label>
+                                            <input id="cardTp1-${cards.indexOf(t)}" type="number" step="0.01" value="${parseFloat(String(t.target1 || '0').replace(/[^0-9.]/g, '')) || 0}" class="w-full mt-0.5 bg-[#161722] border border-mint/30 rounded px-2 py-1 text-mint text-xs">
+                                        </div>
+                                    </div>
+                                    <button onclick="commitCardTrade(${cards.indexOf(t)})" id="btnCommitCard-${cards.indexOf(t)}" class="w-full py-2 rounded-lg bg-mint text-black font-extrabold text-xs hover:bg-mint/80 transition flex items-center justify-center gap-1 shadow-[0_0_12px_rgba(0,245,160,0.2)]">
+                                        <span>Confirm & Log to Ledger</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -4317,6 +4686,645 @@ async function init() {
         }
 
         window.onload = init;
+    
+        // ================= TRADE LEDGER & AUDITOR JAVASCRIPT =================
+        let LEDGER_DATA = null;
+
+        function getFutureDateStr(daysAhead) {
+            const d = new Date();
+            d.setDate(d.getDate() + daysAhead);
+            return d.toISOString().split('T')[0];
+        }
+
+        function switchLedgerSub(sub) {
+            document.getElementById('ledgerSubActive').classList.add('hidden');
+            document.getElementById('ledgerSubManual').classList.add('hidden');
+            document.getElementById('ledgerSubClosed').classList.add('hidden');
+
+            const btnA = document.getElementById('btnSubLedgerActive');
+            const btnM = document.getElementById('btnSubLedgerManual');
+            const btnC = document.getElementById('btnSubLedgerClosed');
+
+            btnA.className = 'px-3.5 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-white transition flex items-center gap-1.5';
+            btnM.className = 'px-3.5 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-white transition';
+            btnC.className = 'px-3.5 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-white transition flex items-center gap-1.5';
+
+            if (sub === 'active') {
+                document.getElementById('ledgerSubActive').classList.remove('hidden');
+                btnA.className = 'px-3.5 py-1.5 border-b-2 border-mint text-white font-bold transition flex items-center gap-1.5';
+            } else if (sub === 'manual') {
+                document.getElementById('ledgerSubManual').classList.remove('hidden');
+                btnM.className = 'px-3.5 py-1.5 border-b-2 border-mint text-white font-bold transition';
+            } else if (sub === 'closed') {
+                document.getElementById('ledgerSubClosed').classList.remove('hidden');
+                btnC.className = 'px-3.5 py-1.5 border-b-2 border-mint text-white font-bold transition flex items-center gap-1.5';
+            }
+        }
+
+        async function loadLedger() {
+            try {
+                const res = await fetch('/api/ledger');
+                const data = await res.json();
+                if (data.status !== 'success') return;
+                LEDGER_DATA = data;
+
+                const stats = data.stats || {};
+                const active = data.active_trades || [];
+                const closed = data.closed_trades || [];
+
+                // 1. Update KPI ribbon
+                document.getElementById('kpiLedgerTotal').innerText = stats.total_trades || 0;
+                document.getElementById('kpiLedgerActive').innerText = stats.active_trades_count || 0;
+                
+                const unreal = stats.open_unrealized_pnl || 0;
+                const signU = unreal >= 0 ? '+' : '';
+                const kpiU = document.getElementById('kpiLedgerUnreal');
+                kpiU.innerText = signU + '$' + unreal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                kpiU.className = 'text-xl font-black tabular-num mt-1 ' + (unreal >= 0 ? 'text-mint' : 'text-cherry');
+                
+                const real = stats.realized_pnl || 0;
+                const signR = real >= 0 ? '+' : '';
+                const kpiR = document.getElementById('kpiLedgerReal');
+                kpiR.innerText = signR + '$' + real.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                kpiR.className = 'text-xl font-black tabular-num mt-1 ' + (real >= 0 ? 'text-mint' : 'text-cherry');
+
+                document.getElementById('kpiLedgerWinRate').innerText = (stats.win_rate_closed || 0).toFixed(1) + '%';
+                document.getElementById('kpiLedgerClosedCount').innerText = 'N=' + (stats.closed_trades_count || 0) + ' Closed Trades';
+
+                // Badges
+                const badge = document.getElementById('ledgerTabBadge');
+                if (badge) {
+                    badge.innerText = active.length;
+                    if (active.length > 0) badge.classList.remove('hidden');
+                    else badge.classList.add('hidden');
+                }
+                const subActiveBadge = document.getElementById('subBadgeActive');
+                if (subActiveBadge) subActiveBadge.innerText = active.length;
+                const subClosedBadge = document.getElementById('subBadgeClosed');
+                if (subClosedBadge) subClosedBadge.innerText = closed.length;
+
+                // 2. Render Active Positions
+                renderActiveLedgerCards(active);
+
+                // 3. Render Closed History
+                renderClosedLedgerTable(closed);
+
+            } catch (err) {
+                console.error("Error loading ledger:", err);
+            }
+        }
+
+        function renderActiveLedgerCards(active) {
+            const container = document.getElementById('ledgerActiveList');
+            if (!container) return;
+            if (active.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full p-8 text-center text-slate-400 bg-white/[0.01] rounded-xl border border-white/5 text-xs">
+                        <div class="text-slate-300 font-bold mb-1">No Active Positions Tracked</div>
+                        <p class="text-[11px] text-slate-500 mb-3">Commit an algorithmic trade idea from the <b>'Automated Trade Ideas'</b> tab, or use the <b>'Manual / AI Prompt Logger'</b> above.</p>
+                        <button onclick="switchTab('tab2')" class="px-3.5 py-1.5 rounded-lg bg-mint/15 text-mint border border-mint/30 font-bold text-xs hover:bg-mint/25 transition">Explore Trade Setups</button>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '';
+            active.forEach(trd => {
+                const mtm = trd.mtm || {};
+                const isOpt = trd.asset_type === 'OPTION';
+                const dir = (trd.direction || 'LONG').toUpperCase();
+                const isLong = dir.includes('LONG') || dir.includes('DIP');
+                const borderCol = isLong ? '#00F5A0' : '#FF2E55';
+                const snap = trd.ai_snapshot || {};
+
+                const unrealPnl = mtm.unrealized_pnl || 0;
+                const unrealPct = mtm.unrealized_pct || 0;
+                const pnlSign = unrealPnl >= 0 ? '+' : '';
+                const pnlCol = unrealPnl >= 0 ? 'text-mint' : 'text-cherry';
+                const pnlBg = unrealPnl >= 0 ? 'bg-mint/15 text-mint border-mint/30' : 'bg-cherry/15 text-cherry border-cherry/30';
+
+                const instBadge = isOpt ? `
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                        ⚡ ${trd.strike || 0} ${trd.contract_type || 'CALL'} (${trd.expiration || ''})
+                    </span>
+                ` : `
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                        STOCK / EQUITY
+                    </span>
+                `;
+
+                let alertHtml = '';
+                if (mtm.trigger_alert) {
+                    const isSucc = mtm.alert_type === 'success';
+                    const isErr = mtm.alert_type === 'error';
+                    const aCol = isSucc ? 'text-mint border-mint/30 bg-mint/10' : (isErr ? 'text-cherry border-cherry/30 bg-cherry/10' : 'text-amber-400 border-amber-400/30 bg-amber-400/10');
+                    alertHtml = `<div class="p-2 rounded-lg border text-xs font-semibold mb-2.5 ${aCol}">${mtm.trigger_alert}</div>`;
+                }
+
+                const progressPct = Math.max(0, Math.min(100, mtm.progress_pct || 0));
+
+                html += `
+                    <div class="lux-card p-4 border-l-4 flex flex-col justify-between" style="border-left-color: ${borderCol}">
+                        <div>
+                            <!-- Header -->
+                            <div class="flex flex-wrap justify-between items-center gap-2 pb-2.5 mb-2.5 border-b border-white/5">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xl font-black text-white">${trd.ticker}</span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isLong ? 'bg-mint/15 text-mint border border-mint/30' : 'bg-cherry/15 text-cherry border border-cherry/30'}">${dir}</span>
+                                    ${instBadge}
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[10px] text-slate-500">Logged: ${trd.logged_at || ''}</span>
+                                    <span class="px-2.5 py-0.5 rounded text-xs font-extrabold border ${pnlBg}">
+                                        ${pnlSign}$${unrealPnl.toFixed(2)} (${pnlSign}${unrealPct.toFixed(2)}%)
+                                    </span>
+                                </div>
+                            </div>
+
+                            ${alertHtml}
+
+                            <!-- 4-Metric Grid -->
+                            <div class="grid grid-cols-4 gap-2 mb-3">
+                                <div class="p-2 rounded-lg bg-white/[0.02] border border-white/5">
+                                    <div class="text-[9px] uppercase font-bold text-slate-400">Entry Fill</div>
+                                    <div class="text-sm font-extrabold text-white mt-0.5">$${(trd.entry_price || 0).toFixed(2)}</div>
+                                    <div class="text-[9px] text-slate-500">${trd.size} ${isOpt ? 'Contracts' : 'Shares'}</div>
+                                </div>
+                                <div class="p-2 rounded-lg bg-white/[0.02] border border-white/5">
+                                    <div class="text-[9px] uppercase font-bold text-slate-400">Live Spot</div>
+                                    <div class="text-sm font-extrabold text-sky-400 mt-0.5">$${(mtm.live_spot || 0).toFixed(2)}</div>
+                                    <div class="text-[9px] text-slate-500">Underlying</div>
+                                </div>
+                                <div class="p-2 rounded-lg bg-cherry/10 border border-cherry/25">
+                                    <div class="text-[9px] uppercase font-bold text-cherry">Stop Loss</div>
+                                    <div class="text-sm font-extrabold text-cherry mt-0.5">$${(trd.stop_loss || 0).toFixed(2)}</div>
+                                    <div class="text-[9px] text-rose-300 font-mono">Buffer: ${(mtm.dist_to_stop_pct || 0).toFixed(2)}%</div>
+                                </div>
+                                <div class="p-2 rounded-lg bg-mint/10 border border-mint/25">
+                                    <div class="text-[9px] uppercase font-bold text-mint">Target 1</div>
+                                    <div class="text-sm font-extrabold text-mint mt-0.5">$${(trd.target_1 || 0).toFixed(2)}</div>
+                                    <div class="text-[9px] text-emerald-300 font-mono">Dist: ${(mtm.dist_to_target1_pct || 0).toFixed(2)}%</div>
+                                </div>
+                            </div>
+
+                            <!-- Target Progress Meter -->
+                            <div class="mb-3">
+                                <div class="flex justify-between text-[10px] text-slate-400 mb-1">
+                                    <span>Target 1 Progress</span>
+                                    <span class="font-bold text-white font-mono">${progressPct.toFixed(1)}%</span>
+                                </div>
+                                <div class="w-full bg-white/5 h-2 rounded-full overflow-hidden border border-white/10">
+                                    <div class="h-full bg-mint rounded-full transition-all duration-500" style="width: ${progressPct}%"></div>
+                                </div>
+                            </div>
+
+                            <!-- Frozen Baseline Dropdown -->
+                            <details class="mb-3 p-2.5 rounded-lg bg-[#08090e] border border-white/5 text-[11px] text-slate-300 group">
+                                <summary class="cursor-pointer font-bold text-slate-400 hover:text-white flex items-center justify-between">
+                                    <span>🔍 Frozen AI Baseline at Entry (WR, Odds, GEX)</span>
+                                    <span class="text-xs text-slate-500">▾</span>
+                                </summary>
+                                <div class="mt-2 pt-2 border-t border-white/5 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    <div>
+                                        <span class="text-slate-500">20yr Win Rate:</span>
+                                        <b class="text-mint font-mono">${snap.win_rate || 'N/A'} (N=${snap.sample_size || 0})</b>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-500">Entry Confluence:</span>
+                                        <b class="text-white">${snap.confluence_score || 'N/A'} (${snap.bias_label || ''})</b>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-500">Call Wall at Entry:</span>
+                                        <b class="text-mint font-mono">$${snap.call_wall || 'N/A'}</b>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-500">Put Wall at Entry:</span>
+                                        <b class="text-cherry font-mono">$${snap.put_wall || 'N/A'}</b>
+                                    </div>
+                                    <div class="col-span-2">
+                                        <span class="text-slate-500">Zero Gamma / Net GEX:</span>
+                                        <b class="text-sky-400 font-mono">${snap.zero_gamma || 'N/A'} (${snap.net_gex_b || ''})</b>
+                                    </div>
+                                </div>
+                                ${snap.thesis ? `
+                                    <div class="mt-2 pt-2 border-t border-white/5 text-[10.5px] text-slate-300 leading-snug">
+                                        <b class="text-white">Original Thesis:</b> ${snap.thesis}
+                                    </div>
+                                ` : ''}
+                            </details>
+                        </div>
+
+                        <!-- Action Toolbar -->
+                        <div class="pt-2.5 border-t border-white/5 flex items-center justify-between gap-2">
+                            <button onclick="toggleTradeCloseDrawer('${trd.id}')" class="px-3 py-1.5 rounded-lg bg-mint/15 hover:bg-mint/25 text-mint border border-mint/30 text-xs font-bold transition flex items-center gap-1">
+                                <span>✅ Close Position</span>
+                            </button>
+                            <button onclick="toggleTradeAdjustDrawer('${trd.id}')" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-semibold transition flex items-center gap-1">
+                                <span>⚙️ Adjust</span>
+                            </button>
+                            <button onclick="deleteLedgerTrade('${trd.id}')" class="px-2.5 py-1.5 rounded-lg bg-cherry/10 hover:bg-cherry/20 text-cherry border border-cherry/25 text-xs font-semibold transition">
+                                <span>🗑️</span>
+                            </button>
+                        </div>
+
+                        <!-- Close Position Inline Drawer -->
+                        <div id="closeDrawer-${trd.id}" class="hidden mt-3 p-3 rounded-xl bg-[#090b10] border border-mint/30 space-y-2 text-xs">
+                            <div class="font-bold text-white flex justify-between">
+                                <span>Close Position / Realize P&L</span>
+                                <button onclick="toggleTradeCloseDrawer('${trd.id}')" class="text-slate-500 hover:text-white">✕</button>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[9.5px] uppercase font-bold text-slate-400">Exit Price ($)</label>
+                                    <input id="closeExitPx-${trd.id}" type="number" step="0.01" value="${(isOpt ? (mtm.est_option_px || trd.entry_price) : mtm.live_spot).toFixed(2)}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                </div>
+                                <div>
+                                    <label class="text-[9.5px] uppercase font-bold text-slate-400">Outcome</label>
+                                    <select id="closeOutcome-${trd.id}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                        <option value="TARGET_1_HIT">🎯 Target 1 Hit</option>
+                                        <option value="TARGET_2_HIT">🚀 Target 2 Runner</option>
+                                        <option value="STOPPED_OUT">🛑 Stopped Out</option>
+                                        <option value="CLOSED_MANUALLY">🔒 Closed Manually</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <input id="closeNotes-${trd.id}" type="text" placeholder="Optional exit notes..." class="w-full bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
+                            <button onclick="submitCloseTrade('${trd.id}')" class="w-full py-1.5 rounded-lg bg-mint text-black font-bold text-xs hover:bg-mint/80 transition">Confirm Realize P&L</button>
+                        </div>
+
+                        <!-- Adjust Inline Drawer -->
+                        <div id="adjustDrawer-${trd.id}" class="hidden mt-3 p-3 rounded-xl bg-[#090b10] border border-white/20 space-y-2 text-xs">
+                            <div class="font-bold text-white flex justify-between">
+                                <span>Adjust Invalidation / Target</span>
+                                <button onclick="toggleTradeAdjustDrawer('${trd.id}')" class="text-slate-500 hover:text-white">✕</button>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[9.5px] uppercase font-bold text-cherry">New Stop ($)</label>
+                                    <input id="adjustStop-${trd.id}" type="number" step="0.01" value="${trd.stop_loss || 0}" class="w-full mt-0.5 bg-[#161722] border border-cherry/30 rounded px-2 py-1 text-cherry text-xs">
+                                </div>
+                                <div>
+                                    <label class="text-[9.5px] uppercase font-bold text-mint">New Target 1 ($)</label>
+                                    <input id="adjustTp1-${trd.id}" type="number" step="0.01" value="${trd.target_1 || 0}" class="w-full mt-0.5 bg-[#161722] border border-mint/30 rounded px-2 py-1 text-mint text-xs">
+                                </div>
+                            </div>
+                            <button onclick="submitAdjustTrade('${trd.id}')" class="w-full py-1.5 rounded-lg bg-white/10 text-white font-bold text-xs hover:bg-white/20 transition">Save Adjustments</button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function renderClosedLedgerTable(closed) {
+            const tbody = document.getElementById('ledgerClosedTbody');
+            if (!tbody) return;
+            if (closed.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" class="p-4 text-center text-slate-500">No closed trades recorded yet.</td></tr>';
+                return;
+            }
+
+            let html = '';
+            closed.forEach(ct => {
+                const realPnl = ct.realized_pnl || 0;
+                const realPct = ct.realized_pct || 0;
+                const sign = realPnl >= 0 ? '+' : '';
+                const pnlCol = realPnl >= 0 ? 'text-mint' : 'text-cherry';
+
+                html += `
+                    <tr class="hover:bg-white/[0.02] transition">
+                        <td class="p-2.5 font-bold text-white">${ct.ticker}</td>
+                        <td class="p-2.5 text-slate-300 font-mono text-[11px]">${ct.asset_type || 'STOCK'} ${ct.contract_type ? ct.contract_type : ''}</td>
+                        <td class="p-2.5 text-slate-400 text-[11px]">${ct.logged_at || ''}</td>
+                        <td class="p-2.5 text-slate-400 text-[11px]">${ct.closed_at || ''}</td>
+                        <td class="p-2.5 font-mono text-slate-300">$${(ct.entry_price || 0).toFixed(2)}</td>
+                        <td class="p-2.5 font-mono text-slate-300">$${(ct.exit_price || 0).toFixed(2)}</td>
+                        <td class="p-2.5 font-bold font-mono ${pnlCol}">${sign}$${realPnl.toFixed(2)}</td>
+                        <td class="p-2.5 font-bold font-mono ${pnlCol}">${sign}${realPct.toFixed(2)}%</td>
+                        <td class="p-2.5"><span class="px-2 py-0.5 rounded text-[9.5px] font-bold ${realPnl >= 0 ? 'bg-mint/15 text-mint' : 'bg-cherry/15 text-cherry'}">${ct.status || 'CLOSED'}</span></td>
+                        <td class="p-2.5 text-slate-400 font-mono">${(ct.ai_snapshot && ct.ai_snapshot.win_rate) ? ct.ai_snapshot.win_rate : 'N/A'}</td>
+                    </tr>
+                `;
+            });
+            tbody.innerHTML = html;
+        }
+
+        async function runLedgerAudit() {
+            const btn = document.getElementById('btnRunLedgerAudit');
+            const resBox = document.getElementById('ledgerAuditResult');
+            const resContent = document.getElementById('ledgerAuditContent');
+            if (btn) btn.innerHTML = '<span>⏳ Auditing...</span>';
+
+            try {
+                const res = await fetch('/api/ledger/audit', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({api_key: USER_API_KEY})
+                });
+                const data = await res.json();
+                if (btn) btn.innerHTML = '<span>🤖 Run AI Desk Audit</span>';
+                if (resBox && resContent) {
+                    resBox.classList.remove('hidden');
+                    const parsed = window.marked ? marked.parse(data.report || 'Audit complete.') : (data.report || '');
+                    resContent.innerHTML = parsed;
+                }
+            } catch (err) {
+                if (btn) btn.innerHTML = '<span>🤖 Run AI Desk Audit</span>';
+                alert('Audit request failed: ' + err.message);
+            }
+        }
+
+        function toggleCardLogger(idx) {
+            const el = document.getElementById('cardLogger-' + idx);
+            if (el) el.classList.toggle('hidden');
+        }
+
+        function toggleCardLoggerFields(idx) {
+            const type = document.getElementById('cardInstType-' + idx).value;
+            const optRow = document.getElementById('cardOptFields-' + idx);
+            const sizeLabel = document.getElementById('cardSizeLabel-' + idx);
+            const entryLabel = document.getElementById('cardEntryLabel-' + idx);
+            if (type === 'OPTION') {
+                if (optRow) optRow.classList.remove('hidden');
+                if (sizeLabel) sizeLabel.innerText = 'Contracts';
+                if (entryLabel) entryLabel.innerText = 'Premium ($)';
+            } else {
+                if (optRow) optRow.classList.add('hidden');
+                if (sizeLabel) sizeLabel.innerText = 'Shares';
+                if (entryLabel) entryLabel.innerText = 'Fill Price ($)';
+            }
+        }
+
+        async function commitCardTrade(idx) {
+            if (!AI_DATA || !AI_DATA.trade_cards || !AI_DATA.trade_cards[idx]) return;
+            const t = AI_DATA.trade_cards[idx];
+            const btn = document.getElementById('btnCommitCard-' + idx);
+            if (btn) btn.innerText = 'Committing...';
+
+            const assetType = document.getElementById('cardInstType-' + idx).value;
+            const entryPx = parseFloat(document.getElementById('cardEntryPrice-' + idx).value) || 0;
+            const size = parseFloat(document.getElementById('cardSize-' + idx).value) || 1;
+            const stop = parseFloat(document.getElementById('cardStop-' + idx).value) || 0;
+            const tp1 = parseFloat(document.getElementById('cardTp1-' + idx).value) || 0;
+
+            let cType = null;
+            let strike = null;
+            let expiry = null;
+            if (assetType === 'OPTION') {
+                cType = document.getElementById('cardOptType-' + idx).value;
+                strike = parseFloat(document.getElementById('cardStrike-' + idx).value) || null;
+                expiry = document.getElementById('cardExpiry-' + idx).value || null;
+            }
+
+            const currSpot = parseFloat(String(t.current_price || t.entry || '100').replace(/[^0-9.]/g, '')) || 100;
+
+            const payload = {
+                ticker: t.ticker,
+                direction: t.direction,
+                asset_type: assetType,
+                entry_price: entryPx,
+                size: size,
+                stop_loss: stop,
+                target_1: tp1,
+                target_2: parseFloat(String(t.target2 || '0').replace(/[^0-9.]/g, '')) || 0,
+                contract_type: cType,
+                strike: strike,
+                expiration: expiry,
+                underlying_entry_spot: currSpot,
+                notes: 'Automated Setup. Thesis: ' + (t.thesis || ''),
+                ai_snapshot: {
+                    win_rate: t.win_rate,
+                    sample_size: t.sample_size,
+                    median_alpha: t.median_alpha,
+                    confluence_score: t.score,
+                    bias_label: t.bias_label,
+                    confirmations: t.confirmations,
+                    thesis: t.thesis,
+                    entry_price_spot: currSpot,
+                    call_wall: t.call_wall,
+                    put_wall: t.put_wall,
+                    zero_gamma: t.zero_gamma,
+                    net_gex_b: t.net_gex_b,
+                    gamma_regime: t.gamma_regime,
+                    risk_reward: t.risk_reward
+                }
+            };
+
+            try {
+                const res = await fetch('/api/ledger/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    if (btn) btn.innerText = '✅ Committed to Ledger!';
+                    setTimeout(() => {
+                        toggleCardLogger(idx);
+                        if (btn) btn.innerText = 'Confirm & Log to Ledger';
+                    }, 1200);
+                    loadLedger();
+                } else {
+                    alert('Error adding trade: ' + (data.message || 'unknown error'));
+                    if (btn) btn.innerText = 'Confirm & Log to Ledger';
+                }
+            } catch (err) {
+                alert('Failed to commit trade: ' + err.message);
+                if (btn) btn.innerText = 'Confirm & Log to Ledger';
+            }
+        }
+
+        function toggleManualInstrumentFields() {
+            const val = document.getElementById('manAssetType').value;
+            const optRow = document.getElementById('manOptionsRow');
+            const stockSizeDiv = document.getElementById('manStockSizeDiv');
+            const entryLabel = document.getElementById('manEntryLabel');
+            if (val === 'OPTION') {
+                if (optRow) optRow.classList.remove('hidden');
+                if (stockSizeDiv) stockSizeDiv.classList.add('hidden');
+                if (entryLabel) entryLabel.innerText = 'Option Premium ($)';
+            } else {
+                if (optRow) optRow.classList.add('hidden');
+                if (stockSizeDiv) stockSizeDiv.classList.remove('hidden');
+                if (entryLabel) entryLabel.innerText = 'Entry Fill Price ($)';
+            }
+        }
+
+        let MAN_AUTO_FETCHED = null;
+
+        async function autoFetchManualConfluence() {
+            const ticker = (document.getElementById('manTicker').value || 'NVDA').toUpperCase().trim();
+            const btn = document.getElementById('btnAutoFetchMan');
+            const status = document.getElementById('manAutoFetchStatus');
+            if (btn) btn.innerText = '⚡ Fetching...';
+
+            try {
+                const res = await fetch('/api/confluence?scope=core');
+                const list = await res.json();
+                const match = (list || []).find(item => item.ticker === ticker);
+                if (match) {
+                    MAN_AUTO_FETCHED = match;
+                    const edge = match.metrics ? match.metrics.edge_match : {};
+                    const wr = edge ? edge.win_rate_20d : 'N/A';
+                    if (status) {
+                        status.classList.remove('hidden');
+                        status.innerHTML = `<span class="text-mint font-bold">✓ Profile Fetched:</span> Score <b>${match.score}</b> | 20yr Win Rate: <b>${wr}%</b> (N=${edge ? edge.sample_size : 0})`;
+                    }
+                    if (match.metrics && match.metrics.close) {
+                        const pxInput = document.getElementById('manEntryPrice');
+                        if (pxInput && (!pxInput.value || parseFloat(pxInput.value) <= 0)) {
+                            pxInput.value = match.metrics.close.toFixed(2);
+                        }
+                    }
+                } else {
+                    if (status) {
+                        status.classList.remove('hidden');
+                        status.innerHTML = `<span class="text-amber-400">Ticker ${ticker} not in core cache, using discretionary settings.</span>`;
+                    }
+                }
+                if (btn) btn.innerText = '⚡ Auto-Fetch Current Confluence & 20-Year Odds for Ticker';
+            } catch (err) {
+                if (btn) btn.innerText = '⚡ Auto-Fetch Current Confluence & 20-Year Odds for Ticker';
+                console.error("Auto fetch error:", err);
+            }
+        }
+
+        async function submitManualLedgerTrade() {
+            const ticker = (document.getElementById('manTicker').value || 'NVDA').toUpperCase().trim();
+            const direction = document.getElementById('manDirection').value;
+            const assetType = document.getElementById('manAssetType').value;
+            const entryPrice = parseFloat(document.getElementById('manEntryPrice').value) || 0;
+            const stopLoss = parseFloat(document.getElementById('manStopLoss').value) || 0;
+            const target1 = parseFloat(document.getElementById('manTarget1').value) || 0;
+            const thesis = document.getElementById('manThesis').value || '';
+
+            const isOpt = assetType === 'OPTION';
+            let size = 10;
+            let cType = null;
+            let strike = null;
+            let expiry = null;
+
+            if (isOpt) {
+                size = parseFloat(document.getElementById('manOptSize').value) || 2;
+                cType = document.getElementById('manContractType').value;
+                strike = parseFloat(document.getElementById('manStrike').value) || null;
+                expiry = document.getElementById('manExpiration').value || getFutureDateStr(35);
+            } else {
+                size = parseFloat(document.getElementById('manStockSize').value) || 10;
+            }
+
+            const edge = (MAN_AUTO_FETCHED && MAN_AUTO_FETCHED.metrics) ? MAN_AUTO_FETCHED.metrics.edge_match : null;
+
+            const payload = {
+                ticker: ticker,
+                direction: direction,
+                asset_type: assetType,
+                entry_price: entryPrice,
+                size: size,
+                stop_loss: stopLoss,
+                target_1: target1,
+                target_2: target1 * 1.05,
+                contract_type: cType,
+                strike: strike,
+                expiration: expiry,
+                underlying_entry_spot: entryPrice,
+                notes: thesis,
+                ai_snapshot: {
+                    win_rate: edge ? (edge.win_rate_20d + '%') : 'Manual Setup',
+                    sample_size: edge ? edge.sample_size : 0,
+                    confluence_score: MAN_AUTO_FETCHED ? String(MAN_AUTO_FETCHED.score) : 'N/A',
+                    bias_label: MAN_AUTO_FETCHED ? MAN_AUTO_FETCHED.bias_label : 'Desk Discretionary',
+                    thesis: thesis,
+                    entry_price_spot: entryPrice
+                }
+            };
+
+            try {
+                const res = await fetch('/api/ledger/add', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    alert(`✅ ${ticker} successfully committed to active ledger!`);
+                    switchLedgerSub('active');
+                    loadLedger();
+                } else {
+                    alert('Error: ' + (data.message || 'Unable to add trade'));
+                }
+            } catch (err) {
+                alert('Failed to add trade: ' + err.message);
+            }
+        }
+
+        function toggleTradeCloseDrawer(id) {
+            const el = document.getElementById('closeDrawer-' + id);
+            if (el) el.classList.toggle('hidden');
+        }
+
+        async function submitCloseTrade(id) {
+            const exitPx = parseFloat(document.getElementById('closeExitPx-' + id).value) || 0;
+            const outcome = document.getElementById('closeOutcome-' + id).value;
+            const notes = document.getElementById('closeNotes-' + id).value;
+
+            try {
+                const res = await fetch('/api/ledger/close', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({id: id, exit_price: exitPx, outcome: outcome, notes: notes})
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    loadLedger();
+                } else {
+                    alert('Error closing trade: ' + (data.message || 'unknown error'));
+                }
+            } catch (err) {
+                alert('Close request failed: ' + err.message);
+            }
+        }
+
+        function toggleTradeAdjustDrawer(id) {
+            const el = document.getElementById('adjustDrawer-' + id);
+            if (el) el.classList.toggle('hidden');
+        }
+
+        async function submitAdjustTrade(id) {
+            const newStop = parseFloat(document.getElementById('adjustStop-' + id).value) || 0;
+            const newTp1 = parseFloat(document.getElementById('adjustTp1-' + id).value) || 0;
+
+            try {
+                const res = await fetch('/api/ledger/update', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({id: id, updates: {stop_loss: newStop, target_1: newTp1}})
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    loadLedger();
+                } else {
+                    alert('Error updating trade: ' + (data.message || 'unknown error'));
+                }
+            } catch (err) {
+                alert('Update request failed: ' + err.message);
+            }
+        }
+
+        async function deleteLedgerTrade(id) {
+            if (!confirm('Permanently delete this trade from your ledger?')) return;
+            try {
+                const res = await fetch('/api/ledger/' + id, {method: 'DELETE'});
+                const data = await res.json();
+                if (data.status === 'success') {
+                    loadLedger();
+                }
+            } catch (err) {
+                alert('Delete request failed: ' + err.message);
+            }
+        }
+
     </script>
 </body>
 </html>
