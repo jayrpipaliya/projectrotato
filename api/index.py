@@ -382,8 +382,8 @@ def api_options(ticker: str, direction: str = Query("Calls"), side: str = Query(
                 "otm_call_curve": smile.get('otm_call_curve', {}),
                 "otm_puts_market": smile.get('otm_puts_market', {}),
                 "otm_calls_market": smile.get('otm_calls_market', {}),
-                "model_strikes": smile.get('otm_call_curve', {}).get('strikes', []),
-                "model_iv": smile.get('otm_call_curve', {}).get('iv', []),
+                "model_strikes": smile.get('otm_call_curve' if 'Call' in dir_clean else 'otm_put_curve', {}).get('strikes', []),
+                "model_iv": smile.get('otm_call_curve' if 'Call' in dir_clean else 'otm_put_curve', {}).get('iv', []),
                 "market_strikes": [round(float(s), 2) for s in exec_df['strike']],
                 "market_iv": [round(float(iv), 2) for iv in exec_df['IV_Pct']],
                 "market_ask_iv": [round(float(iv), 2) for iv in exec_df['Ask_IV_Pct']],
@@ -506,8 +506,8 @@ def api_options_smile(ticker: str, expiration: str = Query(...), direction: str 
                 "otm_call_curve": smile.get('otm_call_curve', {}),
                 "otm_puts_market": smile.get('otm_puts_market', {}),
                 "otm_calls_market": smile.get('otm_calls_market', {}),
-                "model_strikes": smile.get('otm_call_curve', {}).get('strikes', []),
-                "model_iv": smile.get('otm_call_curve', {}).get('iv', []),
+                "model_strikes": smile.get('otm_call_curve' if 'Call' in dir_clean else 'otm_put_curve', {}).get('strikes', []),
+                "model_iv": smile.get('otm_call_curve' if 'Call' in dir_clean else 'otm_put_curve', {}).get('iv', []),
                 "market_strikes": [round(float(s), 2) for s in exec_df['strike']],
                 "market_iv": [round(float(iv), 2) for iv in exec_df['IV_Pct']],
                 "market_ask_iv": [round(float(iv), 2) for iv in exec_df['Ask_IV_Pct']],
@@ -3674,7 +3674,7 @@ async function init() {
                         }
                     ];
 
-                    if (g.zero_gamma_level && Math.abs(g.zero_gamma_level - g.spot_price) / g.spot_price < 0.15) {
+                    if (g.zero_gamma_level && Math.abs(g.zero_gamma_level - g.spot_price) / g.spot_price < 0.35) {
                         shapes.push({
                             type: 'line',
                             x0: g.zero_gamma_level, x1: g.zero_gamma_level,
@@ -3683,7 +3683,7 @@ async function init() {
                         });
                         annotations.push({
                             x: g.zero_gamma_level, y: 0.5, yref: 'paper',
-                            text: 'Flip $' + g.zero_gamma_level,
+                            text: 'Flip $' + (typeof g.zero_gamma_level === 'number' ? g.zero_gamma_level.toFixed(1) : g.zero_gamma_level),
                             showarrow: false,
                             font: { color: '#38bdf8', size: 9 },
                             xanchor: 'center', yanchor: 'middle'
@@ -3730,12 +3730,13 @@ async function init() {
                         const netClass = s.net_gex >= 0 ? 'text-mint font-semibold' : 'text-cherry font-semibold';
                         const netSign = s.net_gex >= 0 ? '+' : '';
 
+                        const targetZgStrike = g.closest_zero_gamma_strike !== undefined ? g.closest_zero_gamma_strike : g.zero_gamma_level;
                         let roleTag = '<span class="text-slate-500 text-[10px]">Normal Liquidity</span>';
                         if (Math.abs(s.strike - g.call_wall) < 0.01) {
                             roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/20 text-mint border border-mint/30">CALL WALL (Pin)</span>';
                         } else if (Math.abs(s.strike - g.put_wall) < 0.01) {
                             roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">PUT WALL (Floor)</span>';
-                        } else if (Math.abs(s.strike - g.zero_gamma_level) < 0.5) {
+                        } else if (Math.abs(s.strike - targetZgStrike) < 0.01) {
                             roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30">ZERO FLIP</span>';
                         } else if (Math.abs(s.strike - spot) < (spot * 0.005)) {
                             roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/10 text-white">ATM SPOT</span>';

@@ -48,11 +48,12 @@ def implied_vol_solver(price, S, K, T, r=0.045, q=0.0075, is_call=True):
     """Numerically inverts Black-Scholes to extract true IV from settlement price when feeds zero out overnight."""
     if price <= 0 or S <= 0 or K <= 0 or T <= 0:
         return 0.20
-    intrinsic = max(0.0, S - K) if is_call else max(0.0, K - S)
-    if price <= intrinsic:
-        return 0.15
+    # Discounted theoretical European lower bound
+    disc_intrinsic = max(0.0, S * np.exp(-q * T) - K * np.exp(-r * T)) if is_call else max(0.0, K * np.exp(-r * T) - S * np.exp(-q * T))
+    if price <= disc_intrinsic:
+        return 0.06
     sigma = 0.22
-    for _ in range(15):
+    for _ in range(20):
         d1 = (np.log(S / K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
         d2 = d1 - sigma * np.sqrt(T)
         if is_call:
@@ -60,13 +61,14 @@ def implied_vol_solver(price, S, K, T, r=0.045, q=0.0075, is_call=True):
         else:
             theo = K * np.exp(-r * T) * norm_cdf(-d2) - S * np.exp(-q * T) * norm_cdf(-d1)
         diff = theo - price
-        if abs(diff) < 0.02:
-            return float(np.clip(sigma, 0.06, 2.5))
+        if abs(diff) < 0.005 or abs(diff) / max(price, 0.1) < 0.005:
+            return float(np.clip(sigma, 0.04, 3.0))
         vega = max(S * np.exp(-q * T) * np.sqrt(T) * norm_pdf(d1), 1e-4)
-        sigma -= diff / vega
+        step = np.clip(diff / vega, -0.4, 0.4)
+        sigma -= step
         if sigma <= 0.02 or sigma > 3.0:
             break
-    return float(np.clip(sigma, 0.06, 2.5))
+    return float(np.clip(sigma, 0.04, 3.0))
 
 # ----------------- DIVIDEND YIELD LOOKUP -----------------
 DIVIDEND_YIELDS = {
@@ -142,12 +144,12 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
     today = pd.Timestamp.now().normalize()
     div_yield = get_dividend_yield(ticker_up)
 
-    # Filter to active expirations within 1 to 45 DTE
+    # Filter to active expirations within 0 to 45 DTE (including 0 DTE same-day expirations)
     valid_exps = []
     for e in expirations:
         try:
             dte = (pd.Timestamp(e) - today).days
-            if 1 <= dte <= 45:
+            if 0 <= dte <= 45:
                 valid_exps.append((e, dte))
         except Exception:
             continue
@@ -155,7 +157,7 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
     if not valid_exps:
         for e in expirations[:3]:
             try:
-                dte = max((pd.Timestamp(e) - today).days, 1)
+                dte = max((pd.Timestamp(e) - today).days, 0)
                 valid_exps.append((e, dte))
             except Exception:
                 continue
@@ -165,8 +167,8 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         return {"error": f"No valid expirations found for {ticker_up}"}
 
     strikes_gex = {}
-    min_strike = spot_price * 0.88
-    max_strike = spot_price * 1.12
+    min_strike = spot_price * 0.80
+    max_strike = spot_price * 1.20
 
     def process_exp(exp_tuple):
         exp, dte = exp_tuple
@@ -174,9 +176,16 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
             chain = t.option_chain(exp)
             T = max(dte, 0.5) / 365.25
             local_gex = {}
+            local_calls = []
+            local_puts = []
 
             calls = chain.calls
             if not calls.empty:
+                # Dynamic ATM IV fallback estimation
+                atm_sub = calls[(calls["strike"] >= spot_price * 0.96) & (calls["strike"] <= spot_price * 1.04)]
+                valid_atm_ivs = [float(v) for v in atm_sub["impliedVolatility"].dropna() if 0.05 <= float(v) <= 2.5]
+                base_iv = float(np.median(valid_atm_ivs)) if valid_atm_ivs else 0.22
+
                 calls = calls[(calls["strike"] >= min_strike) & (calls["strike"] <= max_strike)]
                 for _, row in calls.iterrows():
                     k = float(row["strike"])
@@ -186,20 +195,25 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
                     oi = int(val_oi)
                     val_iv = row.get("impliedVolatility")
                     if pd.isna(val_iv) or val_iv is None:
-                        iv = 0.20
+                        iv = base_iv
                     else:
                         iv = float(val_iv)
                     if iv < 0.04 or iv > 2.5:
-                        iv = 0.20
+                        iv = base_iv
                     gamma = black_scholes_gamma(spot_price, k, T, iv, q=div_yield)
                     call_dollar_gex = (spot_price ** 2) * gamma * oi * 0.01 * 100 / 1_000_000
                     if k not in local_gex:
                         local_gex[k] = {"call_gex": 0.0, "put_gex": 0.0, "call_oi": 0, "put_oi": 0}
                     local_gex[k]["call_gex"] += call_dollar_gex
                     local_gex[k]["call_oi"] += oi
+                    local_calls.append((k, T, iv, oi))
 
             puts = chain.puts
             if not puts.empty:
+                atm_sub = puts[(puts["strike"] >= spot_price * 0.96) & (puts["strike"] <= spot_price * 1.04)]
+                valid_atm_ivs = [float(v) for v in atm_sub["impliedVolatility"].dropna() if 0.05 <= float(v) <= 2.5]
+                base_iv = float(np.median(valid_atm_ivs)) if valid_atm_ivs else 0.22
+
                 puts = puts[(puts["strike"] >= min_strike) & (puts["strike"] <= max_strike)]
                 for _, row in puts.iterrows():
                     k = float(row["strike"])
@@ -209,33 +223,40 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
                     oi = int(val_oi)
                     val_iv = row.get("impliedVolatility")
                     if pd.isna(val_iv) or val_iv is None:
-                        iv = 0.20
+                        iv = base_iv
                     else:
                         iv = float(val_iv)
                     if iv < 0.04 or iv > 2.5:
-                        iv = 0.20
+                        iv = base_iv
                     gamma = black_scholes_gamma(spot_price, k, T, iv, q=div_yield)
                     put_dollar_gex = (spot_price ** 2) * gamma * oi * 0.01 * 100 / 1_000_000
                     if k not in local_gex:
                         local_gex[k] = {"call_gex": 0.0, "put_gex": 0.0, "call_oi": 0, "put_oi": 0}
                     local_gex[k]["put_gex"] += put_dollar_gex
                     local_gex[k]["put_oi"] += oi
+                    local_puts.append((k, T, iv, oi))
 
-            return local_gex
+            return {"gex": local_gex, "calls": local_calls, "puts": local_puts}
         except Exception:
-            return {}
+            return {"gex": {}, "calls": [], "puts": []}
 
     with ThreadPoolExecutor(max_workers=min(5, len(valid_exps))) as executor:
         results = list(executor.map(process_exp, valid_exps))
 
+    all_calls = []
+    all_puts = []
     for res in results:
-        for k, v in res.items():
+        if not res:
+            continue
+        for k, v in res.get("gex", {}).items():
             if k not in strikes_gex:
                 strikes_gex[k] = {"call_gex": 0.0, "put_gex": 0.0, "call_oi": 0, "put_oi": 0}
             strikes_gex[k]["call_gex"] += v["call_gex"]
             strikes_gex[k]["put_gex"] += v["put_gex"]
             strikes_gex[k]["call_oi"] += v["call_oi"]
             strikes_gex[k]["put_oi"] += v["put_oi"]
+        all_calls.extend(res.get("calls", []))
+        all_puts.extend(res.get("puts", []))
 
     if not strikes_gex:
         return {"error": f"No liquid gamma profile extracted for {ticker_up}"}
@@ -249,15 +270,53 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
     total_put_gex = sum(strikes_gex[k]["put_gex"] for k in sorted_strikes)
     total_net_gex = total_call_gex - total_put_gex
 
+    # Exact Zero Gamma Level solver: Spot price S* where Total Market Net Dealer Gamma Exposure flips sign
     zero_gamma_level = spot_price
-    cum_net = 0.0
-    for k in sorted_strikes:
-        net_k = strikes_gex[k]["call_gex"] - strikes_gex[k]["put_gex"]
-        prev_cum = cum_net
-        cum_net += net_k
-        if (prev_cum < 0 and cum_net >= 0) or (prev_cum > 0 and cum_net <= 0):
-            zero_gamma_level = k
-            break
+    if all_calls and all_puts:
+        try:
+            c_K, c_T, c_iv, c_oi = map(np.array, zip(*all_calls))
+            p_K, p_T, p_iv, p_oi = map(np.array, zip(*all_puts))
+            r_rate = 0.045
+            q_yield = div_yield
+
+            def net_gamma_diff_at_spot(S):
+                c_d1 = (np.log(S / c_K) + (r_rate - q_yield + 0.5 * c_iv**2) * c_T) / (c_iv * np.sqrt(c_T))
+                c_gamma = (np.exp(-0.5 * c_d1**2) / np.sqrt(2 * np.pi) * np.exp(-q_yield * c_T)) / (S * c_iv * np.sqrt(c_T))
+                tot_c = np.sum((S**2) * c_gamma * c_oi * 0.01 * 100 / 1_000_000)
+
+                p_d1 = (np.log(S / p_K) + (r_rate - q_yield + 0.5 * p_iv**2) * p_T) / (p_iv * np.sqrt(p_T))
+                p_gamma = (np.exp(-0.5 * p_d1**2) / np.sqrt(2 * np.pi) * np.exp(-q_yield * p_T)) / (S * p_iv * np.sqrt(p_T))
+                tot_p = np.sum((S**2) * p_gamma * p_oi * 0.01 * 100 / 1_000_000)
+
+                return tot_c - tot_p
+
+            s_min = spot_price * 0.70
+            s_max = spot_price * 1.30
+            f_min = net_gamma_diff_at_spot(s_min)
+            f_max = net_gamma_diff_at_spot(s_max)
+            solved_zg = None
+
+            if f_min * f_max < 0:
+                try:
+                    from scipy.optimize import brentq
+                    solved_zg = float(brentq(net_gamma_diff_at_spot, s_min, s_max, xtol=0.02))
+                except Exception:
+                    pass
+
+            if solved_zg is None:
+                grid_s = np.linspace(s_min, s_max, 60)
+                grid_vals = [net_gamma_diff_at_spot(s) for s in grid_s]
+                for i in range(len(grid_vals) - 1):
+                    if grid_vals[i] * grid_vals[i+1] <= 0:
+                        solved_zg = float(grid_s[i] - grid_vals[i] * (grid_s[i+1] - grid_s[i]) / (grid_vals[i+1] - grid_vals[i]))
+                        break
+
+            if solved_zg is not None and abs(solved_zg - spot_price) / spot_price < 0.35:
+                zero_gamma_level = solved_zg
+        except Exception:
+            zero_gamma_level = spot_price
+
+    closest_zg_strike = min(sorted_strikes, key=lambda k: abs(k - zero_gamma_level))
 
     is_long_gamma = total_net_gex > 0
     net_gex_b = total_net_gex / 1000.0
@@ -292,7 +351,7 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         p_g = round(strikes_gex[k]["put_gex"], 1)
         net_g = round(c_g - p_g, 1)
         strikes_list.append({
-            "strike": round(k, 1),
+            "strike": round(k, 2),
             "call_gex": c_g,
             "put_gex": p_g,
             "net_gex": net_g,
@@ -312,6 +371,7 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         "put_wall_dist_pct": round(((put_wall / spot_price) - 1) * 100, 2),
         "absolute_gamma_strike": round(abs_gamma_strike, 2),
         "zero_gamma_level": round(zero_gamma_level, 2),
+        "closest_zero_gamma_strike": round(closest_zg_strike, 2),
         "zero_gamma_dist_pct": round(((zero_gamma_level / spot_price) - 1) * 100, 2),
         "total_net_gex_billions": round(total_net_gex / 1000.0, 3),
         "total_call_gex_billions": round(total_call_gex / 1000.0, 3),
@@ -375,9 +435,9 @@ def plot_gamma_exposure_profile(gamma_data):
     fig.add_vline(x=pw, line_width=2, line_dash="dot", line_color="#FF2E55",
                   annotation_text=f"Put Wall ${pw:.0f}", annotation_position="bottom left",
                   annotation_font=dict(color="#FF2E55", size=10))
-    if abs(zg - spot) > 1.0:
+    if zg and abs(zg - spot) / spot < 0.35:
         fig.add_vline(x=zg, line_width=1.5, line_dash="dashdot", line_color="#38bdf8",
-                      annotation_text=f"Zero Gamma ${zg:.0f}", annotation_position="bottom right",
+                      annotation_text=f"Zero Gamma ${zg:.1f}", annotation_position="bottom right",
                       annotation_font=dict(color="#38bdf8", size=9))
 
     fig.update_layout(
@@ -452,6 +512,13 @@ def get_next_earnings_date(ticker_symbol):
     Guarantees the returned date is strictly in the future (>= today).
     Returns None for ETFs (SPY, QQQ, etc.).
     """
+    KNOWN_ETFS = {
+        'SPY', 'QQQ', 'IWM', 'DIA', 'GLD', 'TLT', 'USO', 'XLF', 'SMH', 'XLE', 
+        'XLK', 'RSP', 'XBI', 'XLV', 'XLY', 'XLP', 'XLU', 'XLI', 'XLB', 'XLC', 'IBIT'
+    }
+    if ticker_symbol.upper() in KNOWN_ETFS:
+        return None
+
     try:
         t = yf.Ticker(ticker_symbol)
         now = pd.Timestamp.now().normalize()
@@ -566,13 +633,14 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
                     benchmark_hv = hvs_dict.get('HV_30_clean', hvs_dict.get('HV_30', 20.0))
                     h_label = "30d Clean HV"
                     
-                ratio = round(atm_iv_trading / benchmark_hv, 2) if benchmark_hv > 0 else 1.0
+                # IV/HV Ratio and Variance Risk Premium (VRP) Calibration
+                # Evaluated on true annualized market IV vs annualized HV
+                ratio = round(raw_atm_iv / benchmark_hv, 2) if benchmark_hv > 0 else 1.0
                 
-                # Variance Risk Premium (VRP) Calibration: Index ETFs naturally carry ~1.12x VRP; single equities ~1.08x
                 is_index_asset = ticker_symbol.upper() in ['SPY', 'QQQ', 'IWM', 'DIA', 'GLD', 'TLT', 'USO', 'XLF', 'SMH', 'XLE', 'XLK']
                 vrp_factor = 1.12 if is_index_asset else 1.08
                 fair_vrp_iv = round(benchmark_hv * vrp_factor, 2)
-                vrp_ratio = round(atm_iv_trading / fair_vrp_iv, 2) if fair_vrp_iv > 0 else 1.0
+                vrp_ratio = round(raw_atm_iv / fair_vrp_iv, 2) if fair_vrp_iv > 0 else 1.0
 
                 if spans_earnings:
                     event_tag = "Spans Earnings (Contains Event Jump)"
@@ -742,7 +810,7 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
         if put_25d is not None and call_25d is not None:
             pct_dist = ((call_25d['strike'] - put_25d['strike']) / spot_price) * 100.0
             skew_slope = round(float((call_25d['IV_Pct'] - put_25d['IV_Pct']) / max(pct_dist, 1.0)), 2)
-            skew_25d_sub = f"{int(put_25d['strike'])}P {put_25d['IV_Pct']:.1f}% vs {int(call_25d['strike'])}C {call_25d['IV_Pct']:.1f}%"
+            skew_25d_sub = f"{put_25d['strike']:g}P {put_25d['IV_Pct']:.1f}% vs {call_25d['strike']:g}C {call_25d['IV_Pct']:.1f}%"
         else:
             skew_slope = -0.1
             skew_25d_sub = "N/A"
@@ -768,7 +836,7 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
         else:
             skew_10d_text = "Moderate tail risk"
 
-        # Fit Monotonic PCHIP Spline across combined stitched OTM strikes
+        # Fit Asymmetric Cubic Skew over Log-Moneyness ln(K/Spot)
         comb_list = []
         if not otm_puts.empty:
             comb_list.append(otm_puts[['strike', 'IV_Pct']])
@@ -781,18 +849,14 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
             df_comb = calls[['strike', 'IV_Pct']].drop_duplicates().sort_values('strike')
 
         grid_strikes = np.sort(np.unique(np.concatenate([np.linspace(df_comb['strike'].min(), df_comb['strike'].max(), 120), [spot_price]])))
-        pchip = None
-        try:
-            from scipy.interpolate import PchipInterpolator
-            if len(df_comb) >= 3:
-                pchip = PchipInterpolator(df_comb['strike'].values, df_comb['IV_Pct'].values)
-                grid_ivs = np.clip(pchip(grid_strikes), df_comb['IV_Pct'].min() * 0.75, df_comb['IV_Pct'].max() * 1.35)
-        except Exception:
-            pchip = None
-
-        if pchip is None:
-            p_fit = np.polyfit(df_comb['strike'].values, df_comb['IV_Pct'].values, min(2, len(df_comb)-1))
-            grid_ivs = np.clip(np.polyval(p_fit, grid_strikes), df_comb['IV_Pct'].min() * 0.75, df_comb['IV_Pct'].max() * 1.35)
+        
+        # Fit smooth parametric cubic skew over log-moneyness
+        df_comb['m'] = np.log(df_comb['strike'] / spot_price)
+        deg = min(3, len(df_comb) - 1)
+        poly_coeffs = np.polyfit(df_comb['m'].values, df_comb['IV_Pct'].values, deg)
+        grid_m = np.log(grid_strikes / spot_price)
+        raw_grid_ivs = np.polyval(poly_coeffs, grid_m)
+        grid_ivs = np.clip(raw_grid_ivs, df_comb['IV_Pct'].min() * 0.70, df_comb['IV_Pct'].max() * 1.35)
 
         # Split into seamless put (K <= Spot) and call (K >= Spot) curves meeting at Spot
         put_mask = grid_strikes <= spot_price
@@ -828,15 +892,11 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
         
         target_df['Log_Moneyness'] = np.log(target_df['strike'] / spot_price)
         
-        # Evaluate Fair Fitted Skew using the monotonic PCHIP model (eliminates inverted bowl distortion)
-        if pchip is not None:
-            fitted = pchip(target_df['strike'].values)
-        else:
-            fitted = np.polyval(p_fit, target_df['strike'].values)
-
-        target_df['Fitted_IV'] = np.clip(fitted, target_df['IV_Pct'].min() * 0.75, target_df['IV_Pct'].max() * 1.35)
-        target_df['IV_Discount'] = target_df['Fitted_IV'] - target_df['IV_Pct']  # Midpoint discount (cheapness)
-        target_df['IV_Premium'] = target_df['IV_Pct'] - target_df['Fitted_IV']   # Midpoint premium (richness)
+        # Evaluate Fair Fitted Skew using the smooth log-moneyness cubic model
+        fitted = np.polyval(poly_coeffs, target_df['Log_Moneyness'].values)
+        target_df['Fitted_IV'] = np.clip(fitted, target_df['IV_Pct'].min() * 0.70, target_df['IV_Pct'].max() * 1.35)
+        target_df['IV_Discount'] = (target_df['Fitted_IV'] - target_df['IV_Pct']).round(2)  # Midpoint discount (cheapness)
+        target_df['IV_Premium'] = (target_df['IV_Pct'] - target_df['Fitted_IV']).round(2)   # Midpoint premium (richness)
         
         # Spread Quality Rating
         def classify_spread(sp):
@@ -848,11 +908,11 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
                 return "🔴 Wide"
         target_df['Spread_Quality'] = target_df['Spread_Pct'].apply(classify_spread)
         
-        # Clamp Ask_IV_Pct and Bid_IV_Pct so that wide bid-ask spread artifacts on illiquid wings do not explode
-        target_df['Ask_IV_Pct'] = np.clip(target_df['Ask_IV_Pct'], target_df['IV_Pct'], target_df['Fitted_IV'] + 4.5)
-        target_df['Bid_IV_Pct'] = np.clip(target_df['Bid_IV_Pct'], target_df['Fitted_IV'] - 4.5, target_df['IV_Pct'])
-        target_df['Ask_Edge'] = (target_df['Fitted_IV'] - target_df['Ask_IV_Pct']).round(2)
-        target_df['Bid_Edge'] = (target_df['Bid_IV_Pct'] - target_df['Fitted_IV']).round(2)
+        # Compute Ask_Edge and Bid_Edge with bounded outlier clipping
+        raw_ask_edge = target_df['Fitted_IV'] - target_df['Ask_IV_Pct']
+        target_df['Ask_Edge'] = np.clip(raw_ask_edge, -6.0, 6.0).round(2)
+        raw_bid_edge = target_df['Bid_IV_Pct'] - target_df['Fitted_IV']
+        target_df['Bid_Edge'] = np.clip(raw_bid_edge, -6.0, 6.0).round(2)
         
         # Expected Move Context
         exp_move = spot_price * (atm_iv / 100.0) * np.sqrt(t_years)
@@ -889,7 +949,8 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
             
             # Companion Defined-Risk Wing Calculation (Credit Spread Hedge)
             wing_pool = puts if not is_call else calls
-            target_width = max(spot_price * 0.025, 1.0)
+            max_w = 10.0 if ticker_symbol.upper() in ['SPY', 'QQQ', 'IWM', 'DIA'] else 5.0
+            target_width = min(max_w, max(spot_price * 0.015, 1.0))
             
             def calc_wing(row):
                 s_k = row['strike']
@@ -912,7 +973,10 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
                 w_k = float(w_row['strike'])
                 w_ask = float(w_row['ask'])
                 width = round(abs(s_k - w_k), 2)
-                credit = round(max(0.01, s_bid - w_ask), 2)
+                net_diff = s_bid - w_ask
+                if net_diff <= 0 or width <= 0:
+                    return pd.Series([None, None, None, None, None, None])
+                credit = round(net_diff, 2)
                 risk = round(max(0.01, width - credit), 2)
                 ror = round((credit / risk) * 100.0, 1)
                 return pd.Series([w_k, w_ask, width, credit, risk, ror])
@@ -979,7 +1043,7 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
             'spot_price': spot_price,
             'dte': dte,
             'expiration': expiration,
-            'poly_coeffs_k': [0, 0, 0],
+            'poly_coeffs_k': [round(float(c), 4) for c in poly_coeffs] if 'poly_coeffs' in locals() else [0, 0, 0],
             'exp_move': exp_move,
             'dividend_yield': q,
             'side': side_clean,
@@ -1796,21 +1860,22 @@ def render_gamma_desk_page(available_tickers=None):
     if strikes_list:
         st.markdown("#### Per-Strike Gamma Exposure & Hedging Breakdown")
         table_rows = []
+        zg_strike = gex_data.get("closest_zero_gamma_strike", zg)
         for s in strikes_list:
             k = s["strike"]
             dist_pct = ((k / spot) - 1) * 100
             role = "Normal Strike"
-            if abs(k - cw) < 0.5:
+            if abs(k - cw) < 0.01:
                 role = "🟢 Call Wall Pin"
-            elif abs(k - pw) < 0.5:
+            elif abs(k - pw) < 0.01:
                 role = "🔴 Put Wall Floor"
-            elif abs(k - zg) < 0.5:
+            elif abs(k - zg_strike) < 0.01:
                 role = "⚡ Zero Gamma Flip"
             elif abs(k - spot) / spot < 0.005:
                 role = "🎯 At-The-Money"
 
             table_rows.append({
-                "Strike ($)": f"${k:,.1f}",
+                "Strike ($)": f"${k:,.2f}",
                 "Dist vs Spot (%)": f"{dist_pct:+.2f}%",
                 "Call GEX ($M)": s["call_gex"],
                 "Put GEX ($M)": s["put_gex"],
@@ -1825,8 +1890,8 @@ def render_gamma_desk_page(available_tickers=None):
     # 6. Educational Collapsible Guide
     with st.expander("📘 Institutional Desk Guide: How to Trade Using Gamma Levels"):
         st.markdown("""
-        * **Call Wall:** The strike with the largest open Call Gamma. Market makers are typically short these calls and long stock. As spot approaches the Call Wall, dealers must sell stock to hedge, acting as a natural ceiling and magnet pin.
-        * **Put Wall:** The strike with the largest open Put Gamma. Market makers who are short these puts must buy stock as the underlying falls into the wall, providing liquidity and rebound support.
-        * **Zero Gamma Flip:** The inflection level where total market net gamma crosses zero. Above this level, volatility is suppressed. Below this level, dealer hedging accelerates market declines.
+        * **Call Wall:** The strike with the largest open Call Gamma. Market makers are typically assumed net long calls (counterparty to call sellers). As spot approaches the Call Wall, dealers must sell stock to hedge, creating a natural upside ceiling and pinning magnet into OpEx.
+        * **Put Wall:** The strike with the largest open Put Gamma. Market makers are typically assumed net short puts (counterparty to protective put buyers). In a net Long Gamma regime, overall dealer dip-buying provides strong cushion and rebound support at this level.
+        * **Zero Gamma Flip:** The exact inflection boundary where aggregate dealer positioning flips between positive (volatility suppressing / mean-reverting) and negative (volatility accelerating / cascade risk).
         * **Weekly OpEx Pinning:** On expiration days (especially Fridays), gamma sensitivity ($\\Gamma \\propto 1/\\sqrt{T}$) peaks, pinning price action tightly around the highest open interest strikes.
         """)
