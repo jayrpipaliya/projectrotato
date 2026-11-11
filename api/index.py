@@ -5285,7 +5285,7 @@ async function init() {
                                 <div class="p-2 rounded-lg bg-white/[0.02] border border-white/5">
                                     <div class="text-[9px] uppercase font-bold text-slate-400">Live Spot</div>
                                     <div class="text-sm font-extrabold text-sky-400 mt-0.5">$${(mtm.live_spot || 0).toFixed(2)}</div>
-                                    <div class="text-[9px] text-slate-500">${isSpread ? `Est Spread: $${(mtm.est_spread_px || 0).toFixed(2)}` : 'Underlying'}</div>
+                                    <div class="text-[9px] text-slate-500">${isSpread ? (mtm.est_spread_px != null ? `Live Spread: $${Number(mtm.est_spread_px).toFixed(2)}` : 'No live quotes') : (isOpt ? (mtm.est_option_px != null ? `Live Option: $${Number(mtm.est_option_px).toFixed(2)}` : 'No live quotes') : 'Underlying')}</div>
                                 </div>
                                 <div class="p-2 rounded-lg ${isSpread ? 'bg-purple-950/30 border border-purple-500/30' : 'bg-cherry/10 border border-cherry/25'}">
                                     <div class="text-[9px] uppercase font-bold ${isSpread ? 'text-purple-300' : 'text-cherry'}">${isSpread ? 'Collateral Locked' : 'Stop Loss'}</div>
@@ -5375,7 +5375,7 @@ async function init() {
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-[9.5px] uppercase font-bold text-slate-400">Exit Price ($)</label>
-                                    <input id="closeExitPx-${trd.id}" type="number" step="0.01" value="${(isOpt ? (mtm.est_option_px || trd.entry_price) : mtm.live_spot).toFixed(2)}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                    <input id="closeExitPx-${trd.id}" type="number" step="0.01" value="${(isSpread ? (mtm.est_spread_px ?? trd.entry_price) : (isOpt ? (mtm.est_option_px ?? trd.entry_price) : mtm.live_spot)).toFixed(2)}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
                                 </div>
                                 <div>
                                     <label class="text-[9.5px] uppercase font-bold text-slate-400">Outcome</label>

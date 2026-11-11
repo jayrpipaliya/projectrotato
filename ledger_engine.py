@@ -9,9 +9,12 @@ import os
 import json
 import time
 from datetime import datetime
+from typing import Optional
 
-# In-memory short-lived cache for ticker spot prices to keep UI blazing fast
+# In-memory short-lived cache for ticker spot prices and option chains to keep UI fast
 _PRICE_CACHE = {}
+_OPTION_CHAIN_CACHE = {}
+_OPTION_CHAIN_TTL = 45
 
 
 def get_ledger_filepath() -> str:
@@ -430,12 +433,92 @@ def delete_trade(trade_id: str) -> bool:
     return False
 
 
+def _fetch_option_chain_cached(ticker: str, expiration: str):
+    """Fetch and briefly cache a yfinance option chain for live MTM valuation."""
+    if not ticker or not expiration:
+        return None
+    t_up = ticker.upper().strip()
+    exp_str = str(expiration).strip()
+    key = (t_up, exp_str)
+    now = time.time()
+    cached = _OPTION_CHAIN_CACHE.get(key)
+    if cached and (now - cached[2]) < _OPTION_CHAIN_TTL:
+        return cached[0], cached[1]
+    try:
+        import yfinance as yf
+        chain = yf.Ticker(t_up).option_chain(exp_str)
+        calls, puts = chain.calls, chain.puts
+        _OPTION_CHAIN_CACHE[key] = (calls, puts, now)
+        return calls, puts
+    except Exception:
+        return None
+
+
+def _get_live_option_mid(ticker: str, expiration: str, contract_type: str, strike: float) -> Optional[float]:
+    """Return live bid/ask midpoint for an option contract, or None if live quotes are unavailable."""
+    if not ticker or not expiration or strike is None:
+        return None
+    chain = _fetch_option_chain_cached(ticker, expiration)
+    if not chain:
+        return None
+    calls, puts = chain
+    df = puts if str(contract_type or "").upper() == "PUT" else calls
+    if df is None or df.empty:
+        return None
+    try:
+        matches = df[(df["strike"] - float(strike)).abs() < 0.01]
+        if matches.empty:
+            return None
+        row = matches.iloc[0]
+        bid = float(row.get("bid") or 0.0)
+        ask = float(row.get("ask") or 0.0)
+        if bid > 0.0 and ask > 0.0 and ask >= bid:
+            return round((bid + ask) / 2.0, 4)
+    except Exception:
+        return None
+    return None
+
+
+def _mark_spread_from_quotes(
+    trade: dict,
+    ticker: str,
+    s_type: str,
+    short_k: float,
+    long_k: float,
+    width: float,
+    entry_prem: float,
+    size: float,
+    max_risk: float,
+) -> Optional[tuple]:
+    """Price a vertical spread from live bid/ask midpoints; return None if quotes are unavailable."""
+    if short_k <= 0 or long_k <= 0:
+        return None
+    short_exp = trade.get("short_expiry") or trade.get("expiration")
+    long_exp = trade.get("long_expiry") or trade.get("expiration")
+    opt_kind = "PUT" if "PUT" in s_type else "CALL"
+
+    short_mid = _get_live_option_mid(ticker, short_exp, opt_kind, short_k)
+    long_mid = _get_live_option_mid(ticker, long_exp, opt_kind, long_k)
+    if short_mid is None or long_mid is None:
+        return None
+
+    if "CREDIT" in s_type:
+        live_spread_px = max(0.0, min(width, short_mid - long_mid))
+        unrealized_pnl = (entry_prem - live_spread_px) * 100.0 * size
+    else:
+        live_spread_px = max(0.0, min(width, long_mid - short_mid))
+        unrealized_pnl = (live_spread_px - entry_prem) * 100.0 * size
+
+    unrealized_pct = (unrealized_pnl / max_risk) * 100.0 if max_risk > 0 else 0.0
+    return live_spread_px, unrealized_pnl, unrealized_pct
+
+
 def compute_mark_to_market(trade: dict, live_spot: float = None) -> dict:
     """
     Calculate live PnL, progress toward Target 1 vs Stop Invalidation,
     and institutional desk trigger flags.
-    Accurately accounts for directionality (Bullish vs Bearish), Single Options,
-    and Defined-Risk Vertical Spreads (Collateral & ROC).
+    Uses live option-chain bid/ask midpoints for spreads and single options;
+    when live quotes are unavailable, reports 0.0 unrealized PnL without estimating gains.
     """
     ticker = trade.get("ticker", "")
     if live_spot is None or live_spot <= 0:
@@ -474,7 +557,8 @@ def compute_mark_to_market(trade: dict, live_spot: float = None) -> dict:
         "dist_to_target1_pct": 0.0,
         "progress_pct": 0.0,
         "trigger_alert": None,
-        "alert_type": "info"  # success, warning, error, info
+        "alert_type": "info",  # success, warning, error, info
+        "quote_available": True,
     }
 
     if live_spot <= 0 or entry_px <= 0:
@@ -489,85 +573,52 @@ def compute_mark_to_market(trade: dict, live_spot: float = None) -> dict:
         if width <= 0:
             width = 5.0
         entry_prem = float(trade.get("net_premium") or entry_px or 1.0)
-        max_risk = float(trade.get("max_risk") or (max(0.1, width - entry_prem) * 100.0 * size))
+        is_credit = "CREDIT" in s_type
+        default_risk = max(0.1, width - entry_prem) * 100.0 * size if is_credit else entry_prem * 100.0 * size
+        max_risk = float(trade.get("max_risk") or default_risk)
         if max_risk <= 0:
             max_risk = 100.0
-        max_profit = float(trade.get("max_profit") or (entry_prem * 100.0 * size))
+        default_profit = entry_prem * 100.0 * size if is_credit else max(0.0, width - entry_prem) * 100.0 * size
+        max_profit = float(trade.get("max_profit") or default_profit)
 
-        if "BULL_PUT" in s_type:
-            # Bull Put Credit Spread: Sold short put at short_k, bought lower put at long_k
-            # Target: live_spot stays >= short_k
-            if live_spot >= short_k:
-                # Buffer above short strike (decay spread value toward 0)
-                buffer_pct = (live_spot - short_k) / short_k if short_k > 0 else 0.0
-                decay_factor = max(0.04, 1.0 - (buffer_pct / 0.035))
-                est_spread_px = max(0.02, entry_prem * decay_factor)
-            elif live_spot <= long_k:
-                # Breached below long strike: maximum loss
-                est_spread_px = width
-            else:
-                # In between short_k and long_k
-                incursion_pct = (short_k - live_spot) / width
-                est_spread_px = min(width, entry_prem + incursion_pct * (width - entry_prem))
+        if "BULL_PUT" in s_type and short_k > 0:
+            res["short_strike_buffer_pct"] = round(((live_spot - short_k) / short_k) * 100.0, 2)
+        elif "BEAR_CALL" in s_type and short_k > 0:
+            res["short_strike_buffer_pct"] = round(((short_k - live_spot) / short_k) * 100.0, 2)
 
-            unrealized_pnl = (entry_prem - est_spread_px) * 100.0 * size
-            unrealized_pct = (unrealized_pnl / max_risk) * 100.0  # Return on Collateral (ROC)
-            res["est_spread_px"] = round(est_spread_px, 2)
-            res["short_strike_buffer_pct"] = round(((live_spot - short_k) / short_k) * 100.0, 2) if short_k > 0 else 0.0
-            res["max_risk"] = max_risk
-            res["max_profit"] = max_profit
+        res["max_risk"] = max_risk
+        res["max_profit"] = max_profit
 
-        elif "BEAR_CALL" in s_type:
-            # Bear Call Credit Spread: Sold short call at short_k, bought higher call at long_k
-            # Target: live_spot stays <= short_k
-            if live_spot <= short_k:
-                buffer_pct = (short_k - live_spot) / short_k if short_k > 0 else 0.0
-                decay_factor = max(0.04, 1.0 - (buffer_pct / 0.035))
-                est_spread_px = max(0.02, entry_prem * decay_factor)
-            elif live_spot >= long_k:
-                est_spread_px = width
-            else:
-                incursion_pct = (live_spot - short_k) / width
-                est_spread_px = min(width, entry_prem + incursion_pct * (width - entry_prem))
-
-            unrealized_pnl = (entry_prem - est_spread_px) * 100.0 * size
-            unrealized_pct = (unrealized_pnl / max_risk) * 100.0
-            res["est_spread_px"] = round(est_spread_px, 2)
-            res["short_strike_buffer_pct"] = round(((short_k - live_spot) / short_k) * 100.0, 2) if short_k > 0 else 0.0
-            res["max_risk"] = max_risk
-            res["max_profit"] = max_profit
-
-        elif "BULL_CALL" in s_type or "DEBIT" in s_type:
-            # Bull Call Debit Spread: Bought lower call, sold higher call
-            lower_k = min(short_k, long_k) if (short_k > 0 and long_k > 0) else underlying_entry
-            upper_k = max(short_k, long_k) if (short_k > 0 and long_k > 0) else underlying_entry * 1.03
-            if live_spot <= lower_k:
-                est_spread_px = max(0.05, entry_prem * 0.4)
-            elif live_spot >= upper_k:
-                est_spread_px = width * 0.95
-            else:
-                progress = (live_spot - lower_k) / (upper_k - lower_k) if upper_k > lower_k else 0.5
-                est_spread_px = entry_prem + progress * (width - entry_prem)
-
-            unrealized_pnl = (est_spread_px - entry_prem) * 100.0 * size
-            unrealized_pct = ((est_spread_px - entry_prem) / entry_prem) * 100.0 if entry_prem > 0 else 0.0
-            res["est_spread_px"] = round(est_spread_px, 2)
-            res["max_risk"] = max_risk
-            res["max_profit"] = max_profit
+        quoted = _mark_spread_from_quotes(
+            trade, ticker, s_type, short_k, long_k, width, entry_prem, size, max_risk
+        )
+        if quoted is not None:
+            live_spread_px, unrealized_pnl, unrealized_pct = quoted
+            res["est_spread_px"] = round(live_spread_px, 2)
+            res["quote_available"] = True
         else:
             unrealized_pnl = 0.0
             unrealized_pct = 0.0
-            res["est_spread_px"] = round(entry_prem, 2)
+            res["est_spread_px"] = None
+            res["quote_available"] = False
 
     elif is_option:
-        # Options estimate: delta-adjusted heuristic anchored on underlying spot difference
-        delta = -0.45 if is_bearish else 0.45
-        spot_diff = live_spot - underlying_entry
-        est_contract_gain = spot_diff * delta
-        est_current_opt_px = max(0.01, entry_px + est_contract_gain)
-        unrealized_pct = ((est_current_opt_px - entry_px) / entry_px) * 100
-        unrealized_pnl = (est_current_opt_px - entry_px) * size * 100
-        res["est_option_px"] = round(est_current_opt_px, 2)
+        live_opt_px = _get_live_option_mid(
+            ticker,
+            trade.get("expiration"),
+            trade.get("contract_type", "CALL"),
+            trade.get("strike"),
+        )
+        if live_opt_px is not None:
+            unrealized_pct = ((live_opt_px - entry_px) / entry_px) * 100.0
+            unrealized_pnl = (live_opt_px - entry_px) * size * 100.0
+            res["est_option_px"] = round(live_opt_px, 2)
+            res["quote_available"] = True
+        else:
+            unrealized_pct = 0.0
+            unrealized_pnl = 0.0
+            res["est_option_px"] = None
+            res["quote_available"] = False
     else:
         # Stock
         if is_bearish:

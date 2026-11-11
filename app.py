@@ -1426,7 +1426,7 @@ with tab_ledger:
                 act_col1, act_col2, act_col3 = st.columns([1.5, 1.5, 1])
                 with act_col1:
                     with st.expander("Close Position / Realize P&L"):
-                        close_px = st.number_input("Final Exit Price ($)", value=float(mtm.get("est_option_px", trd["entry_price"]) if is_opt else mtm["live_spot"]), format="%.2f", key=f"c_px_{trd['id']}")
+                        close_px = st.number_input("Final Exit Price ($)", value=float((mtm.get("est_spread_px") if mtm.get("est_spread_px") is not None else trd["entry_price"]) if trd.get("asset_type") == "SPREAD" else ((mtm.get("est_option_px") if mtm.get("est_option_px") is not None else trd["entry_price"]) if is_opt else mtm["live_spot"])), format="%.2f", key=f"c_px_{trd['id']}")
                         outcome = st.selectbox("Trade Outcome", ["TARGET_1_HIT", "TARGET_2_HIT", "STOPPED_OUT", "CLOSED_MANUALLY"], key=f"c_out_{trd['id']}")
                         close_note = st.text_input("Exit Rationale / Notes", key=f"c_note_{trd['id']}")
                         if st.button("Confirm Close Trade", key=f"btn_close_{trd['id']}", use_container_width=True):
