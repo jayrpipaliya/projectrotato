@@ -226,9 +226,13 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
                 for _, row in calls.iterrows():
                     k = float(row["strike"])
                     val_oi = row.get("openInterest")
-                    if pd.isna(val_oi) or val_oi is None or float(val_oi) <= 0:
+                    val_vol = row.get("volume")
+                    oi = int(val_oi) if (pd.notna(val_oi) and val_oi is not None and float(val_oi) > 0) else 0
+                    vol = int(val_vol) if (pd.notna(val_vol) and val_vol is not None and float(val_vol) > 0) else 0
+                    # Use open interest or active contract volume when overnight clearing hasn't settled OI
+                    eff_contracts = oi if oi > 0 else vol
+                    if eff_contracts <= 0:
                         continue
-                    oi = int(val_oi)
                     val_iv = row.get("impliedVolatility")
                     if pd.isna(val_iv) or val_iv is None:
                         iv = base_iv
@@ -237,12 +241,12 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
                     if iv < 0.04 or iv > 2.5:
                         iv = base_iv
                     gamma = black_scholes_gamma(spot_price, k, T, iv, q=div_yield)
-                    call_dollar_gex = (spot_price ** 2) * gamma * oi * 0.01 * 100 / 1_000_000
+                    call_dollar_gex = (spot_price ** 2) * gamma * eff_contracts * 0.01 * 100 / 1_000_000
                     if k not in local_gex:
                         local_gex[k] = {"call_gex": 0.0, "put_gex": 0.0, "call_oi": 0, "put_oi": 0}
                     local_gex[k]["call_gex"] += call_dollar_gex
-                    local_gex[k]["call_oi"] += oi
-                    local_calls.append((k, T, iv, oi))
+                    local_gex[k]["call_oi"] += eff_contracts
+                    local_calls.append((k, T, iv, eff_contracts))
 
             puts = chain.puts
             if not puts.empty:
@@ -254,9 +258,12 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
                 for _, row in puts.iterrows():
                     k = float(row["strike"])
                     val_oi = row.get("openInterest")
-                    if pd.isna(val_oi) or val_oi is None or float(val_oi) <= 0:
+                    val_vol = row.get("volume")
+                    oi = int(val_oi) if (pd.notna(val_oi) and val_oi is not None and float(val_oi) > 0) else 0
+                    vol = int(val_vol) if (pd.notna(val_vol) and val_vol is not None and float(val_vol) > 0) else 0
+                    eff_contracts = oi if oi > 0 else vol
+                    if eff_contracts <= 0:
                         continue
-                    oi = int(val_oi)
                     val_iv = row.get("impliedVolatility")
                     if pd.isna(val_iv) or val_iv is None:
                         iv = base_iv
@@ -265,12 +272,12 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
                     if iv < 0.04 or iv > 2.5:
                         iv = base_iv
                     gamma = black_scholes_gamma(spot_price, k, T, iv, q=div_yield)
-                    put_dollar_gex = (spot_price ** 2) * gamma * oi * 0.01 * 100 / 1_000_000
+                    put_dollar_gex = (spot_price ** 2) * gamma * eff_contracts * 0.01 * 100 / 1_000_000
                     if k not in local_gex:
                         local_gex[k] = {"call_gex": 0.0, "put_gex": 0.0, "call_oi": 0, "put_oi": 0}
                     local_gex[k]["put_gex"] += put_dollar_gex
-                    local_gex[k]["put_oi"] += oi
-                    local_puts.append((k, T, iv, oi))
+                    local_gex[k]["put_oi"] += eff_contracts
+                    local_puts.append((k, T, iv, eff_contracts))
 
             exp_max_ts = None
             if not calls.empty and "lastTradeDate" in calls.columns:
@@ -307,6 +314,34 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
             strikes_gex[k]["put_oi"] += v["put_oi"]
         all_calls.extend(res.get("calls", []))
         all_puts.extend(res.get("puts", []))
+
+    # Fallback to liquid monthly/weekly cycles if front expirations have unfinalized overnight clearing
+    if not strikes_gex and expirations and len(expirations) > len(valid_exps):
+        fallback_exps = []
+        for e in expirations[len(valid_exps):min(len(expirations), len(valid_exps) + 8)]:
+            try:
+                dte = max((pd.Timestamp(e) - today).days, 0)
+                fallback_exps.append((e, dte))
+            except Exception:
+                continue
+        if fallback_exps:
+            with ThreadPoolExecutor(max_workers=min(5, len(fallback_exps))) as executor:
+                fb_results = list(executor.map(process_exp, fallback_exps))
+            for res in fb_results:
+                if not res:
+                    continue
+                ts_cand = res.get("max_trade_ts")
+                if ts_cand is not None and pd.notna(ts_cand):
+                    latest_trade_ts = max(latest_trade_ts, ts_cand) if latest_trade_ts is not None else ts_cand
+                for k, v in res.get("gex", {}).items():
+                    if k not in strikes_gex:
+                        strikes_gex[k] = {"call_gex": 0.0, "put_gex": 0.0, "call_oi": 0, "put_oi": 0}
+                    strikes_gex[k]["call_gex"] += v["call_gex"]
+                    strikes_gex[k]["put_gex"] += v["put_gex"]
+                    strikes_gex[k]["call_oi"] += v["call_oi"]
+                    strikes_gex[k]["put_oi"] += v["put_oi"]
+                all_calls.extend(res.get("calls", []))
+                all_puts.extend(res.get("puts", []))
 
     if not strikes_gex:
         return {"error": f"No liquid gamma profile extracted for {ticker_up}"}
