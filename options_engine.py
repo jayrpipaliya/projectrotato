@@ -238,18 +238,32 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
                     local_gex[k]["put_oi"] += oi
                     local_puts.append((k, T, iv, oi))
 
-            return {"gex": local_gex, "calls": local_calls, "puts": local_puts}
+            exp_max_ts = None
+            if not calls.empty and "lastTradeDate" in calls.columns:
+                c_max = calls["lastTradeDate"].dropna().max()
+                if pd.notna(c_max):
+                    exp_max_ts = c_max
+            if not puts.empty and "lastTradeDate" in puts.columns:
+                p_max = puts["lastTradeDate"].dropna().max()
+                if pd.notna(p_max):
+                    exp_max_ts = max(exp_max_ts, p_max) if exp_max_ts is not None else p_max
+
+            return {"gex": local_gex, "calls": local_calls, "puts": local_puts, "max_trade_ts": exp_max_ts}
         except Exception:
-            return {"gex": {}, "calls": [], "puts": []}
+            return {"gex": {}, "calls": [], "puts": [], "max_trade_ts": None}
 
     with ThreadPoolExecutor(max_workers=min(5, len(valid_exps))) as executor:
         results = list(executor.map(process_exp, valid_exps))
 
     all_calls = []
     all_puts = []
+    latest_trade_ts = None
     for res in results:
         if not res:
             continue
+        ts_cand = res.get("max_trade_ts")
+        if ts_cand is not None and pd.notna(ts_cand):
+            latest_trade_ts = max(latest_trade_ts, ts_cand) if latest_trade_ts is not None else ts_cand
         for k, v in res.get("gex", {}).items():
             if k not in strikes_gex:
                 strikes_gex[k] = {"call_gex": 0.0, "put_gex": 0.0, "call_oi": 0, "put_oi": 0}
@@ -406,6 +420,18 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
     elapsed = round(time.time() - t0, 3)
     loaded_at_str = now_dt.strftime("%Y-%m-%d %H:%M:%S EST")
     loaded_at_display = now_dt.strftime("%b %d, %Y %I:%M:%S %p EST")
+
+    market_trade_str = None
+    if latest_trade_ts is not None:
+        try:
+            if hasattr(latest_trade_ts, "tz_convert"):
+                m_dt = latest_trade_ts.tz_convert("America/New_York")
+            else:
+                m_dt = pd.to_datetime(latest_trade_ts).tz_localize("UTC").tz_convert("America/New_York")
+            market_trade_str = m_dt.strftime("%b %d, %Y %I:%M %p EST")
+        except Exception:
+            market_trade_str = str(latest_trade_ts)[:19]
+
     profile = {
         "ticker": ticker_up,
         "spot_price": round(spot_price, 2),
@@ -432,6 +458,7 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         "loaded_at_timestamp": now_ts,
         "loaded_at_str": loaded_at_str,
         "loaded_at_display": loaded_at_display,
+        "market_trade_time": market_trade_str,
         "expirations_scanned": [e[0] for e in valid_exps],
         "strikes_count": len(sorted_strikes),
         "relevant_strikes_count": sum(1 for s in strikes_list if s["is_relevant"]),
@@ -492,11 +519,13 @@ def plot_gamma_exposure_profile(gamma_data):
                       annotation_font=dict(color="#38bdf8", size=9))
 
     loaded_str = gamma_data.get("loaded_at_display") or gamma_data.get("loaded_at_str") or "Live Snapshot"
+    market_str = gamma_data.get("market_trade_time")
     elapsed = gamma_data.get("elapsed_seconds", 0)
+    market_part = f"Exchange Trade Print: {market_str} • " if market_str else ""
 
     fig.update_layout(
         title=dict(
-            text=f"<b>{gamma_data['ticker']} Dealer Gamma Exposure (GEX) by Strike</b> | Net GEX: ${gamma_data['total_net_gex_billions']:+.2f}B ({gamma_data['regime_short']})<br><span style='font-size:10px; color:#94a3b8; font-weight:normal; font-family:monospace;'>Options Data Snapshot: {loaded_str} (yfinance | {elapsed:.2f}s)</span>",
+            text=f"<b>{gamma_data['ticker']} Dealer Gamma Exposure (GEX) by Strike</b> | Net GEX: ${gamma_data['total_net_gex_billions']:+.2f}B ({gamma_data['regime_short']})<br><span style='font-size:10px; color:#94a3b8; font-weight:normal; font-family:monospace;'>{market_part}Feed Ingested: {loaded_str} (yfinance | {elapsed:.2f}s)</span>",
             font=dict(size=13, color="#f8fafc")
         ),
         xaxis_title="Strike Price ($)",
@@ -1925,10 +1954,11 @@ def render_gamma_desk_page(available_tickers=None):
         elapsed = gex_data.get("elapsed_seconds", 0)
         strikes_count = gex_data.get("strikes_count", 0)
         exps_scanned = len(gex_data.get("expirations_scanned", []))
+        market_time_text = gex_data.get("market_trade_time") or "Exchange Session Close"
         st.markdown(
-            f'<div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#64748b; margin-top:-14px; margin-bottom:14px; font-family:monospace; padding:0 4px;">'
-            f'<span><span style="color:#94a3b8;">Data Source:</span> yfinance options chain ({strikes_count} strikes across {exps_scanned} expirations)</span>'
-            f'<span><span style="color:#94a3b8;">Snapshot Loaded:</span> <b style="color:#cbd5e1;">{loaded_time_text}</b> <span style="color:#475569;">|</span> Latency: {elapsed:.2f}s</span>'
+            f'<div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#64748b; margin-top:-14px; margin-bottom:14px; font-family:monospace; padding:0 4px; flex-wrap:wrap; gap:6px;">'
+            f'<span><span style="color:#94a3b8;">Exchange Data Origin:</span> <b style="color:#38bdf8;">{market_time_text}</b> <span style="color:#475569;">•</span> <span style="color:#94a3b8;">OCC Open Interest:</span> Settled Overnight ({strikes_count} strikes)</span>'
+            f'<span><span style="color:#94a3b8;">Feed Ingestion:</span> <b style="color:#cbd5e1;">{loaded_time_text}</b> <span style="color:#475569;">|</span> Latency: {elapsed:.2f}s</span>'
             f'</div>',
             unsafe_allow_html=True
         )
