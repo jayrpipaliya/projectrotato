@@ -4125,7 +4125,7 @@ async function init() {
                 zmin: -maxAbs,
                 zmax: maxAbs,
                 colorbar: {
-                    title: { text: CURRENT_HEATMAP_MODE === 'delta_gex' ? '&Delta;GEX ($M)' : 'Net GEX ($M)', font: { color: '#94a3b8', size: 10 } },
+                    title: { text: CURRENT_HEATMAP_MODE === 'delta_gex' ? 'ΔGEX ($M)' : 'Net GEX ($M)', font: { color: '#94a3b8', size: 10 } },
                     tickfont: { color: '#94a3b8', size: 9 },
                     thickness: 12,
                     len: 0.85
@@ -4163,10 +4163,10 @@ async function init() {
                 hovertemplate: 'Put Wall Floor: $%{y:,.2f}<extra></extra>'
             };
 
-            const modeTitle = CURRENT_HEATMAP_MODE === 'delta_gex' ? 'Day-over-Day &Delta;GEX Shift (Brightness = Change Intensity)' : 'Net Gamma Distribution by Strike ($M)';
+            const modeTitle = CURRENT_HEATMAP_MODE === 'delta_gex' ? 'Day-over-Day ΔGEX Shift (Brightness = Change Intensity)' : 'Net Gamma Distribution by Strike ($M)';
             const layout = {
                 title: {
-                    text: `<b>${data.ticker} Gamma Migration Heat Map</b> | ${modeTitle}<br><span style="font-size:10px; color:#94a3b8; font-weight:normal; font-family:monospace;">White Line = Spot Trajectory &bull; Diamonds = Call Wall &bull; Triangles = Put Wall</span>`,
+                    text: `<b>${data.ticker} Gamma Migration Heat Map</b> | ${modeTitle}<br><span style="font-size:10px; color:#94a3b8; font-weight:normal; font-family:monospace;">White Line = Spot Trajectory • Diamonds = Call Wall • Triangles = Put Wall</span>`,
                     font: { color: '#f1f5f9', size: 13 }
                 },
                 paper_bgcolor: 'rgba(0,0,0,0)',

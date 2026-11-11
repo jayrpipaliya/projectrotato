@@ -143,7 +143,11 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
     """
     ticker_up = ticker_symbol.upper()
     now_ts = time.time()
-    now_dt = datetime.now()
+    try:
+        from zoneinfo import ZoneInfo
+        now_dt = datetime.now(ZoneInfo("America/New_York"))
+    except Exception:
+        now_dt = datetime.utcnow() - timedelta(hours=5)
     if not force_refresh and ticker_up in _GAMMA_PROFILE_CACHE:
         cached_entry = _GAMMA_PROFILE_CACHE[ticker_up]
         if now_ts - cached_entry["timestamp"] < _GAMMA_PROFILE_TTL:

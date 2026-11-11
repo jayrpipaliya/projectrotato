@@ -45,6 +45,49 @@ def format_signed_currency(val: float, suffix: str = "M", decimals: int = 1) -> 
     sign = "+" if v >= 0 else "-"
     return f"{sign}${abs(v):,.{decimals}f}{suffix}"
 
+def get_market_session_date(override_dt: datetime = None) -> str:
+    """
+    Returns the official US Equity Options Trading Session Date (YYYY-MM-DD)
+    strictly anchored to America/New_York (US Eastern Time).
+
+    Trading Session Alignment:
+    - US Equity & Options trade 9:30 AM to 4:00 PM EST (indexes to 4:15 PM EST).
+    - If current NY time is before 9:30 AM EST (overnight or pre-market):
+      Options market has not opened yet; chains reflect the PREVIOUS business day's settlement.
+      (e.g., at 2:30 AM EST Wednesday, the data is Tuesday's close).
+      If Monday morning before 9:30 AM EST, rolls back to Friday.
+    - If current NY time is Saturday or Sunday:
+      Rolls back to Friday's settlement session.
+    - If current NY time is >= 9:30 AM EST on a weekday:
+      The session is today's date.
+    - Cloud Server Guard: Immune to UTC clock drift (prevents 9:30 PM EST from becoming tomorrow UTC).
+    """
+    if override_dt:
+        now_ny = override_dt
+    else:
+        try:
+            from zoneinfo import ZoneInfo
+            now_ny = datetime.now(ZoneInfo("America/New_York"))
+        except Exception:
+            now_ny = datetime.utcnow() - timedelta(hours=5)
+
+    weekday = now_ny.weekday()  # 0=Monday, 4=Friday, 5=Saturday, 6=Sunday
+
+    if weekday == 5:  # Saturday -> Friday
+        session_dt = now_ny - timedelta(days=1)
+    elif weekday == 6:  # Sunday -> Friday
+        session_dt = now_ny - timedelta(days=2)
+    elif now_ny.hour < 9 or (now_ny.hour == 9 and now_ny.minute < 30):
+        # Before 9:30 AM EST on a weekday
+        if weekday == 0:  # Monday morning -> Friday
+            session_dt = now_ny - timedelta(days=3)
+        else:
+            session_dt = now_ny - timedelta(days=1)
+    else:
+        session_dt = now_ny
+
+    return session_dt.strftime("%Y-%m-%d")
+
 
 def _lookup_strike(s_dict: dict, k: float) -> dict:
     """Robust strike lookup with float tolerance to eliminate string representation misses."""
@@ -113,12 +156,17 @@ def load_gamma_history(ticker: str = None) -> dict:
             _seed_ticker_if_needed(t_key)
             raw_list = _HISTORY_CACHE.get(t_key, [])
 
-        # Deduplicate strictly by date and sort chronologically
+        # Deduplicate strictly by date, clamp any future-stamped dates from UTC drift, and sort
+        max_valid_date = get_market_session_date()
         deduped = {}
         for item in raw_list:
             d = item.get("date")
             if d:
-                deduped[d] = item
+                # Clamp future-stamped dates to current valid market session date
+                clean_d = min(d, max_valid_date) if d > max_valid_date else d
+                item_copy = dict(item)
+                item_copy["date"] = clean_d
+                deduped[clean_d] = item_copy
         return [deduped[d] for d in sorted(deduped.keys())]
     return _HISTORY_CACHE
 
@@ -149,8 +197,8 @@ def record_gamma_snapshot(ticker: str, profile: dict) -> bool:
     history = load_gamma_history()
     t_hist = history.get(t_up, [])
 
-    # Today's date string YYYY-MM-DD
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    # Session date string YYYY-MM-DD anchored to US Eastern market calendar
+    today_str = get_market_session_date()
 
     # Extract strike GEX dictionary (relevant strikes)
     strikes_compact = {}
