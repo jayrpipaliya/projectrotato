@@ -78,6 +78,36 @@ DIVIDEND_YIELDS = {
     'META': 0.0035, 'GOOGL': 0.0045, 'TSLA': 0.0000, 'XLF': 0.0145, 'SMH': 0.0065
 }
 
+
+def get_market_session_status():
+    """
+    Returns current market session status in US/Eastern:
+    - Regular Market: Mon-Fri 9:30 AM to 4:15 PM EST
+    - Pre-Market: Mon-Fri 4:00 AM to 9:30 AM EST
+    - After-Hours: Mon-Fri 4:15 PM to 8:00 PM EST
+    - Closed: Overnight & Weekends
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        now_est = datetime.now(ZoneInfo("America/New_York"))
+    except Exception:
+        now_est = datetime.now()
+
+    weekday = now_est.weekday()  # 0=Mon, 4=Fri, 5=Sat, 6=Sun
+    time_min = now_est.hour * 60 + now_est.minute
+
+    if weekday in [5, 6]:
+        return "WEEKEND_CLOSED", "Weekend Closed (Final Friday Settlement)"
+
+    if 570 <= time_min < 975:
+        return "LIVE_INTRADAY", "Regular Session (Live OPRA ~15m Delay)"
+    elif 240 <= time_min < 570:
+        return "PRE_MARKET", "Pre-Market (Overnight OCC Baseline)"
+    elif 975 <= time_min < 1200:
+        return "AFTER_HOURS", "Post-Market (Official Session Close)"
+    else:
+        return "OVERNIGHT_CLOSED", "Overnight Closed (Settlement Snapshot)"
+
 def get_dividend_yield(ticker_symbol):
     """Returns continuous dividend yield estimate for Black-Scholes pricing."""
     return DIVIDEND_YIELDS.get(ticker_symbol.upper(), 0.0075)
@@ -432,6 +462,8 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         except Exception:
             market_trade_str = str(latest_trade_ts)[:19]
 
+    session_code, session_label = get_market_session_status()
+
     profile = {
         "ticker": ticker_up,
         "spot_price": round(spot_price, 2),
@@ -459,6 +491,8 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         "loaded_at_str": loaded_at_str,
         "loaded_at_display": loaded_at_display,
         "market_trade_time": market_trade_str,
+        "market_session_code": session_code,
+        "market_session_label": session_label,
         "expirations_scanned": [e[0] for e in valid_exps],
         "strikes_count": len(sorted_strikes),
         "relevant_strikes_count": sum(1 for s in strikes_list if s["is_relevant"]),
@@ -745,10 +779,10 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
                 else:
                     event_tag = "Inter-Earnings (No IV Crush Risk)"
                     if vrp_ratio < 0.92:
-                        status = f"🟢 High Discount ({vrp_ratio}x VRP)"
+                        status = f"High Discount ({vrp_ratio}x VRP)"
                         is_cheap = True
                     elif vrp_ratio <= 1.08:
-                        status = f"🟢 Fair Value ({vrp_ratio}x VRP)"
+                        status = f"Fair Value ({vrp_ratio}x VRP)"
                         is_cheap = True
                     else:
                         status = f"🔴 Structurally Rich ({vrp_ratio}x VRP)"
@@ -997,7 +1031,7 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
         # Spread Quality Rating
         def classify_spread(sp):
             if sp <= 5.0:
-                return "🟢 Tight"
+                return "Tight"
             elif sp <= 15.0:
                 return "Fair"
             else:
@@ -1304,7 +1338,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
         selected_ticker = st.selectbox("Underlying Ticker", universe, index=0)
         
     with ctrl_col2:
-        side_sel = st.radio("Execution Side", ["🟢 Buy Side (Ask Edge)", "🔴 Sell Side (Bid Edge)"], horizontal=True)
+        side_sel = st.radio("Execution Side", ["Buy Side (Ask Edge)", "🔴 Sell Side (Bid Edge)"], horizontal=True)
         side_clean = "Sell" if "Sell" in side_sel else "Buy"
 
     with ctrl_col3:
@@ -1398,7 +1432,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                     event_bg = "rgba(255, 46, 85, 0.15)" if rec.get('Spans_Earnings') else "rgba(0, 245, 160, 0.1)"
                     event_color = "#FF2E55" if rec.get('Spans_Earnings') else "#00F5A0"
                     prob_tag = "Inside 1σ" if rec.get('Within_1_Sigma') else "Outside 1σ"
-                    spread_badge = rec.get('Spread_Quality', '🟢 Tight')
+                    spread_badge = rec.get('Spread_Quality', 'Tight')
 
                     if side_clean == "Sell":
                         edge_val = rec.get('Bid_Edge', 0)
@@ -1790,7 +1824,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
             with s_cols[i]:
                 is_call_rec = ("Call" in dir_clean)
                 c_type = "Call" if is_call_rec else "Put"
-                spread_badge = s_row.get('Spread_Quality', '🟢 Tight')
+                spread_badge = s_row.get('Spread_Quality', 'Tight')
                 if side_clean == "Sell":
                     edge_val = s_row.get('Bid_Edge', 0)
                     b_color = "#00F5A0" if edge_val >= 0 else "#eab308"
@@ -1955,9 +1989,10 @@ def render_gamma_desk_page(available_tickers=None):
         strikes_count = gex_data.get("strikes_count", 0)
         exps_scanned = len(gex_data.get("expirations_scanned", []))
         market_time_text = gex_data.get("market_trade_time") or "Exchange Session Close"
+        session_label = gex_data.get("market_session_label", "")
         st.markdown(
             f'<div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#64748b; margin-top:-14px; margin-bottom:14px; font-family:monospace; padding:0 4px; flex-wrap:wrap; gap:6px;">'
-            f'<span><span style="color:#94a3b8;">Exchange Data Origin:</span> <b style="color:#38bdf8;">{market_time_text}</b> <span style="color:#475569;">•</span> <span style="color:#94a3b8;">OCC Open Interest:</span> Settled Overnight ({strikes_count} strikes)</span>'
+            f'<span><span style="color:#94a3b8;">Exchange Origin:</span> <b style="color:#38bdf8;">{market_time_text}</b> <span style="color:#475569;">•</span> {session_label} <span style="color:#475569;">•</span> <span style="color:#94a3b8;">OCC Open Interest:</span> Settled Overnight ({strikes_count} strikes)</span>'
             f'<span><span style="color:#94a3b8;">Feed Ingestion:</span> <b style="color:#cbd5e1;">{loaded_time_text}</b> <span style="color:#475569;">|</span> Latency: {elapsed:.2f}s</span>'
             f'</div>',
             unsafe_allow_html=True
@@ -1984,7 +2019,7 @@ def render_gamma_desk_page(available_tickers=None):
             dist_pct = ((k / spot) - 1) * 100
             role = s.get("structural_role", "Normal Strike")
             if "Call Wall" in role:
-                role = "🟢 " + role
+                role = "" + role
             elif "Put Wall" in role:
                 role = "🔴 " + role
             elif "Zero Flip" in role:

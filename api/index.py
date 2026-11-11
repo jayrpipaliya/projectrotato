@@ -4162,14 +4162,15 @@ async function init() {
                     const strikesCount = g.strikes_count || (g.strikes ? g.strikes.length : 0);
                     const expsCount = (g.expirations_scanned || []).length;
 
+                    const sessionLabel = g.market_session_label || '';
                     const tsBadge = document.getElementById('gammaTimestampBadge');
                     if (tsBadge) {
-                        tsBadge.innerHTML = `<span class="text-slate-500">Exchange Print:</span> <b class="text-sky-300 font-bold">${marketStr}</b>`;
+                        tsBadge.innerHTML = `<span class="text-slate-500">Exchange Print:</span> <b class="text-sky-300 font-bold">${marketStr}</b> ${sessionLabel ? `<span class="text-slate-400 font-normal ml-1">(${sessionLabel})</span>` : ''}`;
                     }
                     const tsFooter = document.getElementById('gammaTimestampFooter');
                     if (tsFooter) {
                         tsFooter.innerHTML = `
-                            <span><span class="text-slate-400 font-semibold">Exchange Trade Print:</span> <b class="text-sky-300">${marketStr}</b> <span class="text-slate-600">•</span> <span class="text-slate-400">OCC Open Interest:</span> Settled Overnight (${strikesCount} strikes)</span>
+                            <span><span class="text-slate-400 font-semibold">Exchange Trade Print:</span> <b class="text-sky-300">${marketStr}</b> <span class="text-slate-600">•</span> ${sessionLabel} <span class="text-slate-600">•</span> <span class="text-slate-400">OCC Open Interest:</span> Settled Overnight (${strikesCount} strikes)</span>
                             <span><span class="text-slate-400 font-semibold">Feed Ingested:</span> <b class="text-slate-300">${loadedStr}</b> <span class="text-slate-600">|</span> <span class="text-slate-400">Latency: ${elapsed}s</span></span>
                         `;
                     }
