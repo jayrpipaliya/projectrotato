@@ -1662,7 +1662,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
             <!-- Interactive Plotly Strike GEX Bar Chart -->
             <div class="lux-card p-4 mb-5">
-                <div class="flex justify-between items-center mb-2">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
                     <div>
                         <h4 class="text-sm font-bold text-white flex items-center gap-2">
                             <span>Per-Strike Dealer Gamma Exposure Profile ($M per 1% Move)</span>
@@ -1670,8 +1670,10 @@ HTML_CONTENT = """<!DOCTYPE html>
                         </h4>
                         <p class="text-[11px] text-slate-400">Green = Positive Call Gamma (Dealers Long Calls / Hedging Resistance). Red = Negative Put Gamma (Dealers Short Puts / Hedging Floor).</p>
                     </div>
+                    <div id="gammaTimestampBadge" class="text-right text-[11px] font-mono text-slate-400"></div>
                 </div>
                 <div id="gammaDeskChart" style="height: 420px;"></div>
+                <div id="gammaTimestampFooter" class="flex flex-col sm:flex-row justify-between items-center text-[10.5px] font-mono text-slate-500 mt-2 px-1 border-t border-white/5 pt-1.5"></div>
             </div>
 
             <!-- Comprehensive Per-Strike Table Breakdown -->
@@ -4154,9 +4156,26 @@ async function init() {
                         });
                     }
 
+                    const loadedStr = g.loaded_at_display || g.loaded_at_str || 'Live Snapshot';
+                    const elapsed = typeof g.elapsed_seconds === 'number' ? g.elapsed_seconds.toFixed(2) : (g.elapsed_seconds || 0);
+                    const strikesCount = g.strikes_count || (g.strikes ? g.strikes.length : 0);
+                    const expsCount = (g.expirations_scanned || []).length;
+
+                    const tsBadge = document.getElementById('gammaTimestampBadge');
+                    if (tsBadge) {
+                        tsBadge.innerHTML = `<span class="text-slate-500">Captured:</span> <b class="text-slate-200">${loadedStr}</b> <span class="text-slate-500 font-normal">(${elapsed}s)</span>`;
+                    }
+                    const tsFooter = document.getElementById('gammaTimestampFooter');
+                    if (tsFooter) {
+                        tsFooter.innerHTML = `
+                            <span><span class="text-slate-400 font-semibold">yfinance Options Snapshot:</span> ${strikesCount} strikes mapped across ${expsCount} expirations</span>
+                            <span><span class="text-slate-400 font-semibold">Captured:</span> <b class="text-slate-300">${loadedStr}</b> <span class="text-slate-600">|</span> <span class="text-slate-400">Latency: ${elapsed}s</span></span>
+                        `;
+                    }
+
                     const layout = {
                         title: {
-                            text: `<b>${g.ticker} Dealer Gamma Exposure Profile by Strike</b> | Total Net GEX: $${g.total_net_gex_billions.toFixed(2)}B (${g.regime_short})`,
+                            text: `<b>${g.ticker} Dealer Gamma Exposure Profile by Strike</b> | Total Net GEX: $${g.total_net_gex_billions.toFixed(2)}B (${g.regime_short})<br><span style="font-size:10px; color:#94a3b8; font-weight:normal; font-family:monospace;">Options Snapshot: ${loadedStr} (yfinance | ${elapsed}s)</span>`,
                             font: { color: '#f1f5f9', size: 13 }
                         },
                         barmode: 'relative',

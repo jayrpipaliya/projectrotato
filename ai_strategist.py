@@ -428,7 +428,8 @@ def query_ai_agent(
                     "net_gex_b": f"${g.get('total_net_gex_billions'):+.2f}B",
                     "gex_intensity": g.get("gex_intensity"),
                     "regime": g.get("regime_short"),
-                    "primary_benchmark": get_asset_benchmark(sym)
+                    "primary_benchmark": get_asset_benchmark(sym),
+                    "loaded_at": g.get("loaded_at_display") or g.get("loaded_at_str")
                 }
 
         # Fetch options surface for SPY, QQQ, user query symbols, and top candidate setups

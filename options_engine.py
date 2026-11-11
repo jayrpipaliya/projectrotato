@@ -12,6 +12,7 @@ Institutional Options Volatility Desk & Strike Selection Engine
 
 import math
 import time
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import yfinance as yf
@@ -112,6 +113,7 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
     """
     ticker_up = ticker_symbol.upper()
     now_ts = time.time()
+    now_dt = datetime.now()
     if not force_refresh and ticker_up in _GAMMA_PROFILE_CACHE:
         cached_entry = _GAMMA_PROFILE_CACHE[ticker_up]
         if now_ts - cached_entry["timestamp"] < _GAMMA_PROFILE_TTL:
@@ -402,6 +404,8 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         })
 
     elapsed = round(time.time() - t0, 3)
+    loaded_at_str = now_dt.strftime("%Y-%m-%d %H:%M:%S EST")
+    loaded_at_display = now_dt.strftime("%b %d, %Y %I:%M:%S %p EST")
     profile = {
         "ticker": ticker_up,
         "spot_price": round(spot_price, 2),
@@ -425,6 +429,9 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         "regime": regime,
         "regime_short": regime_short,
         "elapsed_seconds": elapsed,
+        "loaded_at_timestamp": now_ts,
+        "loaded_at_str": loaded_at_str,
+        "loaded_at_display": loaded_at_display,
         "expirations_scanned": [e[0] for e in valid_exps],
         "strikes_count": len(sorted_strikes),
         "relevant_strikes_count": sum(1 for s in strikes_list if s["is_relevant"]),
@@ -484,17 +491,23 @@ def plot_gamma_exposure_profile(gamma_data):
                       annotation_text=f"Zero Gamma ${zg:.1f}", annotation_position="bottom right",
                       annotation_font=dict(color="#38bdf8", size=9))
 
+    loaded_str = gamma_data.get("loaded_at_display") or gamma_data.get("loaded_at_str") or "Live Snapshot"
+    elapsed = gamma_data.get("elapsed_seconds", 0)
+
     fig.update_layout(
-        title=f"<b>{gamma_data['ticker']} Dealer Gamma Exposure (GEX) by Strike</b> | Net GEX: ${gamma_data['total_net_gex_billions']:+.2f}B ({gamma_data['regime_short']})",
+        title=dict(
+            text=f"<b>{gamma_data['ticker']} Dealer Gamma Exposure (GEX) by Strike</b> | Net GEX: ${gamma_data['total_net_gex_billions']:+.2f}B ({gamma_data['regime_short']})<br><span style='font-size:10px; color:#94a3b8; font-weight:normal; font-family:monospace;'>Options Data Snapshot: {loaded_str} (yfinance | {elapsed:.2f}s)</span>",
+            font=dict(size=13, color="#f8fafc")
+        ),
         xaxis_title="Strike Price ($)",
         yaxis_title="Dollar Gamma Exposure ($M / 1% move)",
         barmode="relative",
         template="plotly_dark",
         paper_bgcolor="#0e1117",
         plot_bgcolor="#0e1117",
-        margin=dict(l=40, r=40, t=50, b=40),
+        margin=dict(l=40, r=40, t=65, b=40),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        height=380
+        height=390
     )
     
     # Auto-focus the default x-axis view on the relevant strikes window
@@ -1908,6 +1921,17 @@ def render_gamma_desk_page(available_tickers=None):
     gex_fig = plot_gamma_exposure_profile(gex_data)
     if gex_fig:
         st.plotly_chart(gex_fig, use_container_width=True)
+        loaded_time_text = gex_data.get("loaded_at_display") or gex_data.get("loaded_at_str") or "Live snapshot"
+        elapsed = gex_data.get("elapsed_seconds", 0)
+        strikes_count = gex_data.get("strikes_count", 0)
+        exps_scanned = len(gex_data.get("expirations_scanned", []))
+        st.markdown(
+            f'<div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#64748b; margin-top:-14px; margin-bottom:14px; font-family:monospace; padding:0 4px;">'
+            f'<span><span style="color:#94a3b8;">Data Source:</span> yfinance options chain ({strikes_count} strikes across {exps_scanned} expirations)</span>'
+            f'<span><span style="color:#94a3b8;">Snapshot Loaded:</span> <b style="color:#cbd5e1;">{loaded_time_text}</b> <span style="color:#475569;">|</span> Latency: {elapsed:.2f}s</span>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
 
     # 5. Detailed Strike Breakdown Table (Filtered to Relevant Strikes by default)
     strikes_list = gex_data.get("strikes", [])
