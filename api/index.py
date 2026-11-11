@@ -174,6 +174,15 @@ async def api_ledger_add(payload: dict):
             strike=float(payload.get("strike")) if payload.get("strike") is not None else None,
             expiration=payload.get("expiration"),
             underlying_entry_spot=float(payload.get("underlying_entry_spot")) if payload.get("underlying_entry_spot") else None,
+            spread_type=payload.get("spread_type"),
+            short_strike=float(payload.get("short_strike")) if payload.get("short_strike") is not None else None,
+            long_strike=float(payload.get("long_strike")) if payload.get("long_strike") is not None else None,
+            short_expiry=payload.get("short_expiry"),
+            long_expiry=payload.get("long_expiry"),
+            net_premium=float(payload.get("net_premium")) if payload.get("net_premium") is not None else None,
+            spread_width=float(payload.get("spread_width")) if payload.get("spread_width") is not None else None,
+            max_risk=float(payload.get("max_risk")) if payload.get("max_risk") is not None else None,
+            max_profit=float(payload.get("max_profit")) if payload.get("max_profit") is not None else None,
             notes=payload.get("notes", ""),
             ai_snapshot=payload.get("ai_snapshot", {})
         )
@@ -3215,6 +3224,62 @@ async function init() {
                                 </div>
                             </div>
 
+                            <!-- Next-Day Institutional Defined-Risk Options Strategy (Zero Naked Risk) -->
+                            ${t.options_spread ? `
+                            <div class="mt-2.5 p-2.5 rounded-xl bg-purple-950/20 border border-purple-500/30 text-xs">
+                                <div class="flex flex-wrap items-center justify-between gap-1.5 pb-1.5 mb-1.5 border-b border-purple-500/20">
+                                    <div class="flex items-center gap-1.5 flex-wrap">
+                                        <span class="px-1.5 py-0.5 rounded text-[9.5px] font-extrabold bg-purple-500/20 text-purple-300 border border-purple-500/30 tracking-wide uppercase">⚡ NEXT-DAY DEALER OPTIONS PLAY</span>
+                                        <span class="text-white font-black text-[11px]">${t.options_spread.strategy_name}</span>
+                                        <span class="text-[9.5px] text-slate-400 font-mono">(${t.options_spread.dte} DTE • Exp ${t.options_spread.expiration})</span>
+                                    </div>
+                                    <span class="px-2 py-0.5 rounded text-[10.5px] font-extrabold bg-mint/15 text-mint border border-mint/30">+${t.options_spread.roc_pct}% ROC</span>
+                                </div>
+
+                                <!-- 2-Legs Specification (Strict Defined Risk) -->
+                                <div class="grid grid-cols-2 gap-2 mb-2">
+                                    <div class="p-1.5 rounded bg-black/40 border border-white/5">
+                                        <div class="text-[9px] uppercase font-bold text-rose-400">Sold Leg (Bid Edge)</div>
+                                        <div class="text-xs font-black text-white mt-0.5">${t.options_spread.short_leg}</div>
+                                        <div class="text-[9px] text-slate-400">Anchor @ ${isLong ? 'Put Wall Floor' : 'Call Wall Pin'}</div>
+                                    </div>
+                                    <div class="p-1.5 rounded bg-black/40 border border-white/5">
+                                        <div class="text-[9px] uppercase font-bold text-mint">Bought Wing (Tail Protection)</div>
+                                        <div class="text-xs font-black text-white mt-0.5">${t.options_spread.long_leg}</div>
+                                        <div class="text-[9px] text-slate-400">100% Defined Risk (No Naked Risk)</div>
+                                    </div>
+                                </div>
+
+                                <!-- Spread Financials -->
+                                <div class="grid grid-cols-4 gap-1.5 p-1.5 rounded bg-white/[0.02] border border-white/5 text-center mb-2">
+                                    <div>
+                                        <div class="text-[8.5px] uppercase text-slate-400 font-bold">Net Premium</div>
+                                        <div class="text-[11px] font-black text-mint mt-0.5">$${t.options_spread.net_premium.toFixed(2)}</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-[8.5px] uppercase text-slate-400 font-bold">Collateral Locked</div>
+                                        <div class="text-[11px] font-black text-white mt-0.5">$${t.options_spread.max_risk.toFixed(0)}</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-[8.5px] uppercase text-slate-400 font-bold">Max Profit</div>
+                                        <div class="text-[11px] font-black text-mint mt-0.5">$${t.options_spread.max_profit.toFixed(0)}</div>
+                                    </div>
+                                    <div>
+                                        <div class="text-[8.5px] uppercase text-slate-400 font-bold">Breakeven</div>
+                                        <div class="text-[11px] font-black text-cyan-300 mt-0.5">$${t.options_spread.breakeven.toFixed(2)}</div>
+                                    </div>
+                                </div>
+
+                                <div class="text-[10px] text-slate-300 leading-snug mb-1.5">
+                                    <b class="text-purple-300">Dealer Edge:</b> ${t.options_spread.dealer_thesis}
+                                </div>
+
+                                <button onclick="prefillAndOpenSpreadLogger(${cards.indexOf(t)})" class="w-full py-1.5 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-500/40 text-[10.5px] font-bold transition flex items-center justify-center gap-1 shadow-[0_0_10px_rgba(168,85,247,0.15)]">
+                                    <span>⚡ Pre-Fill ${t.options_spread.strategy_name} in Trade Logger</span>
+                                </button>
+                            </div>
+                            ` : ''}
+
                             <!-- Trade Ledger Commit Button & Drawer -->
                             <div class="mt-2.5 pt-2 border-t border-white/5 flex flex-col gap-2">
                                 <button onclick="toggleCardLogger(${cards.indexOf(t)})" class="w-full py-1.5 px-3 rounded-lg bg-mint/15 hover:bg-mint/25 text-mint border border-mint/30 text-xs font-bold transition flex items-center justify-center gap-1.5">
@@ -3230,14 +3295,55 @@ async function init() {
                                             <label class="text-[9.5px] uppercase font-bold text-slate-400">Instrument</label>
                                             <select id="cardInstType-${cards.indexOf(t)}" onchange="toggleCardLoggerFields(${cards.indexOf(t)})" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
                                                 <option value="STOCK">Stock / Equity</option>
-                                                <option value="OPTION">Options Contract</option>
+                                                <option value="OPTION">Single Options Contract</option>
+                                                <option value="SPREAD" ${t.options_spread ? 'selected' : ''}>Defined-Risk Vertical Spread</option>
                                             </select>
                                         </div>
-                                        <div>
+                                        <div id="cardEntryContainer-${cards.indexOf(t)}" class="${t.options_spread ? 'hidden' : ''}">
                                             <label id="cardEntryLabel-${cards.indexOf(t)}" class="text-[9.5px] uppercase font-bold text-slate-400">Entry Fill ($)</label>
                                             <input id="cardEntryPrice-${cards.indexOf(t)}" type="number" step="0.01" value="${parseFloat(String(t.optimal_entry_zone || t.current_price || t.entry || '100').replace(/[^0-9.]/g, '')) || 100}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
                                         </div>
                                     </div>
+
+                                    <!-- Defined-Risk Spread Specific Fields -->
+                                    <div id="cardSpreadFields-${cards.indexOf(t)}" class="${t.options_spread ? '' : 'hidden'} p-2.5 rounded-lg bg-purple-950/25 border border-purple-500/30 space-y-2">
+                                        <div class="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label class="text-[9px] uppercase font-bold text-purple-300">Spread Type</label>
+                                                <select id="cardSpreadType-${cards.indexOf(t)}" class="w-full mt-0.5 bg-[#161722] border border-purple-500/30 rounded px-2 py-1 text-white text-xs">
+                                                    <option value="BULL_PUT_CREDIT" ${isLong ? 'selected' : ''}>Bull Put Credit Spread</option>
+                                                    <option value="BEAR_CALL_CREDIT" ${!isLong ? 'selected' : ''}>Bear Call Credit Spread</option>
+                                                    <option value="BULL_CALL_DEBIT">Bull Call Debit Spread</option>
+                                                    <option value="BEAR_PUT_DEBIT">Bear Put Debit Spread</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="text-[9px] uppercase font-bold text-purple-300">Expiration</label>
+                                                <input id="cardSpreadExpiry-${cards.indexOf(t)}" type="text" value="${t.options_spread ? t.options_spread.expiration : getFutureDateStr(35)}" class="w-full mt-0.5 bg-[#161722] border border-purple-500/30 rounded px-2 py-1 text-white text-xs">
+                                            </div>
+                                        </div>
+                                        <div class="grid grid-cols-3 gap-2">
+                                            <div>
+                                                <label class="text-[9px] uppercase font-bold text-rose-400">Short Strike ($)</label>
+                                                <input id="cardShortStrike-${cards.indexOf(t)}" type="number" step="0.5" value="${t.options_spread ? t.options_spread.short_strike : Math.round(parseFloat(String(t.current_price || '100').replace(/[^0-9.]/g, '')) || 100)}" class="w-full mt-0.5 bg-[#161722] border border-rose-500/30 rounded px-2 py-1 text-white text-xs">
+                                            </div>
+                                            <div>
+                                                <label class="text-[9px] uppercase font-bold text-mint">Long Strike ($)</label>
+                                                <input id="cardLongStrike-${cards.indexOf(t)}" type="number" step="0.5" value="${t.options_spread ? t.options_spread.long_strike : (Math.round(parseFloat(String(t.current_price || '100').replace(/[^0-9.]/g, '')) || 100) - 5)}" class="w-full mt-0.5 bg-[#161722] border border-mint/30 rounded px-2 py-1 text-white text-xs">
+                                            </div>
+                                            <div>
+                                                <label class="text-[9px] uppercase font-bold text-mint">Net Premium ($)</label>
+                                                <input id="cardNetPrem-${cards.indexOf(t)}" type="number" step="0.05" value="${t.options_spread ? t.options_spread.net_premium : 1.35}" class="w-full mt-0.5 bg-[#161722] border border-mint/30 rounded px-2 py-1 text-mint text-xs">
+                                            </div>
+                                        </div>
+                                        <div class="flex items-center justify-between text-[10px] text-slate-300 pt-1 border-t border-purple-500/20 font-mono">
+                                            <span>Collateral: <b class="text-white">$${t.options_spread ? t.options_spread.max_risk : '365'}</b></span>
+                                            <span>Max Profit: <b class="text-mint">$${t.options_spread ? t.options_spread.max_profit : '135'}</b></span>
+                                            <span class="text-purple-300 font-bold">100% Defined Risk</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Single Option Specific Fields -->
                                     <div id="cardOptFields-${cards.indexOf(t)}" class="hidden grid grid-cols-3 gap-2">
                                         <div>
                                             <label class="text-[9.5px] uppercase font-bold text-slate-400">Type</label>
@@ -3255,10 +3361,11 @@ async function init() {
                                             <input id="cardExpiry-${cards.indexOf(t)}" type="text" value="${getFutureDateStr(35)}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
                                         </div>
                                     </div>
+
                                     <div class="grid grid-cols-3 gap-2">
                                         <div>
-                                            <label id="cardSizeLabel-${cards.indexOf(t)}" class="text-[9.5px] uppercase font-bold text-slate-400">Shares</label>
-                                            <input id="cardSize-${cards.indexOf(t)}" type="number" min="1" value="10" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
+                                            <label id="cardSizeLabel-${cards.indexOf(t)}" class="text-[9.5px] uppercase font-bold text-slate-400">${t.options_spread ? 'Spreads' : 'Shares'}</label>
+                                            <input id="cardSize-${cards.indexOf(t)}" type="number" min="1" value="${t.options_spread ? 1 : 10}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
                                         </div>
                                         <div>
                                             <label class="text-[9.5px] uppercase font-bold text-cherry">Stop ($)</label>
@@ -5084,10 +5191,11 @@ async function init() {
             let html = '';
             active.forEach(trd => {
                 const mtm = trd.mtm || {};
+                const isSpread = trd.asset_type === 'SPREAD';
                 const isOpt = trd.asset_type === 'OPTION';
                 const dir = (trd.direction || 'LONG').toUpperCase();
                 const isLong = dir.includes('LONG') || dir.includes('DIP');
-                const borderCol = isLong ? '#00F5A0' : '#FF2E55';
+                const borderCol = isSpread ? '#A855F7' : (isLong ? '#00F5A0' : '#FF2E55');
                 const snap = trd.ai_snapshot || {};
 
                 const unrealPnl = mtm.unrealized_pnl || 0;
@@ -5096,7 +5204,11 @@ async function init() {
                 const pnlCol = unrealPnl >= 0 ? 'text-mint' : 'text-cherry';
                 const pnlBg = unrealPnl >= 0 ? 'bg-mint/15 text-mint border-mint/30' : 'bg-cherry/15 text-cherry border-cherry/30';
 
-                const instBadge = isOpt ? `
+                const instBadge = isSpread ? `
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        SPREAD • ${trd.spread_type || 'VERTICAL'}
+                    </span>
+                ` : (isOpt ? `
                     <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
                         ${trd.strike || 0} ${trd.contract_type || 'CALL'} (${trd.expiration || ''})
                     </span>
@@ -5104,7 +5216,7 @@ async function init() {
                     <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
                         STOCK / EQUITY
                     </span>
-                `;
+                `);
 
                 let alertHtml = '';
                 if (mtm.trigger_alert) {
@@ -5136,27 +5248,45 @@ async function init() {
 
                             ${alertHtml}
 
+                            <!-- Defined Spread Legs Bar (if spread) -->
+                            ${isSpread ? `
+                            <div class="flex flex-wrap items-center justify-between gap-2 p-2 mb-2.5 rounded-lg bg-purple-950/20 border border-purple-500/20 text-xs">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="text-purple-300 font-bold">Legs:</span>
+                                    <span class="text-rose-400 font-mono font-bold">Short $${trd.short_strike || 'N/A'}</span>
+                                    <span class="text-slate-500">/</span>
+                                    <span class="text-mint font-mono font-bold">Long $${trd.long_strike || 'N/A'}</span>
+                                    <span class="text-slate-400 text-[10px]">(${trd.expiration || trd.short_expiry || ''})</span>
+                                </div>
+                                ${mtm.short_strike_buffer_pct !== undefined ? `
+                                <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold ${mtm.short_strike_buffer_pct >= 0 ? 'bg-mint/15 text-mint' : 'bg-cherry/15 text-cherry'}">
+                                    Short Barrier Buffer: ${mtm.short_strike_buffer_pct >= 0 ? '+' : ''}${mtm.short_strike_buffer_pct.toFixed(2)}%
+                                </span>
+                                ` : ''}
+                            </div>
+                            ` : ''}
+
                             <!-- 4-Metric Grid -->
                             <div class="grid grid-cols-4 gap-2 mb-3">
                                 <div class="p-2 rounded-lg bg-white/[0.02] border border-white/5">
-                                    <div class="text-[9px] uppercase font-bold text-slate-400">Entry Fill</div>
+                                    <div class="text-[9px] uppercase font-bold text-slate-400">${isSpread ? 'Net Premium' : (isOpt ? 'Premium Paid' : 'Entry Fill')}</div>
                                     <div class="text-sm font-extrabold text-white mt-0.5">$${(trd.entry_price || 0).toFixed(2)}</div>
-                                    <div class="text-[9px] text-slate-500">${trd.size} ${isOpt ? 'Contracts' : 'Shares'}</div>
+                                    <div class="text-[9px] text-slate-500">${trd.size} ${isSpread ? 'Spread(s)' : (isOpt ? 'Contracts' : 'Shares')}</div>
                                 </div>
                                 <div class="p-2 rounded-lg bg-white/[0.02] border border-white/5">
                                     <div class="text-[9px] uppercase font-bold text-slate-400">Live Spot</div>
                                     <div class="text-sm font-extrabold text-sky-400 mt-0.5">$${(mtm.live_spot || 0).toFixed(2)}</div>
-                                    <div class="text-[9px] text-slate-500">Underlying</div>
+                                    <div class="text-[9px] text-slate-500">${isSpread ? `Est Spread: $${(mtm.est_spread_px || 0).toFixed(2)}` : 'Underlying'}</div>
                                 </div>
-                                <div class="p-2 rounded-lg bg-cherry/10 border border-cherry/25">
-                                    <div class="text-[9px] uppercase font-bold text-cherry">Stop Loss</div>
-                                    <div class="text-sm font-extrabold text-cherry mt-0.5">$${(trd.stop_loss || 0).toFixed(2)}</div>
-                                    <div class="text-[9px] text-rose-300 font-mono">Buffer: ${(mtm.dist_to_stop_pct || 0).toFixed(2)}%</div>
+                                <div class="p-2 rounded-lg ${isSpread ? 'bg-purple-950/30 border border-purple-500/30' : 'bg-cherry/10 border border-cherry/25'}">
+                                    <div class="text-[9px] uppercase font-bold ${isSpread ? 'text-purple-300' : 'text-cherry'}">${isSpread ? 'Collateral Locked' : 'Stop Loss'}</div>
+                                    <div class="text-sm font-extrabold ${isSpread ? 'text-white' : 'text-cherry'} mt-0.5">${isSpread ? `$${(trd.max_risk || trd.position_value || 0).toFixed(2)}` : `$${(trd.stop_loss || 0).toFixed(2)}`}</div>
+                                    <div class="text-[9px] ${isSpread ? 'text-purple-300' : 'text-rose-300'} font-mono">${isSpread ? '100% Defined Risk' : `Buffer: ${(mtm.dist_to_stop_pct || 0).toFixed(2)}%`}</div>
                                 </div>
                                 <div class="p-2 rounded-lg bg-mint/10 border border-mint/25">
-                                    <div class="text-[9px] uppercase font-bold text-mint">Target 1</div>
-                                    <div class="text-sm font-extrabold text-mint mt-0.5">$${(trd.target_1 || 0).toFixed(2)}</div>
-                                    <div class="text-[9px] text-emerald-300 font-mono">Dist: ${(mtm.dist_to_target1_pct || 0).toFixed(2)}%</div>
+                                    <div class="text-[9px] uppercase font-bold text-mint">${isSpread ? 'Max Profit (ROC)' : 'Target 1'}</div>
+                                    <div class="text-sm font-extrabold text-mint mt-0.5">${isSpread ? `$${(trd.max_profit || 0).toFixed(2)}` : `$${(trd.target_1 || 0).toFixed(2)}`}</div>
+                                    <div class="text-[9px] text-emerald-300 font-mono">${isSpread ? `ROC: ${pnlSign}${unrealPct.toFixed(1)}%` : `Dist: ${(mtm.dist_to_target1_pct || 0).toFixed(2)}%`}</div>
                                 </div>
                             </div>
 
@@ -5295,7 +5425,7 @@ async function init() {
                 html += `
                     <tr class="hover:bg-white/[0.02] transition">
                         <td class="p-2.5 font-bold text-white">${ct.ticker}</td>
-                        <td class="p-2.5 text-slate-300 font-mono text-[11px]">${ct.asset_type || 'STOCK'} ${ct.contract_type ? ct.contract_type : ''}</td>
+                        <td class="p-2.5 text-slate-300 font-mono text-[11px]">${ct.asset_type === 'SPREAD' ? `SPREAD: ${ct.spread_type || 'VERT'} (Short $${ct.short_strike}/Long $${ct.long_strike})` : `${ct.asset_type || 'STOCK'} ${ct.contract_type ? ct.contract_type : ''}`}</td>
                         <td class="p-2.5 text-slate-400 text-[11px]">${ct.logged_at || ''}</td>
                         <td class="p-2.5 text-slate-400 text-[11px]">${ct.closed_at || ''}</td>
                         <td class="p-2.5 font-mono text-slate-300">$${(ct.entry_price || 0).toFixed(2)}</td>
@@ -5343,17 +5473,60 @@ async function init() {
         function toggleCardLoggerFields(idx) {
             const type = document.getElementById('cardInstType-' + idx).value;
             const optRow = document.getElementById('cardOptFields-' + idx);
+            const spreadRow = document.getElementById('cardSpreadFields-' + idx);
             const sizeLabel = document.getElementById('cardSizeLabel-' + idx);
             const entryLabel = document.getElementById('cardEntryLabel-' + idx);
-            if (type === 'OPTION') {
+            const entryContainer = document.getElementById('cardEntryContainer-' + idx);
+
+            if (type === 'SPREAD') {
+                if (optRow) optRow.classList.add('hidden');
+                if (spreadRow) spreadRow.classList.remove('hidden');
+                if (entryContainer) entryContainer.classList.add('hidden');
+                if (sizeLabel) sizeLabel.innerText = 'Spreads';
+            } else if (type === 'OPTION') {
                 if (optRow) optRow.classList.remove('hidden');
+                if (spreadRow) spreadRow.classList.add('hidden');
+                if (entryContainer) entryContainer.classList.remove('hidden');
                 if (sizeLabel) sizeLabel.innerText = 'Contracts';
                 if (entryLabel) entryLabel.innerText = 'Premium ($)';
             } else {
                 if (optRow) optRow.classList.add('hidden');
+                if (spreadRow) spreadRow.classList.add('hidden');
+                if (entryContainer) entryContainer.classList.remove('hidden');
                 if (sizeLabel) sizeLabel.innerText = 'Shares';
-                if (entryLabel) entryLabel.innerText = 'Fill Price ($)';
+                if (entryLabel) entryLabel.innerText = 'Entry Fill ($)';
             }
+        }
+
+        function prefillAndOpenSpreadLogger(idx) {
+            const drawer = document.getElementById('cardLogger-' + idx);
+            if (drawer && drawer.classList.contains('hidden')) {
+                drawer.classList.remove('hidden');
+            }
+            const instSelect = document.getElementById('cardInstType-' + idx);
+            if (instSelect) {
+                instSelect.value = 'SPREAD';
+                toggleCardLoggerFields(idx);
+            }
+            if (AI_DATA && AI_DATA.trade_cards && AI_DATA.trade_cards[idx]) {
+                const t = AI_DATA.trade_cards[idx];
+                const sp = t.options_spread;
+                if (sp) {
+                    const stEl = document.getElementById('cardSpreadType-' + idx);
+                    if (stEl) stEl.value = sp.spread_type;
+                    const skEl = document.getElementById('cardShortStrike-' + idx);
+                    if (skEl) skEl.value = sp.short_strike;
+                    const lkEl = document.getElementById('cardLongStrike-' + idx);
+                    if (lkEl) lkEl.value = sp.long_strike;
+                    const npEl = document.getElementById('cardNetPrem-' + idx);
+                    if (npEl) npEl.value = sp.net_premium;
+                    const expEl = document.getElementById('cardSpreadExpiry-' + idx);
+                    if (expEl) expEl.value = sp.expiration;
+                    const szEl = document.getElementById('cardSize-' + idx);
+                    if (szEl) szEl.value = 1;
+                }
+            }
+            drawer?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
 
         async function commitCardTrade(idx) {
@@ -5363,21 +5536,44 @@ async function init() {
             if (btn) btn.innerText = 'Committing...';
 
             const assetType = document.getElementById('cardInstType-' + idx).value;
-            const entryPx = parseFloat(document.getElementById('cardEntryPrice-' + idx).value) || 0;
             const size = parseFloat(document.getElementById('cardSize-' + idx).value) || 1;
             const stop = parseFloat(document.getElementById('cardStop-' + idx).value) || 0;
             const tp1 = parseFloat(document.getElementById('cardTp1-' + idx).value) || 0;
+            const currSpot = parseFloat(String(t.current_price || t.entry || '100').replace(/[^0-9.]/g, '')) || 100;
 
+            let entryPx = parseFloat(document.getElementById('cardEntryPrice-' + idx)?.value) || 0;
             let cType = null;
             let strike = null;
             let expiry = null;
-            if (assetType === 'OPTION') {
-                cType = document.getElementById('cardOptType-' + idx).value;
-                strike = parseFloat(document.getElementById('cardStrike-' + idx).value) || null;
-                expiry = document.getElementById('cardExpiry-' + idx).value || null;
-            }
+            let spreadType = null;
+            let shortK = null;
+            let longK = null;
+            let netPrem = null;
+            let spreadWidth = null;
+            let maxRisk = null;
+            let maxProfit = null;
 
-            const currSpot = parseFloat(String(t.current_price || t.entry || '100').replace(/[^0-9.]/g, '')) || 100;
+            if (assetType === 'SPREAD') {
+                spreadType = document.getElementById('cardSpreadType-' + idx)?.value || 'BULL_PUT_CREDIT';
+                shortK = parseFloat(document.getElementById('cardShortStrike-' + idx)?.value) || 0;
+                longK = parseFloat(document.getElementById('cardLongStrike-' + idx)?.value) || 0;
+                netPrem = parseFloat(document.getElementById('cardNetPrem-' + idx)?.value) || 1.35;
+                expiry = document.getElementById('cardSpreadExpiry-' + idx)?.value || null;
+                entryPx = netPrem;
+                spreadWidth = Math.abs(shortK - longK) || 5.0;
+                const isCredit = spreadType.includes('CREDIT');
+                if (isCredit) {
+                    maxRisk = Math.max(0.01, spreadWidth - netPrem) * 100 * size;
+                    maxProfit = netPrem * 100 * size;
+                } else {
+                    maxRisk = netPrem * 100 * size;
+                    maxProfit = Math.max(0.01, spreadWidth - netPrem) * 100 * size;
+                }
+            } else if (assetType === 'OPTION') {
+                cType = document.getElementById('cardOptType-' + idx)?.value || 'CALL';
+                strike = parseFloat(document.getElementById('cardStrike-' + idx)?.value) || null;
+                expiry = document.getElementById('cardExpiry-' + idx)?.value || null;
+            }
 
             const payload = {
                 ticker: t.ticker,
@@ -5392,7 +5588,16 @@ async function init() {
                 strike: strike,
                 expiration: expiry,
                 underlying_entry_spot: currSpot,
-                notes: 'Automated Setup. Thesis: ' + (t.thesis || ''),
+                spread_type: spreadType,
+                short_strike: shortK,
+                long_strike: longK,
+                short_expiry: expiry,
+                long_expiry: expiry,
+                net_premium: netPrem,
+                spread_width: spreadWidth,
+                max_risk: maxRisk,
+                max_profit: maxProfit,
+                notes: (assetType === 'SPREAD' ? `Defined-Risk Spread (${spreadType}: Short $${shortK} / Long $${longK}). ` : 'Automated Setup. ') + (t.thesis || ''),
                 ai_snapshot: {
                     win_rate: t.win_rate,
                     sample_size: t.sample_size,

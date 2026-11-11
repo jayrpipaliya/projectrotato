@@ -2,6 +2,7 @@
 Double Edge Quantitative Dashboard - Trade Ledger & Forward AI Auditor Engine
 Handles persistent trade tracking, user parameter capture, baseline snapshotting,
 mark-to-market calculations, and AI forward audits.
+Supports Equities, Single Options, and Defined-Risk Vertical Spreads (Credit & Debit).
 """
 
 import os
@@ -99,32 +100,42 @@ def fetch_live_price(ticker: str) -> float:
 def add_trade(
     ticker: str,
     direction: str,
-    asset_type: str = "STOCK",  # "STOCK" or "OPTION"
+    asset_type: str = "STOCK",  # "STOCK", "OPTION", or "SPREAD"
     entry_price: float = 0.0,
-    size: float = 1.0,  # Shares or Contracts
+    size: float = 1.0,  # Shares, Contracts, or Spreads
     stop_loss: float = 0.0,
     target_1: float = 0.0,
     target_2: float = 0.0,
-    # Options specifics:
+    # Single Option specifics:
     contract_type: str = "CALL",  # "CALL" or "PUT"
     strike: float = None,
     expiration: str = None,
     underlying_entry_spot: float = None,
+    # Defined-Risk Spread specifics:
+    spread_type: str = None,  # "BULL_PUT_CREDIT", "BEAR_CALL_CREDIT", "BULL_CALL_DEBIT", "BEAR_PUT_DEBIT"
+    short_strike: float = None,
+    long_strike: float = None,
+    short_expiry: str = None,
+    long_expiry: str = None,
+    net_premium: float = None,
+    spread_width: float = None,
+    max_risk: float = None,
+    max_profit: float = None,
     # Context / Snapshot
     notes: str = "",
     ai_snapshot: dict = None
 ) -> dict:
     """
     Log a new trade with user execution parameters and a frozen AI snapshot.
+    Supports Equities, Single Options, and Defined-Risk Vertical Spreads.
     """
     trades = load_ledger()
     timestamp_id = int(time.time() * 1000) % 100000000
     ticker_clean = ticker.upper().strip()
     trade_id = f"TRD-{ticker_clean}-{timestamp_id}"
 
+    is_spread = asset_type.upper() == "SPREAD"
     is_option = asset_type.upper() == "OPTION"
-    multiplier = 100 if is_option else 1
-    position_val = round(float(entry_price) * float(size) * multiplier, 2)
 
     # Determine underlying spot at entry
     if underlying_entry_spot is None or underlying_entry_spot <= 0:
@@ -135,10 +146,54 @@ def add_trade(
                 underlying_entry_spot = 0.0
 
     if underlying_entry_spot is None or underlying_entry_spot <= 0:
-        if not is_option:
+        if not is_option and not is_spread:
             underlying_entry_spot = float(entry_price)
         else:
             underlying_entry_spot = fetch_live_price(ticker_clean)
+
+    # Position Value & Collateral Calculation
+    if is_spread:
+        s_type = (spread_type or ("BULL_PUT_CREDIT" if ("LONG" in direction.upper() or "DIP" in direction.upper()) else "BEAR_CALL_CREDIT")).upper()
+        s_strike = float(short_strike) if short_strike is not None else (float(strike) if strike is not None else 0.0)
+        l_strike = float(long_strike) if long_strike is not None else 0.0
+        calculated_width = abs(s_strike - l_strike) if (s_strike > 0 and l_strike > 0) else 5.0
+        width = float(spread_width) if (spread_width and float(spread_width) > 0) else calculated_width
+        net_prem = float(net_premium if net_premium is not None else entry_price)
+
+        is_credit = "CREDIT" in s_type
+        if is_credit:
+            calc_max_profit = round(net_prem * 100.0 * float(size), 2)
+            calc_max_risk = round(max(0.0, width - net_prem) * 100.0 * float(size), 2)
+        else:
+            calc_max_risk = round(net_prem * 100.0 * float(size), 2)
+            calc_max_profit = round(max(0.0, width - net_prem) * 100.0 * float(size), 2)
+
+        final_max_risk = float(max_risk) if (max_risk is not None and float(max_risk) > 0) else calc_max_risk
+        final_max_profit = float(max_profit) if (max_profit is not None and float(max_profit) > 0) else calc_max_profit
+
+        # In a defined-risk spread, the committed capital / margin requirement is the max collateral (max_risk)
+        position_val = round(final_max_risk, 2)
+        entry_price = net_prem
+    elif is_option:
+        multiplier = 100
+        position_val = round(float(entry_price) * float(size) * multiplier, 2)
+        s_type = None
+        s_strike = None
+        l_strike = None
+        width = None
+        net_prem = None
+        final_max_risk = position_val
+        final_max_profit = None
+    else:
+        multiplier = 1
+        position_val = round(float(entry_price) * float(size) * multiplier, 2)
+        s_type = None
+        s_strike = None
+        l_strike = None
+        width = None
+        net_prem = None
+        final_max_risk = position_val
+        final_max_profit = None
 
     # Ensure ai_snapshot has entry_price_spot
     snap = ai_snapshot.copy() if ai_snapshot else {}
@@ -149,7 +204,7 @@ def add_trade(
         "id": trade_id,
         "ticker": ticker_clean,
         "direction": direction.upper(),
-        "asset_type": "OPTION" if is_option else "STOCK",
+        "asset_type": "SPREAD" if is_spread else ("OPTION" if is_option else "STOCK"),
         "entry_price": float(entry_price),
         "size": float(size),
         "position_value": position_val,
@@ -159,7 +214,17 @@ def add_trade(
         "target_2": float(target_2) if target_2 else 0.0,
         "contract_type": contract_type.upper() if is_option else None,
         "strike": float(strike) if (is_option and strike is not None) else None,
-        "expiration": str(expiration) if (is_option and expiration) else None,
+        "expiration": str(expiration) if (is_option and expiration) else (str(short_expiry or expiration) if is_spread else None),
+        # Spread specifics
+        "spread_type": s_type if is_spread else None,
+        "short_strike": s_strike if is_spread else None,
+        "long_strike": l_strike if is_spread else None,
+        "short_expiry": str(short_expiry or expiration or "") if is_spread else None,
+        "long_expiry": str(long_expiry or expiration or "") if is_spread else None,
+        "net_premium": float(net_prem) if is_spread else None,
+        "spread_width": float(width) if is_spread else None,
+        "max_risk": float(final_max_risk) if is_spread else None,
+        "max_profit": float(final_max_profit) if is_spread else None,
         "notes": notes or "",
         "status": "ACTIVE",  # ACTIVE, TARGET_1_HIT, TARGET_2_HIT, STOPPED_OUT, CLOSED
         "logged_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -195,7 +260,7 @@ def update_trade(trade_id: str, updates: dict) -> dict:
 def close_trade(trade_id: str, exit_price: float, outcome: str = "CLOSED", notes: str = None) -> dict:
     """
     Close an active trade and record realized PnL.
-    Handles correct options pricing (Long Call or Long Put profit = exit_premium - entry_premium).
+    Handles correct options pricing for Equities, Single Options, and Defined-Risk Spreads.
     """
     trades = load_ledger()
     target_trade = None
@@ -209,22 +274,45 @@ def close_trade(trade_id: str, exit_price: float, outcome: str = "CLOSED", notes
 
             entry_px = float(t.get("entry_price", 0) or 0.0)
             size = float(t.get("size", 1.0))
+            is_spread = t.get("asset_type") == "SPREAD"
             is_option = t.get("asset_type") == "OPTION"
-            multiplier = 100 if is_option else 1
             direction = str(t.get("direction", "LONG")).upper()
-            is_short = ("SHORT" in direction or "FADE" in direction) and not is_option
+            is_short = ("SHORT" in direction or "FADE" in direction) and not is_option and not is_spread
 
-            if entry_px <= 0:
-                pct = 0.0
-                pnl = exit_price * size * multiplier
+            if is_spread:
+                s_type = str(t.get("spread_type") or "BULL_PUT_CREDIT").upper()
+                entry_prem = float(t.get("net_premium") or entry_px or 0.0)
+                max_risk = float(t.get("max_risk") or 100.0)
+                if max_risk <= 0:
+                    max_risk = 100.0
+
+                if "CREDIT" in s_type:
+                    # Sold for credit entry_prem, buying back to close at exit_price
+                    pnl = (entry_prem - exit_price) * 100.0 * size
+                    pct = (pnl / max_risk) * 100.0  # Return on Collateral (ROC)
+                else:
+                    # Bought debit spread at entry_prem, selling to close at exit_price
+                    pnl = (exit_price - entry_prem) * 100.0 * size
+                    pct = ((exit_price - entry_prem) / entry_prem) * 100.0 if entry_prem > 0 else 0.0
+
+            elif is_option:
+                multiplier = 100
+                if entry_px <= 0:
+                    pct = 0.0
+                    pnl = exit_price * size * multiplier
+                else:
+                    pct = ((exit_price - entry_px) / entry_px) * 100.0
+                    pnl = (exit_price - entry_px) * size * multiplier
             else:
-                if is_short:
-                    # Short Equity position
-                    pct = ((entry_px - exit_price) / entry_px) * 100
+                multiplier = 1
+                if entry_px <= 0:
+                    pct = 0.0
+                    pnl = exit_price * size * multiplier
+                elif is_short:
+                    pct = ((entry_px - exit_price) / entry_px) * 100.0
                     pnl = (entry_px - exit_price) * size * multiplier
                 else:
-                    # Long Equity OR Purchased Option (Call or Put)
-                    pct = ((exit_price - entry_px) / entry_px) * 100
+                    pct = ((exit_price - entry_px) / entry_px) * 100.0
                     pnl = (exit_price - entry_px) * size * multiplier
 
             t["realized_pct"] = round(pct, 2)
@@ -252,7 +340,8 @@ def compute_mark_to_market(trade: dict, live_spot: float = None) -> dict:
     """
     Calculate live PnL, progress toward Target 1 vs Stop Invalidation,
     and institutional desk trigger flags.
-    Accurately accounts for directionality (Bullish vs Bearish) and Options mechanics.
+    Accurately accounts for directionality (Bullish vs Bearish), Single Options,
+    and Defined-Risk Vertical Spreads (Collateral & ROC).
     """
     ticker = trade.get("ticker", "")
     if live_spot is None or live_spot <= 0:
@@ -263,22 +352,22 @@ def compute_mark_to_market(trade: dict, live_spot: float = None) -> dict:
     target_1 = float(trade.get("target_1") or 0.0)
     target_2 = float(trade.get("target_2") or 0.0)
     size = float(trade.get("size") or 1.0)
+    is_spread = trade.get("asset_type") == "SPREAD"
     is_option = trade.get("asset_type") == "OPTION"
-    multiplier = 100 if is_option else 1
 
     direction = str(trade.get("direction", "LONG")).upper()
     is_short_label = "SHORT" in direction or "FADE" in direction or direction == "PUT"
     is_put = trade.get("contract_type") == "PUT"
-    is_bearish = is_put or (is_short_label and not is_option)
+    is_bearish = is_put or (is_short_label and not is_option and not is_spread)
 
-    # Resolve underlying spot price at entry (CRITICAL FIX: never fallback to option premium entry_px)
+    # Resolve underlying spot price at entry
     underlying_entry = float(
         trade.get("underlying_entry_spot") or
         trade.get("ai_snapshot", {}).get("entry_price_spot") or
         0.0
     )
     if underlying_entry <= 0:
-        underlying_entry = live_spot if is_option else entry_px
+        underlying_entry = live_spot if (is_option or is_spread) else entry_px
 
     res = {
         "ticker": ticker,
@@ -298,9 +387,86 @@ def compute_mark_to_market(trade: dict, live_spot: float = None) -> dict:
         return res
 
     # 1. Price Return & PnL
-    if is_option:
+    if is_spread:
+        s_type = str(trade.get("spread_type") or "BULL_PUT_CREDIT").upper()
+        short_k = float(trade.get("short_strike") or 0.0)
+        long_k = float(trade.get("long_strike") or 0.0)
+        width = float(trade.get("spread_width") or (abs(short_k - long_k) if (short_k > 0 and long_k > 0) else 5.0))
+        if width <= 0:
+            width = 5.0
+        entry_prem = float(trade.get("net_premium") or entry_px or 1.0)
+        max_risk = float(trade.get("max_risk") or (max(0.1, width - entry_prem) * 100.0 * size))
+        if max_risk <= 0:
+            max_risk = 100.0
+        max_profit = float(trade.get("max_profit") or (entry_prem * 100.0 * size))
+
+        if "BULL_PUT" in s_type:
+            # Bull Put Credit Spread: Sold short put at short_k, bought lower put at long_k
+            # Target: live_spot stays >= short_k
+            if live_spot >= short_k:
+                # Buffer above short strike (decay spread value toward 0)
+                buffer_pct = (live_spot - short_k) / short_k if short_k > 0 else 0.0
+                decay_factor = max(0.04, 1.0 - (buffer_pct / 0.035))
+                est_spread_px = max(0.02, entry_prem * decay_factor)
+            elif live_spot <= long_k:
+                # Breached below long strike: maximum loss
+                est_spread_px = width
+            else:
+                # In between short_k and long_k
+                incursion_pct = (short_k - live_spot) / width
+                est_spread_px = min(width, entry_prem + incursion_pct * (width - entry_prem))
+
+            unrealized_pnl = (entry_prem - est_spread_px) * 100.0 * size
+            unrealized_pct = (unrealized_pnl / max_risk) * 100.0  # Return on Collateral (ROC)
+            res["est_spread_px"] = round(est_spread_px, 2)
+            res["short_strike_buffer_pct"] = round(((live_spot - short_k) / short_k) * 100.0, 2) if short_k > 0 else 0.0
+            res["max_risk"] = max_risk
+            res["max_profit"] = max_profit
+
+        elif "BEAR_CALL" in s_type:
+            # Bear Call Credit Spread: Sold short call at short_k, bought higher call at long_k
+            # Target: live_spot stays <= short_k
+            if live_spot <= short_k:
+                buffer_pct = (short_k - live_spot) / short_k if short_k > 0 else 0.0
+                decay_factor = max(0.04, 1.0 - (buffer_pct / 0.035))
+                est_spread_px = max(0.02, entry_prem * decay_factor)
+            elif live_spot >= long_k:
+                est_spread_px = width
+            else:
+                incursion_pct = (live_spot - short_k) / width
+                est_spread_px = min(width, entry_prem + incursion_pct * (width - entry_prem))
+
+            unrealized_pnl = (entry_prem - est_spread_px) * 100.0 * size
+            unrealized_pct = (unrealized_pnl / max_risk) * 100.0
+            res["est_spread_px"] = round(est_spread_px, 2)
+            res["short_strike_buffer_pct"] = round(((short_k - live_spot) / short_k) * 100.0, 2) if short_k > 0 else 0.0
+            res["max_risk"] = max_risk
+            res["max_profit"] = max_profit
+
+        elif "BULL_CALL" in s_type or "DEBIT" in s_type:
+            # Bull Call Debit Spread: Bought lower call, sold higher call
+            lower_k = min(short_k, long_k) if (short_k > 0 and long_k > 0) else underlying_entry
+            upper_k = max(short_k, long_k) if (short_k > 0 and long_k > 0) else underlying_entry * 1.03
+            if live_spot <= lower_k:
+                est_spread_px = max(0.05, entry_prem * 0.4)
+            elif live_spot >= upper_k:
+                est_spread_px = width * 0.95
+            else:
+                progress = (live_spot - lower_k) / (upper_k - lower_k) if upper_k > lower_k else 0.5
+                est_spread_px = entry_prem + progress * (width - entry_prem)
+
+            unrealized_pnl = (est_spread_px - entry_prem) * 100.0 * size
+            unrealized_pct = ((est_spread_px - entry_prem) / entry_prem) * 100.0 if entry_prem > 0 else 0.0
+            res["est_spread_px"] = round(est_spread_px, 2)
+            res["max_risk"] = max_risk
+            res["max_profit"] = max_profit
+        else:
+            unrealized_pnl = 0.0
+            unrealized_pct = 0.0
+            res["est_spread_px"] = round(entry_prem, 2)
+
+    elif is_option:
         # Options estimate: delta-adjusted heuristic anchored on underlying spot difference
-        # Delta: +0.45 for Calls, -0.45 for Puts
         delta = -0.45 if is_bearish else 0.45
         spot_diff = live_spot - underlying_entry
         est_contract_gain = spot_diff * delta
@@ -324,45 +490,79 @@ def compute_mark_to_market(trade: dict, live_spot: float = None) -> dict:
     ref_spot = live_spot
     if stop_loss > 0 and ref_spot > 0:
         if is_bearish:
-            # Bearish setup: Stop is above spot, so buffer = stop_loss - ref_spot
+            # Bearish setup: Stop is above spot
             res["dist_to_stop_pct"] = round(((stop_loss - ref_spot) / ref_spot) * 100, 2)
         else:
-            # Bullish setup: Stop is below spot, so buffer = ref_spot - stop_loss
+            # Bullish setup: Stop is below spot
             res["dist_to_stop_pct"] = round(((ref_spot - stop_loss) / ref_spot) * 100, 2)
 
     if target_1 > 0 and ref_spot > 0:
         if is_bearish:
-            # Bearish setup: Target is below spot
             res["dist_to_target1_pct"] = round(((ref_spot - target_1) / ref_spot) * 100, 2)
         else:
-            # Bullish setup: Target is above spot
             res["dist_to_target1_pct"] = round(((target_1 - ref_spot) / ref_spot) * 100, 2)
 
-    # 3. Path Progress % towards Target 1
-    bench_entry = underlying_entry if is_option else entry_px
-    if target_1 > 0 and bench_entry > 0 and target_1 != bench_entry:
-        if is_bearish:
-            progress = ((bench_entry - ref_spot) / (bench_entry - target_1)) * 100
-        else:
-            progress = ((ref_spot - bench_entry) / (target_1 - bench_entry)) * 100
-        res["progress_pct"] = max(-100.0, min(150.0, round(progress, 1)))
+    # 3. Path Progress % towards Target 1 (or max profit for credit spreads)
+    if is_spread and "CREDIT" in str(trade.get("spread_type", "")).upper():
+        max_p = float(trade.get("max_profit") or (entry_px * 100.0 * size))
+        if max_p > 0:
+            res["progress_pct"] = max(-100.0, min(100.0, round((unrealized_pnl / max_p) * 100.0, 1)))
+    else:
+        bench_entry = underlying_entry if (is_option or is_spread) else entry_px
+        if target_1 > 0 and bench_entry > 0 and target_1 != bench_entry:
+            if is_bearish:
+                progress = ((bench_entry - ref_spot) / (bench_entry - target_1)) * 100
+            else:
+                progress = ((ref_spot - bench_entry) / (target_1 - bench_entry)) * 100
+            res["progress_pct"] = max(-100.0, min(150.0, round(progress, 1)))
 
-    # 4. Trigger Alerts (Direction-aware)
-    if target_2 > 0 and ((not is_bearish and ref_spot >= target_2) or (is_bearish and ref_spot <= target_2)):
-        res["trigger_alert"] = f"Target 2 Runner Hit (${ref_spot:,.2f})! Fully maximize gains or trail hard stop."
-        res["alert_type"] = "success"
-    elif target_1 > 0 and ((not is_bearish and ref_spot >= target_1) or (is_bearish and ref_spot <= target_1)):
-        res["trigger_alert"] = f"Target 1 Reached (${ref_spot:,.2f})! Recommended: Harvest 50% profits & move stop to breakeven."
-        res["alert_type"] = "success"
-    elif stop_loss > 0 and ((not is_bearish and ref_spot <= stop_loss) or (is_bearish and ref_spot >= stop_loss)):
-        res["trigger_alert"] = f"Invalidation Stop Breached (${ref_spot:,.2f})! Thesis broken—desk directive is to exit immediately."
-        res["alert_type"] = "error"
-    elif stop_loss > 0 and 0.0 <= res["dist_to_stop_pct"] < 1.0:
-        res["trigger_alert"] = f"Critical Risk: Within {res['dist_to_stop_pct']:.1f}% of Invalidation Stop (${stop_loss:,.2f})."
-        res["alert_type"] = "warning"
-    elif target_1 > 0 and 0.0 <= res["dist_to_target1_pct"] < 1.0:
-        res["trigger_alert"] = f"Approaching Target 1: Less than 1.0% away (${target_1:,.2f}). Prepare to lock in gains."
-        res["alert_type"] = "info"
+    # 4. Trigger Alerts
+    if is_spread:
+        s_type = str(trade.get("spread_type") or "").upper()
+        short_k = float(trade.get("short_strike") or 0.0)
+        long_k = float(trade.get("long_strike") or 0.0)
+        max_prof = float(trade.get("max_profit") or (entry_px * 100.0 * size))
+
+        if "BULL_PUT" in s_type:
+            if short_k > 0 and live_spot < short_k:
+                res["trigger_alert"] = f"Caution: Spot (${live_spot:,.2f}) breached below Short Put Strike (${short_k:,.2f})! Protected by long wing at ${long_k:,.2f}."
+                res["alert_type"] = "warning"
+            elif max_prof > 0 and unrealized_pnl >= max_prof * 0.80:
+                res["trigger_alert"] = f"Harvest Target Reached: Captured {((unrealized_pnl/max_prof)*100):.0f}% of Max Profit (${unrealized_pnl:,.2f})! Recommend buying back spread early."
+                res["alert_type"] = "success"
+            elif stop_loss > 0 and live_spot <= stop_loss:
+                res["trigger_alert"] = f"Underlying Invalidation Stop Breached (${live_spot:,.2f} <= ${stop_loss:,.2f})! Close spread to preserve collateral."
+                res["alert_type"] = "error"
+            elif short_k > 0 and 0.0 <= ((live_spot - short_k) / short_k) < 0.008:
+                res["trigger_alert"] = f"Testing Short Put Strike: Spot is within 0.8% of ${short_k:,.2f}."
+                res["alert_type"] = "info"
+        elif "BEAR_CALL" in s_type:
+            if short_k > 0 and live_spot > short_k:
+                res["trigger_alert"] = f"Caution: Spot (${live_spot:,.2f}) breached above Short Call Strike (${short_k:,.2f})! Protected by long wing at ${long_k:,.2f}."
+                res["alert_type"] = "warning"
+            elif max_prof > 0 and unrealized_pnl >= max_prof * 0.80:
+                res["trigger_alert"] = f"Harvest Target Reached: Captured {((unrealized_pnl/max_prof)*100):.0f}% of Max Profit (${unrealized_pnl:,.2f})! Recommend buying back spread."
+                res["alert_type"] = "success"
+            elif stop_loss > 0 and live_spot >= stop_loss:
+                res["trigger_alert"] = f"Underlying Invalidation Stop Breached (${live_spot:,.2f} >= ${stop_loss:,.2f})! Close spread to preserve collateral."
+                res["alert_type"] = "error"
+    else:
+        # Standard alerts for stock & single options
+        if target_2 > 0 and ((not is_bearish and ref_spot >= target_2) or (is_bearish and ref_spot <= target_2)):
+            res["trigger_alert"] = f"Target 2 Runner Hit (${ref_spot:,.2f})! Fully maximize gains or trail hard stop."
+            res["alert_type"] = "success"
+        elif target_1 > 0 and ((not is_bearish and ref_spot >= target_1) or (is_bearish and ref_spot <= target_1)):
+            res["trigger_alert"] = f"Target 1 Reached (${ref_spot:,.2f})! Recommended: Harvest 50% profits & move stop to breakeven."
+            res["alert_type"] = "success"
+        elif stop_loss > 0 and ((not is_bearish and ref_spot <= stop_loss) or (is_bearish and ref_spot >= stop_loss)):
+            res["trigger_alert"] = f"Invalidation Stop Breached (${ref_spot:,.2f})! Thesis broken—desk directive is to exit immediately."
+            res["alert_type"] = "error"
+        elif stop_loss > 0 and 0.0 <= res["dist_to_stop_pct"] < 1.0:
+            res["trigger_alert"] = f"Critical Risk: Within {res['dist_to_stop_pct']:.1f}% of Invalidation Stop (${stop_loss:,.2f})."
+            res["alert_type"] = "warning"
+        elif target_1 > 0 and 0.0 <= res["dist_to_target1_pct"] < 1.0:
+            res["trigger_alert"] = f"Approaching Target 1: Less than 1.0% away (${target_1:,.2f}). Prepare to lock in gains."
+            res["alert_type"] = "info"
 
     return res
 
@@ -405,7 +605,7 @@ def generate_ai_portfolio_audit(market_data: dict = None, gemini_api_key: str = 
     """
     Run an institutional AI audit across all open active positions in the ledger.
     Compares live metrics to entry snapshot and generates tactical risk management directives.
-    Includes latest dealer gamma profile (Call Wall / Put Wall shifts) for each position.
+    Includes latest dealer gamma profile (Call Wall / Put Wall shifts) and defined-risk spread parameters.
     """
     from ai_strategist import get_gemini_client, GEMINI_MODELS
 
@@ -451,12 +651,22 @@ def generate_ai_portfolio_audit(market_data: dict = None, gemini_api_key: str = 
         except Exception:
             pass
 
+        if t.get("asset_type") == "SPREAD":
+            contract_desc = f"SPREAD: {t.get('spread_type')} (Short ${t.get('short_strike')} / Long ${t.get('long_strike')} Exp: {t.get('expiration') or t.get('short_expiry')}) Collateral: ${t.get('max_risk', 0):,.2f}, Max Profit: ${t.get('max_profit', 0):,.2f}"
+        elif t.get("asset_type") == "OPTION":
+            contract_desc = f"{t.get('strike')} {t.get('contract_type')} Exp: {t.get('expiration')}"
+        else:
+            contract_desc = "STOCK"
+
         audit_items.append({
             "id": t.get("id"),
             "ticker": t.get("ticker"),
             "direction": t.get("direction"),
             "asset_type": t.get("asset_type"),
-            "contract": f"{t.get('strike')} {t.get('contract_type')} Exp: {t.get('expiration')}" if t.get("asset_type") == "OPTION" else "STOCK",
+            "spread_type": t.get("spread_type"),
+            "short_strike": t.get("short_strike"),
+            "long_strike": t.get("long_strike"),
+            "contract": contract_desc,
             "entry_price": t.get("entry_price"),
             "entry_underlying_spot": mtm.get("underlying_entry_spot"),
             "live_spot": mtm.get("live_spot"),
@@ -497,6 +707,7 @@ AUDIT REPORT REQUIREMENTS:
 2. For each active trade, deliver a crisp 3-sentence institutional review:
    - Progress vs. Original AI Thesis & 20-Year Historical Odds.
    - Dual Gamma Evaluation: Compare Entry Call/Put Walls against Current Live Call/Put Walls. Confirm whether the primary benchmark (e.g. QQQ for tech equities like MSFT) is holding above its Put Wall / Zero-Gamma flip or triggering systematic de-risking.
+   - Defined-Risk Spreads: Evaluate distance to the short strike barrier vs Put/Call Wall, return on collateral (ROC), theta decay, and whether the position has captured >= 75-80% of max profit to recommend taking profits early.
    - Concrete Action Directive: Where to adjust the stop loss (e.g. breakeven, trailing 20 EMA), or whether to harvest profits now.
 3. Strict Terminal Tone: Crisp, mathematical, visual tables, zero fluff, no memo headers or formal letters.
 """

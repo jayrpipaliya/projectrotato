@@ -692,14 +692,75 @@ def render_trade_logging_widget(t, key_suffix):
         cw = parse_clean_num(t.get("call_wall"), tp1_px)
         pw = parse_clean_num(t.get("put_wall"), stop_px)
 
+        is_long = "LONG" in t.get("direction", "LONG").upper() or "DIP" in t.get("direction", "LONG").upper()
+        spread_rec = t.get("options_spread", {})
+
         asset_type = st.radio(
             "Instrument Type",
-            ["Stock / Equity", "Options Contract"],
+            ["Defined-Risk Spread", "Stock / Equity", "Single Option"],
+            index=0 if spread_rec else 1,
             horizontal=True,
             key=f"asset_type_{key_suffix}"
         )
 
-        if asset_type == "Stock / Equity":
+        in_spread_type = None
+        in_short_k = None
+        in_long_k = None
+        in_net_prem = None
+        in_spread_width = None
+        in_max_risk = None
+        in_max_profit = None
+
+        if asset_type == "Defined-Risk Spread":
+            default_st = "BULL_PUT_CREDIT" if is_long else "BEAR_CALL_CREDIT"
+            st_options = ["BULL_PUT_CREDIT", "BEAR_CALL_CREDIT", "BULL_CALL_DEBIT", "BEAR_PUT_DEBIT"]
+            st_idx = st_options.index(spread_rec.get("spread_type", default_st)) if spread_rec.get("spread_type") in st_options else (0 if is_long else 1)
+
+            c_st, c_exp = st.columns(2)
+            with c_st:
+                in_spread_type = st.selectbox("Defined-Risk Strategy", st_options, index=st_idx, key=f"sp_type_{key_suffix}")
+            with c_exp:
+                from datetime import timedelta
+                def_exp = spread_rec.get("expiration") or (datetime.now() + timedelta(days=32)).strftime("%Y-%m-%d")
+                in_expiry = st.text_input("Expiration (YYYY-MM-DD)", value=def_exp, key=f"sp_exp_{key_suffix}")
+
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                def_short = float(spread_rec.get("short_strike") or (round(pw) if pw > 0 else round(curr_px * 0.985)))
+                in_short_k = st.number_input("Short Strike ($)", value=def_short, step=1.0, format="%.2f", key=f"sp_short_{key_suffix}")
+            with c2:
+                def_long = float(spread_rec.get("long_strike") or (in_short_k - 5.0))
+                in_long_k = st.number_input("Long Strike ($)", value=def_long, step=1.0, format="%.2f", key=f"sp_long_{key_suffix}")
+            with c3:
+                def_prem = float(spread_rec.get("net_premium") or 1.40)
+                in_net_prem = st.number_input("Net Premium ($)", value=def_prem, min_value=0.01, step=0.05, format="%.2f", key=f"sp_prem_{key_suffix}")
+                in_entry = in_net_prem
+            with c4:
+                in_size = st.number_input("Spreads Quantity", value=1, min_value=1, step=1, key=f"sp_size_{key_suffix}")
+
+            in_spread_width = abs(in_short_k - in_long_k) if (in_short_k and in_long_k) else 5.0
+            is_credit = "CREDIT" in in_spread_type
+            if is_credit:
+                in_max_risk = max(0.01, in_spread_width - in_net_prem) * 100.0 * in_size
+                in_max_profit = in_net_prem * 100.0 * in_size
+            else:
+                in_max_risk = in_net_prem * 100.0 * in_size
+                in_max_profit = max(0.01, in_spread_width - in_net_prem) * 100.0 * in_size
+
+            roc_disp = round((in_max_profit / in_max_risk) * 100.0, 1) if in_max_risk > 0 else 0.0
+
+            st.caption(f"🛡️ **100% Defined Risk**: Collateral Locked = **${in_max_risk:,.0f}** | Max Profit = **${in_max_profit:,.0f}** (+{roc_disp}% ROC). *Zero naked options exposure.*")
+
+            cs1, cs2 = st.columns(2)
+            with cs1:
+                in_stop = st.number_input("Underlying Stop Invalidation ($)", value=float(stop_px), format="%.2f", key=f"sp_stop_{key_suffix}")
+            with cs2:
+                in_tp1 = st.number_input("Underlying Target 1 ($)", value=float(tp1_px), format="%.2f", key=f"sp_tp1_{key_suffix}")
+
+            in_contract_type = None
+            in_strike = None
+
+        elif asset_type == "Stock / Equity":
             c1, c2, c3, c4 = st.columns(4)
             with c1:
                 in_entry = st.number_input("Entry Fill Price ($)", value=float(curr_px), format="%.2f", key=f"entry_{key_suffix}")
@@ -714,7 +775,6 @@ def render_trade_logging_widget(t, key_suffix):
             in_strike = None
             in_expiry = None
         else:
-            is_long = "LONG" in t.get("direction", "LONG").upper() or "DIP" in t.get("direction", "LONG").upper()
             c1, c2, c3, c4, c5 = st.columns(5)
             with c1:
                 in_contract_type = st.selectbox("Contract Type", ["CALL", "PUT"], index=0 if is_long else 1, key=f"ctype_{key_suffix}")
@@ -760,12 +820,13 @@ def render_trade_logging_widget(t, key_suffix):
                 "benchmark_symbol": t.get("benchmark_symbol"),
                 "benchmark_put_wall": t.get("benchmark_put_wall"),
                 "benchmark_zero_gamma": t.get("benchmark_zero_gamma"),
-                "risk_reward": t.get("risk_reward")
+                "risk_reward": t.get("risk_reward"),
+                "options_spread": spread_rec
             }
             new_trd = add_trade(
                 ticker=t["ticker"],
                 direction=t["direction"],
-                asset_type="OPTION" if asset_type == "Options Contract" else "STOCK",
+                asset_type="SPREAD" if asset_type == "Defined-Risk Spread" else ("OPTION" if asset_type == "Single Option" else "STOCK"),
                 entry_price=in_entry,
                 size=in_size,
                 stop_loss=in_stop,
@@ -775,6 +836,15 @@ def render_trade_logging_widget(t, key_suffix):
                 strike=in_strike,
                 expiration=in_expiry,
                 underlying_entry_spot=curr_px,
+                spread_type=in_spread_type,
+                short_strike=in_short_k,
+                long_strike=in_long_k,
+                short_expiry=in_expiry,
+                long_expiry=in_expiry,
+                net_premium=in_net_prem,
+                spread_width=in_spread_width,
+                max_risk=in_max_risk,
+                max_profit=in_max_profit,
                 notes=custom_notes,
                 ai_snapshot=snap
             )

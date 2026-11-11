@@ -607,15 +607,52 @@ INSTITUTIONAL DEALER GAMMA & RISK/REWARD MASTER DIRECTIVES:
      * Invalidation Stop: Above the Call Wall or 20/50 EMA ribbon.
      * Profit Target: Down to the Put Wall floor or cascade below Zero Gamma Flip.
 
-3. Volatility Skew, Smile & Contract Selection Directives:
-   - **IV/HV Ratio (Volatility Valuation)**:
-     * When IV/HV < 0.80x (Cheap Vol): Implied Volatility is trading at a steep discount to physical realized movement. Recommend buying directional calls/puts rather than shares to gain leveraged convexity without paying an inflated volatility premium.
-     * When IV/HV > 1.25x (Expensive Vol): Harvest elevated premium by selling credit spreads (e.g. Bull Put Spread below the Put Wall).
-   - **25-Delta Skew & Skew Slope**:
-     * Steep Put Skew (Puts rich, downside bid): The options market is paying inflated insurance premiums for downside puts. Exploit this by selling OTM Put Spreads at/below the Put Wall floor, or buying OTM Calls which benefit from the cheaper right-hand side of the smile.
-   - **Exact Contract Recommendations**:
-     * For Call Buyers: Recommend strikes between the spot price and the Call Wall (Delta 0.35–0.50) with positive Ask Edge.
-     * For Credit Sellers: Recommend short strikes directly at or below the Put Wall floor with maximum Bid Edge.
+3. Institutional "Play Like a Dealer" Multi-Strategy Matrix & Selection Engine:
+   - As an institutional derivatives analyst, do NOT default purely to buying directional calls. You must evaluate the market like an options market maker, exploiting both the BID SIDE (selling inflated premium) and the ASK SIDE (buying discounted convexity).
+   - Dynamically route to the optimal strategy archetype by evaluating the intersection of 4 pillars:
+     a) **Dealer Gamma Regime**: Net Long Gamma (Vol dampening / Pinning) vs Net Short Gamma (Cascades / Gap risk)
+     b) **Volatility Valuation (IV/HV Ratio)**: Cheap Vol (< 0.85x) vs Fair Vol (0.85-1.15x) vs Expensive Vol (> 1.15x)
+     c) **25-Delta Skew & Smile Shape**: Steep Put Skew (Downside insurance expensive) vs Call Skew vs Flat
+     d) **Term Structure Topology**: Contango (Normal) vs Backwardation (Front-month IV > Back-month IV)
+
+   - **THE 5 DEALER STRATEGY ARCHETYPES**:
+     * **STRATEGY 1: Bull Put Credit Spread (SELLING BID EDGE / HARVESTING PREMIUM)**
+       - Trigger: IV/HV > 1.10x (Elevated IV) OR Steep 25-Delta Put Skew + Asset in structural uptrend or holding Put Wall.
+       - Execution: Sell OTM Put directly AT or SLIGHTLY BELOW the Put Wall floor (collecting maximum Bid Edge); Buy lower OTM Put (e.g. Put Wall - $5 or $10) as a risk-defined tail hedge.
+       - DTE: 21 to 45 DTE (maximizing theta decay velocity while avoiding overnight 0 DTE gamma risk).
+       - Dealer Edge: Dealers actively buy weakness at the Put Wall, providing structural support while theta decays into expiration.
+     
+     * **STRATEGY 2: Bear Call Credit Spread (SELLING OVERHEAD RESISTANCE)**
+       - Trigger: Spot testing/exhausting into the Call Wall pin + IV/HV elevated + overbought technicals.
+       - Execution: Sell OTM Call directly AT or SLIGHTLY ABOVE the Call Wall pin; Buy higher Call as protection.
+       - DTE: 14 to 35 DTE.
+       - Dealer Edge: Dealer inventory selling caps upside follow-through at the Call Wall, allowing premium to collapse.
+
+     * **STRATEGY 3: Iron Condor (GAMMA CAGE RANGE PINNING)**
+       - Trigger: Heavy Net Long Gamma (+$B GEX on both Asset and Benchmark), low RVOL, consolidation between Put Wall and Call Wall, IV/HV > 1.10x.
+       - Execution: Sell Bull Put Spread below the Put Wall + Sell Bear Call Spread above the Call Wall.
+       - Dealer Edge: Exploits counter-cyclical dealer delta-hedging (dealers buy dips and sell rips), compressing price between the walls for 100% premium capture.
+
+     * **STRATEGY 4: Calendar / Diagonal Spreads (TERM STRUCTURE BACKWARDATION EXPLOIT)**
+       - Trigger: Front-month IV > Back-month IV by >= 15% (Event/earnings/headline vol spike).
+       - Execution: Sell expensive front-month option (7-14 DTE) against buying cheaper back-month option (30-60 DTE).
+       - Dealer Edge: Monetizes rapid front-month theta decay and volatility mean-reversion while retaining longer-term delta and gamma convexity.
+
+     * **STRATEGY 5: Directional Debit Spreads / Long Calls/Puts (BUYING ASK EDGE / CONVEXITY)**
+       - Trigger: IV/HV < 0.85x (Cheap Volatility) + Wall Roll Up or breakout regime.
+       - Bull Call Debit Spread: Buy Delta 0.40–0.50 Call near spot, Sell Delta 0.20–0.25 Call at the target Call Wall (neutralizes theta burn while capping downside risk).
+       - Long Convex Calls/Puts: Recommend when volatility is severely underpriced and catalyst is imminent.
+
+   - **CRITICAL CAPITAL EFFICIENCY MANDATE (STRICTLY 100% DEFINED-RISK SPREADS — NO NAKED OPTIONS)**:
+     * **ZERO NAKED OPTIONS POLICY**: The user does NOT have the collateral for naked/cash-secured puts (which tie up $50,000 to $75,000+ per contract). NEVER suggest naked puts or naked calls.
+     * **MANDATORY DEFINED RISK**: Whenever selling premium on the Bid side, you MUST structure it as a **Vertical Credit Spread** (Bull Put Credit Spread or Bear Call Credit Spread) or **Iron Condor**.
+     * **COLLATERAL ARBITRAGE**: By buying the lower protective put wing 1-2 strikes below the short Put Wall strike, the margin collateral requirement drops from $75,000 down to just **$300 – $800 per contract** (the width of the spread minus credit collected), while capturing the exact same dealer bid-edge decay and structural Put Wall support!
+
+   - When presenting option strategies in the Tactical Execution Blueprint table, explicitly include:
+     * **Strategy Name** (e.g., `Bull Put Credit Spread`, `Directional Call Debit Spread`, `Iron Condor`, `Calendar Spread`)
+     * **Legs Specification** (Short Strike & Long Strike with expiration dates)
+     * **Net Credit Collected or Net Debit Paid**
+     * **Max Profit, Max Risk, and Probability of Profit (PoP) / Asymmetric Payoff**
 
 4. Historical Backtested Edge Integration:
    - Ground conviction in the 20-year empirical track record: cite the sample size, 20-day win rate (e.g. 59.4% to 72%+), and median historical forward return from Layer 7 of the confluence checklist.
@@ -925,6 +962,116 @@ def calculate_optimized_trade_entry(direction: str, metrics: dict, edge: dict = 
         }
 
 
+def generate_next_day_spread_recommendation(ticker: str, direction: str, current_price: float, gamma_levels: dict = None) -> dict:
+    """
+    Computes an institutional, 100% defined-risk vertical options spread recommendation for the next trading session.
+    Strictly prohibits naked options / cash-secured puts (Zero-Naked Options policy).
+    Anchors short strikes directly at Dealer Put Wall / Call Wall, while purchasing a protective wing to define
+    maximum risk and compress margin collateral to ~$250-$450 per contract.
+    """
+    import math
+    from datetime import datetime, timedelta
+
+    close = float(current_price or 100.0)
+    is_long = "LONG" in direction.upper() or "DIP" in direction.upper()
+
+    cw = float(gamma_levels.get("call_wall", 0)) if gamma_levels else 0.0
+    pw = float(gamma_levels.get("put_wall", 0)) if gamma_levels else 0.0
+
+    # Determine strike interval and spread width based on asset price tier
+    if close >= 400:
+        step = 5.0
+        width = 5.0
+    elif close >= 150:
+        step = 5.0
+        width = 5.0
+    elif close >= 75:
+        step = 2.5
+        width = 2.5
+    else:
+        step = 1.0
+        width = 1.0
+
+    # Target standard expiration ~28-35 DTE for optimal theta decay velocity
+    target_dt = datetime.now() + timedelta(days=32)
+    # Align to nearest Friday
+    days_ahead = 4 - target_dt.weekday()
+    if days_ahead <= 0:
+        days_ahead += 7
+    exp_date = (target_dt + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+    dte = (datetime.strptime(exp_date, "%Y-%m-%d") - datetime.now()).days
+
+    if is_long:
+        # Strategy: Bull Put Credit Spread (Sell at Put Wall, Buy protective lower put)
+        if pw > 0 and pw <= close * 1.01:
+            short_k = round(pw / step) * step
+            if short_k > close:
+                short_k = math.floor((close * 0.985) / step) * step
+        else:
+            short_k = math.floor((close * 0.985) / step) * step
+
+        long_k = short_k - width
+
+        # Estimated credit collected: ~28% of spread width (typical 20-30 delta vertical spread)
+        net_credit = round(width * 0.28, 2)
+        max_risk = round((width - net_credit) * 100.0, 2)
+        max_profit = round(net_credit * 100.0, 2)
+        roc_pct = round((max_profit / max_risk) * 100.0, 1) if max_risk > 0 else 38.0
+        be_spot = round(short_k - net_credit, 2)
+
+        strategy_name = "Bull Put Credit Spread"
+        spread_type = "BULL_PUT_CREDIT"
+        short_desc = f"SELL ${short_k:,.0f} Put"
+        long_desc = f"BUY ${long_k:,.0f} Put (Tail Hedge)"
+        thesis = (
+            f"Short strike anchored at Dealer Put Wall floor (${short_k:,.0f}) where positive dealer gamma dampens volatility. "
+            f"Long Put (${long_k:,.0f}) strictly caps max loss to ${max_risk:,.0f} collateral (Zero Naked Risk)."
+        )
+    else:
+        # Strategy: Bear Call Credit Spread (Sell at Call Wall, Buy protective higher call)
+        if cw > 0 and cw >= close * 0.99:
+            short_k = round(cw / step) * step
+            if short_k < close:
+                short_k = math.ceil((close * 1.015) / step) * step
+        else:
+            short_k = math.ceil((close * 1.015) / step) * step
+
+        long_k = short_k + width
+
+        net_credit = round(width * 0.28, 2)
+        max_risk = round((width - net_credit) * 100.0, 2)
+        max_profit = round(net_credit * 100.0, 2)
+        roc_pct = round((max_profit / max_risk) * 100.0, 1) if max_risk > 0 else 38.0
+        be_spot = round(short_k + net_credit, 2)
+
+        strategy_name = "Bear Call Credit Spread"
+        spread_type = "BEAR_CALL_CREDIT"
+        short_desc = f"SELL ${short_k:,.0f} Call"
+        long_desc = f"BUY ${long_k:,.0f} Call (Tail Hedge)"
+        thesis = (
+            f"Short strike anchored at Dealer Call Wall (${short_k:,.0f}) where dealer inventory caps upside. "
+            f"Long Call (${long_k:,.0f}) strictly defines maximum risk to ${max_risk:,.0f} collateral (Zero Naked Risk)."
+        )
+
+    return {
+        "strategy_name": strategy_name,
+        "spread_type": spread_type,
+        "short_strike": short_k,
+        "long_strike": long_k,
+        "short_leg": short_desc,
+        "long_leg": long_desc,
+        "expiration": exp_date,
+        "dte": dte,
+        "net_premium": net_credit,
+        "spread_width": width,
+        "max_risk": max_risk,
+        "max_profit": max_profit,
+        "roc_pct": roc_pct,
+        "breakeven": be_spot,
+        "dealer_thesis": thesis
+    }
+
+
 def build_structured_briefing_and_trades(market_data: dict, confluences: list[dict]) -> dict:
     """Builds clean, modular, high-contrast structured data for compact rendering."""
     narrative_title = market_data.get("narrative_title", "Secular Uptrend")
@@ -1037,7 +1184,8 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             "benchmark_symbol": bench_sym,
             "benchmark_put_wall": bench_gex.get("put_wall") if bench_gex else None,
             "benchmark_zero_gamma": bench_gex.get("zero_gamma_level") if bench_gex else None,
-            "benchmark_regime": bench_gex.get("regime_short") if bench_gex else None
+            "benchmark_regime": bench_gex.get("regime_short") if bench_gex else None,
+            "options_spread": generate_next_day_spread_recommendation(ticker, "LONG", t_data.get("close", 100.0), gamma_levels=gex)
         })
 
     # Trade 2: Weakest Asset (Fade / De-Risk Warning)
@@ -1086,7 +1234,8 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             "put_wall": w_opt.get("put_wall"),
             "zero_gamma": w_opt.get("zero_gamma"),
             "gamma_regime": w_opt.get("gamma_regime"),
-            "net_gex_b": w_opt.get("net_gex_b")
+            "net_gex_b": w_opt.get("net_gex_b"),
+            "options_spread": generate_next_day_spread_recommendation(w_ticker, "SHORT", w_data.get("close", 100.0), gamma_levels=w_gex)
         })
 
     # Trade 3: Orderly Dip-Buy Opportunity (Red on the day, but in uptrend on low volume)
@@ -1149,7 +1298,8 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
                 "benchmark_symbol": d_bench_sym,
                 "benchmark_put_wall": d_bench_gex.get("put_wall") if d_bench_gex else None,
                 "benchmark_zero_gamma": d_bench_gex.get("zero_gamma_level") if d_bench_gex else None,
-                "benchmark_regime": d_bench_gex.get("regime_short") if d_bench_gex else None
+                "benchmark_regime": d_bench_gex.get("regime_short") if d_bench_gex else None,
+                "options_spread": generate_next_day_spread_recommendation(d_ticker, "DIP BUY", d_data.get("close", 100.0), gamma_levels=d_gex)
             })
 
     # Trade 3: Pairs Rotation (IWM vs QQQ or SPY vs RSP)
