@@ -8,6 +8,7 @@ Institutional Gamma Tracker & Strike Migration Heat Map Engine
 
 import os
 import json
+import math
 import time
 from datetime import datetime, timedelta
 import pandas as pd
@@ -89,8 +90,11 @@ def get_market_session_date(override_dt: datetime = None) -> str:
     return session_dt.strftime("%Y-%m-%d")
 
 
-def _lookup_strike(s_dict: dict, k: float) -> dict:
-    """Robust strike lookup with float tolerance to eliminate string representation misses."""
+def _lookup_strike(s_dict: dict, k: float, interpolate: bool = True) -> dict:
+    """
+    Robust strike lookup with float tolerance and linear neighbor interpolation.
+    Eliminates phantom ΔGEX spikes caused by strike grid resolution differences.
+    """
     if not s_dict:
         return {}
     # 1. Exact string matches
@@ -104,6 +108,57 @@ def _lookup_strike(s_dict: dict, k: float) -> dict:
                 return val
         except Exception:
             continue
+
+    if not interpolate:
+        return {}
+
+    # 3. Dynamic linear interpolation between nearest neighboring strikes
+    try:
+        float_keys = []
+        for sk in s_dict.keys():
+            try:
+                float_keys.append((float(sk), sk))
+            except Exception:
+                pass
+        if len(float_keys) < 2:
+            return {}
+        float_keys.sort(key=lambda x: x[0])
+
+        low_cand = [item for item in float_keys if item[0] < k]
+        high_cand = [item for item in float_keys if item[0] > k]
+
+        if low_cand and high_cand:
+            k_low, key_low = low_cand[-1]
+            k_high, key_high = high_cand[0]
+            span = k_high - k_low
+            # Only interpolate within a reasonable strike spread (<= 10.0 points)
+            if 0 < span <= 10.0:
+                weight = (k - k_low) / span
+                low_val = s_dict[key_low]
+                high_val = s_dict[key_high]
+
+                net_l = _safe_float(low_val.get("net_gex"), 0.0)
+                net_h = _safe_float(high_val.get("net_gex"), 0.0)
+                call_l = _safe_float(low_val.get("call_gex"), 0.0)
+                call_h = _safe_float(high_val.get("call_gex"), 0.0)
+                put_l = _safe_float(low_val.get("put_gex"), 0.0)
+                put_h = _safe_float(high_val.get("put_gex"), 0.0)
+                coi_l = _safe_float(low_val.get("call_oi"), 0.0)
+                coi_h = _safe_float(high_val.get("call_oi"), 0.0)
+                poi_l = _safe_float(low_val.get("put_oi"), 0.0)
+                poi_h = _safe_float(high_val.get("put_oi"), 0.0)
+
+                return {
+                    "net_gex": round(net_l + weight * (net_h - net_l), 1),
+                    "call_gex": round(call_l + weight * (call_h - call_l), 1),
+                    "put_gex": round(put_l + weight * (put_h - put_l), 1),
+                    "call_oi": int(round(coi_l + weight * (coi_h - coi_l))),
+                    "put_oi": int(round(poi_l + weight * (poi_h - poi_l))),
+                    "interpolated": True
+                }
+    except Exception:
+        pass
+
     return {}
 
 
@@ -593,21 +648,33 @@ def plot_gamma_shift_heatmap(ticker: str, mode: str = "net_gex", max_days: int =
     call_walls = data["call_walls"]
     put_walls = data["put_walls"]
 
-    # Dynamic color scale:
-    # Red for Negative Put Gamma, Dark for Neutral, Mint for Positive Call Gamma
+    # Institutional high-contrast multi-stop diverging color scale:
+    # Tight central neutral deadband ensures subtle day-over-day changes illuminate
+    # with soft emerald/wine tones, while major wall rolls peak in vivid neon mint/cherry.
     custom_colorscale = [
-        [0.0, "#FF2E55"],   # Peak Put Gamma (Cherry)
-        [0.45, "#4c0519"],  # Soft dark wine
-        [0.50, "#0e1117"],  # Stealth neutral black
-        [0.55, "#064e3b"],  # Soft dark emerald
-        [1.0, "#00F5A0"]    # Peak Call Gamma (Mint)
+        [0.0, "#FF2E55"],    # -100% (Neon Cherry - Extreme Put Gamma / Negative Shift)
+        [0.10, "#e11d48"],   # -80%
+        [0.25, "#be123c"],   # -50%
+        [0.38, "#881337"],   # -24%
+        [0.44, "#4c0519"],   # -12%
+        [0.47, "#2e0813"],   # -6% (subtle dark wine visible on small shifts)
+        [0.49, "#180d15"],   # -2%
+        [0.50, "#0b0f19"],   # 0.0 (True Stealth Neutral Background)
+        [0.51, "#0d1b18"],   # +2%
+        [0.53, "#063d2e"],   # +6% (subtle dark emerald visible on small shifts)
+        [0.56, "#047857"],   # +12%
+        [0.62, "#059669"],   # +24%
+        [0.75, "#10b981"],   # +50%
+        [0.90, "#34d399"],   # +80%
+        [1.0, "#00F5A0"]     # +100% (Neon Mint - Extreme Call Gamma / Positive Shift)
     ]
 
-    # Calculate symmetric bounds around zero for divergent color map (95th percentile clamp)
-    abs_vals = [abs(val) for row in z for val in row if abs(val) > 0.01]
+    # Calculate symmetric bounds around zero using robust 92nd percentile clamp
+    # Prevents isolated single-strike wall pins from compressing the rest of the matrix into darkness.
+    abs_vals = [abs(val) for row in z for val in row if abs(val) > 0.05]
     if abs_vals:
-        p95 = float(np.percentile(abs_vals, 95))
-        max_abs = max(p95 * 1.25, 5.0)
+        p92 = float(np.percentile(abs_vals, 92))
+        max_abs = max(p92 * 1.15, 5.0)
     else:
         max_abs = 10.0
 
@@ -698,10 +765,22 @@ def plot_gamma_shift_heatmap(ticker: str, mode: str = "net_gex", max_days: int =
     return fig
 
 
+def _norm_pdf(x: float) -> float:
+    return math.exp(-0.5 * x * x) / 2.5066282746310002
+
+
+def _bs_gamma(S: float, K: float, T: float = 0.06, sigma: float = 0.18) -> float:
+    if S <= 0 or K <= 0 or T <= 0 or sigma <= 0:
+        return 0.0
+    d1 = (math.log(S / K) + 0.5 * sigma * sigma * T) / (sigma * math.sqrt(T))
+    return _norm_pdf(d1) / (S * sigma * math.sqrt(T))
+
+
 def _seed_ticker_if_needed(ticker: str) -> bool:
     """
-    On-demand baseline generator for any requested ticker (e.g. PLTR, AMD, SMH)
-    using recent OHLCV history so heatmaps and shift metrics can be explored immediately.
+    On-demand baseline generator for any requested ticker (e.g. SPY, QQQ, PLTR, AMD, SMH)
+    using recent OHLCV history with continuous Black-Scholes gamma profiles and dense strike
+    resolution so heatmaps, wall migrations, and ΔGEX velocity can be explored immediately.
     """
     global _HISTORY_CACHE
     t_up = ticker.upper().strip()
@@ -715,49 +794,106 @@ def _seed_ticker_if_needed(ticker: str) -> bool:
     tail_df = df.tail(7)
     sym_history = []
 
+    # Step determination matching options market strike standards
+    first_px = float(tail_df.iloc[0].get("Close", 100))
+    if t_up in ["SPY", "QQQ", "IWM"]:
+        step = 1.0
+        k_radius = 35
+    elif any(t_up == s for s in ["NVDA", "AAPL", "AMD", "PLTR", "AMZN"]):
+        step = 1.0 if first_px < 200 else 2.5
+        k_radius = 25
+    else:
+        step = 5.0 if first_px > 400 else (2.5 if first_px > 150 else 1.0)
+        k_radius = 20
+
+    # Determine contract volume scale based on asset capitalization
+    if t_up in ["SPY", "QQQ"]:
+        base_vol = 35000.0
+    elif t_up in ["NVDA", "AAPL", "MSFT", "AMZN", "META", "TSLA"]:
+        base_vol = 15000.0
+    else:
+        base_vol = 8000.0
+
     for idx, (dt_idx, row) in enumerate(tail_df.iterrows()):
         close_px = float(row.get("Close", 100))
         date_val = row.get("Date")
         if pd.isna(date_val):
-            date_str = (datetime.now() - timedelta(days=(7 - idx))).strftime("%Y-%m-%d")
+            date_str = (datetime.now() - timedelta(days=(len(tail_df) - idx))).strftime("%Y-%m-%d")
         else:
             date_str = pd.to_datetime(date_val).strftime("%Y-%m-%d")
 
-        step = 5.0 if close_px > 300 else (2.5 if close_px > 100 else 1.0)
-        center_k = round(close_px / step) * step
+        # Dynamic Call & Put Wall placement
+        cw_offset = step * 5 if t_up in ["SPY", "QQQ"] else step * 3
+        pw_offset = step * 5 if t_up in ["SPY", "QQQ"] else step * 3
 
-        cw = center_k + (step * (1 if idx < 4 else 2))
-        pw = center_k - (step * (2 if idx < 3 else 1))
-        net_gex_b = round(0.15 + (idx * 0.05) - (0.08 if idx == 2 else 0.0), 3)
+        cw = round((close_px + cw_offset) / (step * 5 if step == 1.0 else step)) * (step * 5 if step == 1.0 else step)
+        pw = round((close_px - pw_offset) / (step * 5 if step == 1.0 else step)) * (step * 5 if step == 1.0 else step)
+        if cw <= close_px:
+            cw = close_px + step * 2
+        if pw >= close_px:
+            pw = close_px - step * 2
+
+        min_k = int(round(close_px - (k_radius * step)))
+        max_k = int(round(close_px + (k_radius * step)))
 
         strikes_dict = {}
-        for k_mult in range(-7, 8):
-            k = center_k + (k_mult * step)
-            c_gex = max(0.0, round((400 / (1 + abs(k - cw) / step)) * (1.1 if k >= close_px else 0.3), 1))
-            p_gex = max(0.0, round((380 / (1 + abs(k - pw) / step)) * (1.1 if k <= close_px else 0.3), 1))
-            net_g = round(c_gex - p_gex, 1)
+        total_call_gex = 0.0
+        total_put_gex = 0.0
+
+        for k_int in range(min_k, max_k + 1, int(step) if step >= 1.0 else 1):
+            k = float(k_int)
+            gamma = _bs_gamma(close_px, k, T=0.06, sigma=0.18)
+
+            dist_cw = abs(k - cw)
+            dist_spot = abs(k - close_px)
+            dist_pw = abs(k - pw)
+
+            is_round_5 = (k % 5 == 0)
+            is_round_10 = (k % 10 == 0)
+            round_boost = 1.6 if is_round_10 else (1.3 if is_round_5 else 1.0)
+
+            c_oi_base = base_vol * math.exp(-0.5 * (dist_cw / (step * 3.5))**2) * 2.8 + \
+                        (base_vol * 0.5) * math.exp(-0.5 * (dist_spot / (step * 5.0))**2) + \
+                        ((base_vol * 0.25) if k >= close_px else (base_vol * 0.08))
+            c_oi = int(c_oi_base * round_boost)
+
+            p_oi_base = base_vol * math.exp(-0.5 * (dist_pw / (step * 3.5))**2) * 2.8 + \
+                        (base_vol * 0.5) * math.exp(-0.5 * (dist_spot / (step * 5.0))**2) + \
+                        ((base_vol * 0.25) if k <= close_px else (base_vol * 0.08))
+            p_oi = int(p_oi_base * round_boost)
+
+            c_gex = round(close_px * c_oi * 100.0 * gamma * 0.01 * close_px / 1e6, 1)
+            p_gex = round(close_px * p_oi * 100.0 * gamma * 0.01 * close_px / 1e6, 1)
+            net_gex = round(c_gex - p_gex, 1)
+
+            total_call_gex += c_gex
+            total_put_gex += p_gex
 
             strikes_dict[f"{k:.2f}"] = {
-                "net_gex": net_g,
+                "net_gex": net_gex,
                 "call_gex": c_gex,
                 "put_gex": p_gex,
-                "call_oi": int(c_gex * 12),
-                "put_oi": int(p_gex * 12)
+                "call_oi": c_oi,
+                "put_oi": p_oi
             }
+
+        tot_net_b = round((total_call_gex - total_put_gex) / 1000.0, 2)
+        if tot_net_b <= 0:
+            tot_net_b = round(4.5 + idx * 0.3, 2) if t_up in ["SPY", "QQQ"] else round(1.2 + idx * 0.1, 2)
 
         sym_history.append({
             "date": date_str,
-            "timestamp": int(time.time() - (7 - idx) * 86400),
+            "timestamp": int(time.time() - (len(tail_df) - idx) * 86400),
             "spot_price": round(close_px, 2),
             "call_wall": round(cw, 2),
-            "call_wall_gex_m": round(strikes_dict.get(f"{cw:.2f}", {}).get("call_gex", 450), 1),
+            "call_wall_gex_m": round(strikes_dict.get(f"{cw:.2f}", {}).get("call_gex", 3000.0), 1),
             "put_wall": round(pw, 2),
-            "put_wall_gex_m": round(strikes_dict.get(f"{pw:.2f}", {}).get("put_gex", 400), 1),
-            "zero_gamma_level": round(center_k - (step * 0.5), 2),
-            "total_net_gex_billions": net_gex_b,
-            "total_call_gex_billions": round(net_gex_b + 0.5, 3),
-            "total_put_gex_billions": round(0.5, 3),
-            "regime_short": "Long Gamma" if net_gex_b > 0 else "Short Gamma",
+            "put_wall_gex_m": round(strikes_dict.get(f"{pw:.2f}", {}).get("put_gex", 2500.0), 1),
+            "zero_gamma_level": round(close_px - step * 1.5, 2),
+            "total_net_gex_billions": tot_net_b,
+            "total_call_gex_billions": round(total_call_gex / 1000.0, 2),
+            "total_put_gex_billions": round(total_put_gex / 1000.0, 2),
+            "regime_short": "Long Gamma" if tot_net_b > 0 else "Short Gamma",
             "strikes": strikes_dict
         })
 
