@@ -432,6 +432,28 @@ def query_ai_agent(
                     "loaded_at": g.get("loaded_at_display") or g.get("loaded_at_str")
                 }
 
+        # Collect Day-over-Day Gamma Shifts for checked symbols
+        gamma_shift_context = {}
+        try:
+            from gamma_tracker import compute_gamma_shift, format_signed_currency, _safe_float
+            for s in symbols_to_check:
+                s_shift = compute_gamma_shift(s)
+                if s_shift and s_shift.get("has_history"):
+                    cw_s = _safe_float(s_shift.get("call_wall_shift"), 0.0)
+                    pw_s = _safe_float(s_shift.get("put_wall_shift"), 0.0)
+                    vel_b = _safe_float(s_shift.get("net_gex_velocity_b"), 0.0)
+                    gamma_shift_context[s] = {
+                        "call_wall_shift": f"{cw_s:+.2f}",
+                        "call_wall_status": s_shift.get("call_wall_status", "UNCHANGED"),
+                        "put_wall_shift": f"{pw_s:+.2f}",
+                        "put_wall_status": s_shift.get("put_wall_status", "UNCHANGED"),
+                        "net_gex_velocity_b": format_signed_currency(vel_b, "B", 2),
+                        "velocity_label": s_shift.get("velocity_label", "STABLE"),
+                        "synthesis": s_shift.get("institutional_synthesis", "")
+                    }
+        except Exception:
+            pass
+
         # Fetch options surface for SPY, QQQ, user query symbols, and top candidate setups
         cand_tickers = [c.get("ticker") for c in top_candidates[:2]]
         vol_symbols = [
@@ -539,6 +561,7 @@ The user is asking you for quantitative analysis, market insight, dealer positio
 CURRENT LIVE MARKET SNAPSHOT ({datetime.now().strftime('%Y-%m-%d %H:%M')}):
 - Market Regime: {market_data.get('narrative_title')} | Bias: {market_data.get('macro_context')}
 - Dealer Gamma Exposure Profiles (Live Options GEX): {json.dumps(gamma_context, indent=1)}
+- Day-over-Day Gamma Migration & Wall Roll Shifts: {json.dumps(gamma_shift_context, indent=1)}
 - Live Options Volatility Skew, Smile & Mispricings: {json.dumps(options_vol_context, indent=1)}
 - 5-Day Sector Velocity Baskets: {json.dumps(baskets)}
 - Key Ratio Analytics (SPY/RSP, QQQ/RSP, IWM/QQQ): {json.dumps({k: {'val': v.get('current'), '5d': v.get('pct_5d'), 'z_score': v.get('z_score_50d')} for k, v in ratios.items() if k in ['SPY_RSP', 'QQQ_RSP', 'IWM_QQQ']})}
@@ -560,6 +583,10 @@ INSTITUTIONAL DEALER GAMMA & RISK/REWARD MASTER DIRECTIVES:
        * A long tech setup requires BOTH:
          1. The asset holding its own technical support and above its own Put Wall floor.
          2. The primary benchmark (QQQ for tech, SPY for broad) trading above its Zero-Gamma Flip and Put Wall, ensuring market-making dealers are suppressing market volatility rather than dumping index/tech futures.
+   - **Day-over-Day Gamma Migration & Wall Rolls (Forward Flow)**:
+     * **Call Wall Migration**: Check if the Call Wall has ROLLED UP (e.g. from $530 to $550) or ROLLED DOWN. A rising Call Wall indicates institutional buyers are targeting higher strikes, lifting the pinning resistance ceiling and clearing upside room to run.
+     * **Put Wall Migration**: Check if the Put Wall has ROLLED UP (higher structural demand floor firming) or ROLLED DOWN (support retreating lower, early warning of volatility expansion).
+     * **Net GEX Velocity (ΔGEX)**: If Net GEX is rapidly expanding (+ΔGEX), dealers are accumulating gamma and dampening volatility. If Net GEX is bleeding (-ΔGEX), dealers are shedding gamma, creating tail-risk fragility.
    - **Magnitude / Intensity is Crucial**: If Net GEX is "Neutral / Low Conviction" (near zero, e.g. <$250M on SPY/QQQ or <$50M on single stocks), dealers have minimal delta-hedging impact. Do NOT over-index on gamma pinning. Instead, prioritize Trend Ribbons (20/50 EMA), RVOL, and Macro Baskets.
    - **Localized Strike Concentration**: Even if total Net GEX is neutral, check if a single Call Wall or Put Wall has high concentration (>= 25%). If so, that individual strike still acts as a localized price magnet or barrier.
    - **Net Long Gamma (+$B GEX, Substantial)**: Dealers are net long options gamma. To maintain delta neutrality, they BUY weakness and SELL strength. This dampens realized intraday volatility, compresses price swings, and pins price between the Put Wall (support) and Call Wall (resistance). High probability for mean-reversion, range fades, bidding pullbacks, and taking profit at Call Walls.

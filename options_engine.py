@@ -504,6 +504,13 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         "timestamp": now_ts,
         "data": profile
     }
+
+    try:
+        from gamma_tracker import record_gamma_snapshot
+        record_gamma_snapshot(ticker_up, profile)
+    except Exception:
+        pass
+
     return profile
 
 def plot_gamma_exposure_profile(gamma_data):
@@ -2048,7 +2055,110 @@ def render_gamma_desk_page(available_tickers=None):
         df_strikes = pd.DataFrame(table_rows)
         st.dataframe(df_strikes, use_container_width=True, hide_index=True)
 
-    # 6. Educational Collapsible Guide
+    # 6. Day-over-Day Gamma Migration & Strike Heat Map
+    st.markdown("<div style='margin-top:24px;'></div>", unsafe_allow_html=True)
+    st.markdown("### Day-over-Day Gamma Migration & Strike Heat Map")
+    st.caption("Visualizing institutional strike inventory repositioning, Call/Put Wall roll migrations, and Net GEX velocity across trading sessions.")
+
+    try:
+        from gamma_tracker import compute_gamma_shift, plot_gamma_shift_heatmap, format_signed_currency
+        shift_data = compute_gamma_shift(selected_ticker)
+
+        if shift_data and shift_data.get("has_history"):
+            m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+            cw_shift = shift_data.get("call_wall_shift", 0.0)
+            cw_col = "off" if abs(cw_shift) < 0.01 else ("normal" if cw_shift > 0 else "inverse")
+            with m_col1:
+                st.metric(
+                    "Call Wall Migration",
+                    f"${shift_data.get('call_wall_current', 0):,.1f}",
+                    f"{cw_shift:+.1f} DoD ({shift_data.get('call_wall_status', '').replace('_', ' ')})",
+                    delta_color=cw_col
+                )
+                st.caption(f"Prev: ${shift_data.get('call_wall_previous', 0):,.1f}")
+
+            pw_shift = shift_data.get("put_wall_shift", 0.0)
+            pw_col = "off" if abs(pw_shift) < 0.01 else ("normal" if pw_shift > 0 else "inverse")
+            with m_col2:
+                st.metric(
+                    "Put Wall Migration",
+                    f"${shift_data.get('put_wall_current', 0):,.1f}",
+                    f"{pw_shift:+.1f} DoD ({shift_data.get('put_wall_status', '').replace('_', ' ')})",
+                    delta_color=pw_col
+                )
+                st.caption(f"Prev: ${shift_data.get('put_wall_previous', 0):,.1f}")
+
+            zg_shift = shift_data.get("zero_gamma_shift", 0.0)
+            with m_col3:
+                st.metric(
+                    "Zero-Gamma Migration",
+                    f"${shift_data.get('zero_gamma_current', 0):,.1f}",
+                    f"{zg_shift:+.1f} DoD",
+                    delta_color="off"
+                )
+                st.caption(f"Prev: ${shift_data.get('zero_gamma_previous', 0):,.1f}")
+
+            vel_delta = shift_data.get("net_gex_velocity_b", 0.0)
+            vel_col = "off" if abs(vel_delta) < 0.05 else ("normal" if vel_delta > 0 else "inverse")
+            with m_col4:
+                st.metric(
+                    "Net GEX Velocity (ΔGEX)",
+                    format_signed_currency(shift_data.get('net_gex_current_b', 0), "B", 2),
+                    f"{vel_delta:+.2f}B DoD",
+                    delta_color=vel_col
+                )
+                st.caption(shift_data.get("velocity_label", "Stable"))
+
+            # Interactive Mode Toggle
+            mode_c1, mode_c2 = st.columns([2.5, 1.5])
+            with mode_c1:
+                st.markdown(f"> **Quantitative Shift Audit:** {shift_data.get('institutional_synthesis', '')}")
+            with mode_c2:
+                heat_mode_choice = st.radio(
+                    "Heat Map Visual Mode",
+                    ["Total Net GEX ($M)", "Day-over-Day ΔGEX Shift (Brightness = Change)"],
+                    index=0,
+                    horizontal=True,
+                    key="gamma_heatmap_mode_choice"
+                )
+
+            heat_mode = "delta_gex" if "ΔGEX" in heat_mode_choice else "net_gex"
+            heatmap_fig = plot_gamma_shift_heatmap(selected_ticker, mode=heat_mode, max_days=10)
+            if heatmap_fig:
+                st.plotly_chart(heatmap_fig, use_container_width=True)
+
+            # Top Accumulating Strikes expander
+            top_calls = shift_data.get("top_calls_accumulating", [])
+            top_puts = shift_data.get("top_puts_hedging", [])
+            if top_calls or top_puts:
+                with st.expander(f"Top Strike Positioning Shifts for {selected_ticker} (Where Dealers Repositioned)"):
+                    tk_c1, tk_c2 = st.columns(2)
+                    with tk_c1:
+                        st.markdown("**🟢 Top Call Gamma Accumulation Strikes (Upside Magnets Building)**")
+                        c_rows = []
+                        for c_item in top_calls:
+                            c_rows.append({
+                                "Strike": c_item.get("strike_str"),
+                                "ΔCall GEX ($M)": format_signed_currency(c_item.get('delta_call_gex_m'), "M", 1),
+                                "Current Net GEX": format_signed_currency(c_item.get('curr_net_gex_m'), "M", 1),
+                                "Call Open Interest": f"{c_item.get('curr_call_oi'):,}"
+                            })
+                        st.dataframe(pd.DataFrame(c_rows), use_container_width=True, hide_index=True)
+                    with tk_c2:
+                        st.markdown("**🔴 Top Put Gamma Hedging Strikes (Downside Demand Building)**")
+                        p_rows = []
+                        for p_item in top_puts:
+                            p_rows.append({
+                                "Strike": p_item.get("strike_str"),
+                                "ΔPut GEX ($M)": format_signed_currency(p_item.get('delta_put_gex_m'), "M", 1),
+                                "Current Net GEX": format_signed_currency(p_item.get('curr_net_gex_m'), "M", 1),
+                                "Put Open Interest": f"{p_item.get('curr_put_oi'):,}"
+                            })
+                        st.dataframe(pd.DataFrame(p_rows), use_container_width=True, hide_index=True)
+    except Exception as e:
+        st.caption(f"Gamma migration tracker initializing: {e}")
+
+    # 7. Educational Collapsible Guide
     with st.expander("Institutional Desk Guide: How to Trade Using Gamma Levels"):
         st.markdown("""
         * **Call Wall:** The strike with the largest open Call Gamma. Market makers are typically assumed net long calls (counterparty to call sellers). As spot approaches the Call Wall, dealers must sell stock to hedge, creating a natural upside ceiling and pinning magnet into OpEx.

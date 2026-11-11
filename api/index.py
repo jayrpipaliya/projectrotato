@@ -405,6 +405,22 @@ def api_gamma(ticker: str, force: bool = Query(False)):
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/api/gamma/{ticker}/shift")
+def api_gamma_shift(ticker: str):
+    try:
+        from gamma_tracker import compute_gamma_shift
+        return clean_json(compute_gamma_shift(ticker))
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.get("/api/gamma/{ticker}/heatmap")
+def api_gamma_heatmap(ticker: str, mode: str = Query("net_gex"), days: int = Query(10)):
+    try:
+        from gamma_tracker import generate_gamma_heatmap_matrix
+        return clean_json(generate_gamma_heatmap_matrix(ticker, mode=mode, max_days=days))
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.get("/api/options/{ticker}")
 def api_options(ticker: str, direction: str = Query("Calls"), side: str = Query("Buy"), expiration: str = Query(None)):
     try:
@@ -1676,6 +1692,37 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div id="gammaTimestampFooter" class="flex flex-col sm:flex-row justify-between items-center text-[10.5px] font-mono text-slate-500 mt-2 px-1 border-t border-white/5 pt-1.5"></div>
             </div>
 
+            <!-- Day-over-Day Gamma Migration & Strike Heat Map -->
+            <div class="lux-card p-4 mb-5 border-t-2 border-indigo-500/30">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                    <div>
+                        <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                            <span>Day-over-Day Gamma Migration & Strike Heat Map</span>
+                            <span id="gammaMigrationStatusBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Wall Shifts & ΔGEX</span>
+                        </h4>
+                        <p class="text-[11px] text-slate-400">Visualizing institutional strike inventory flow, Call/Put Wall rolls, and spot price trajectory over time.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="gammaHeatmapModeGroup">
+                            <button onclick="setGammaHeatmapMode('net_gex')" id="btnHeatmapNet" class="px-2.5 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30">Total Net GEX ($M)</button>
+                            <button onclick="setGammaHeatmapMode('delta_gex')" id="btnHeatmapDelta" class="px-2.5 py-1 rounded font-bold transition text-slate-400">ΔGEX Shift (Brightness = Change)</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Migration 4 KPI Cards -->
+                <div id="gammaMigrationKpiRow" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3.5">
+                    <!-- Populated dynamically: Call Wall Shift, Put Wall Shift, Zero Flip Shift, Net GEX Velocity -->
+                </div>
+
+                <div id="gammaMigrationSynthesis" class="p-2.5 mb-3 rounded-lg bg-indigo-950/20 border border-indigo-500/20 text-xs text-slate-300 font-sans hidden">
+                    <!-- Dynamic quantitative summary -->
+                </div>
+
+                <!-- Plotly Heatmap Container -->
+                <div id="gammaHeatmapChart" style="height: 480px;"></div>
+            </div>
+
             <!-- Comprehensive Per-Strike Table Breakdown -->
             <div class="lux-card p-4 mb-5">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
@@ -2229,7 +2276,12 @@ HTML_CONTENT = """<!DOCTYPE html>
                     LOADED_TABS.add('tab_gamma');
                     loadGammaDesk();
                 } else {
-                    setTimeout(() => Plotly.Plots.resize('gammaDeskChart'), 50);
+                    setTimeout(() => {
+                        Plotly.Plots.resize('gammaDeskChart');
+                        if (document.getElementById('gammaHeatmapChart')) {
+                            Plotly.Plots.resize('gammaHeatmapChart');
+                        }
+                    }, 50);
                 }
             } else if (tabId === 'tab_options') {
                 populateOptionsTickersDropdown();
@@ -3938,6 +3990,211 @@ async function init() {
             }
         }
 
+        
+        let CURRENT_HEATMAP_MODE = 'net_gex';
+
+        async function setGammaHeatmapMode(mode) {
+            CURRENT_HEATMAP_MODE = mode;
+            const btnNet = document.getElementById('btnHeatmapNet');
+            const btnDelta = document.getElementById('btnHeatmapDelta');
+            if (btnNet && btnDelta) {
+                if (mode === 'net_gex') {
+                    btnNet.className = 'px-2.5 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30';
+                    btnDelta.className = 'px-2.5 py-1 rounded font-bold transition text-slate-400';
+                } else {
+                    btnDelta.className = 'px-2.5 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30';
+                    btnNet.className = 'px-2.5 py-1 rounded font-bold transition text-slate-400';
+                }
+            }
+            const sel = document.getElementById('gammaDeskTickerSelect');
+            const ticker = sel ? sel.value : 'SPY';
+            loadGammaMigrationAndHeatmap(ticker);
+        }
+
+        function formatSignedMoney(val, suffix = 'B', decimals = 2) {
+            if (val === null || val === undefined || isNaN(val)) return '$0.00' + suffix;
+            const num = Number(val);
+            const sign = num >= 0 ? '+' : '-';
+            return `${sign}$${Math.abs(num).toFixed(decimals)}${suffix}`;
+        }
+
+        async function loadGammaMigrationAndHeatmap(ticker) {
+            try {
+                // Fetch shift summary
+                const shiftRes = await fetch(`/api/gamma/${encodeURIComponent(ticker)}/shift`);
+                const shift = await shiftRes.json();
+
+                const kpiRow = document.getElementById('gammaMigrationKpiRow');
+                const synBox = document.getElementById('gammaMigrationSynthesis');
+
+                if (kpiRow && shift && shift.has_history) {
+                    const cwShift = Number(shift.call_wall_shift || 0);
+                    const pwShift = Number(shift.put_wall_shift || 0);
+                    const velShift = Number(shift.net_gex_velocity_b || 0);
+
+                    const cwCol = Math.abs(cwShift) < 0.01 ? 'text-slate-300' : (cwShift > 0 ? 'text-mint' : 'text-cherry');
+                    const pwCol = Math.abs(pwShift) < 0.01 ? 'text-slate-300' : (pwShift > 0 ? 'text-mint' : 'text-cherry');
+                    const velCol = Math.abs(velShift) < 0.05 ? 'text-slate-300' : (velShift > 0 ? 'text-mint' : 'text-cherry');
+
+                    kpiRow.innerHTML = `
+                        <div class="lux-card p-3 border-l-2 border-mint">
+                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Call Wall Migration</div>
+                            <div class="text-base font-bold ${cwCol} mt-0.5">$${Number(shift.call_wall_current || 0).toFixed(1)} <span class="text-xs font-normal text-slate-400">(${cwShift >= 0 ? '+' : ''}${cwShift.toFixed(1)})</span></div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">${(shift.call_wall_status || '').replace('_', ' ')} • Prev $${Number(shift.call_wall_previous || 0).toFixed(1)}</div>
+                        </div>
+                        <div class="lux-card p-3 border-l-2 border-cherry">
+                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Put Wall Migration</div>
+                            <div class="text-base font-bold ${pwCol} mt-0.5">$${Number(shift.put_wall_current || 0).toFixed(1)} <span class="text-xs font-normal text-slate-400">(${pwShift >= 0 ? '+' : ''}${pwShift.toFixed(1)})</span></div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">${(shift.put_wall_status || '').replace('_', ' ')} • Prev $${Number(shift.put_wall_previous || 0).toFixed(1)}</div>
+                        </div>
+                        <div class="lux-card p-3 border-l-2 border-sky-400">
+                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Zero Flip Migration</div>
+                            <div class="text-base font-bold text-sky-400 mt-0.5">$${Number(shift.zero_gamma_current || 0).toFixed(1)} <span class="text-xs font-normal text-slate-400">(${Number(shift.zero_gamma_shift || 0) >= 0 ? '+' : ''}${Number(shift.zero_gamma_shift || 0).toFixed(1)})</span></div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">Prev $${Number(shift.zero_gamma_previous || 0).toFixed(1)}</div>
+                        </div>
+                        <div class="lux-card p-3 border-l-2 border-indigo-400">
+                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Net GEX Velocity (&Delta;GEX)</div>
+                            <div class="text-base font-bold ${velCol} mt-0.5">${formatSignedMoney(shift.net_gex_current_b, 'B', 2)} <span class="text-xs font-normal text-slate-400">(${formatSignedMoney(shift.net_gex_velocity_b, 'B', 2)})</span></div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">${shift.velocity_label || 'Stable'}</div>
+                        </div>
+                    `;
+
+                    if (synBox && shift.institutional_synthesis) {
+                        synBox.innerHTML = `<b>Quantitative Flow Synthesis:</b> ${shift.institutional_synthesis}`;
+                        synBox.classList.remove('hidden');
+                    }
+                } else if (kpiRow) {
+                    kpiRow.innerHTML = `<div class="col-span-full p-3.5 text-center text-xs text-slate-400 bg-white/[0.02] rounded-lg border border-white/5">Baseline snapshot recorded for <b>${ticker}</b>. Additional market sessions will build multi-day migration & heat map.</div>`;
+                    if (synBox) synBox.classList.add('hidden');
+                }
+
+                // Fetch heatmap matrix
+                const heatRes = await fetch(`/api/gamma/${encodeURIComponent(ticker)}/heatmap?mode=${CURRENT_HEATMAP_MODE}&days=10`);
+                const heat = await heatRes.json();
+
+                if (heat && !heat.error && heat.dates && heat.dates.length > 0) {
+                    renderGammaHeatmapPlotly(heat);
+                } else {
+                    const hmContainer = document.getElementById('gammaHeatmapChart');
+                    if (hmContainer) {
+                        hmContainer.innerHTML = `<div class="flex items-center justify-center h-full text-xs text-slate-500 font-mono">Insufficient historical snapshots to render multi-day heat map for ${ticker}.</div>`;
+                    }
+                }
+            } catch (e) {
+                console.error("Gamma heatmap load error:", e);
+            }
+        }
+
+        function renderGammaHeatmapPlotly(data) {
+            const z = data.z_matrix;
+            const x = data.dates;
+            const y = data.strikes;
+            const hover = data.hover_matrix;
+
+            // Compute symmetric bounds with 95th percentile clamp
+            const allAbs = [];
+            for (let r = 0; r < z.length; r++) {
+                for (let c = 0; c < z[r].length; c++) {
+                    const v = Math.abs(z[r][c]);
+                    if (v > 0.01) allAbs.push(v);
+                }
+            }
+            allAbs.sort((a, b) => a - b);
+            let maxAbs = 10;
+            if (allAbs.length > 0) {
+                const p95Idx = Math.floor(allAbs.length * 0.95);
+                maxAbs = Math.max(allAbs[p95Idx] * 1.25, 5.0);
+            }
+
+            const customColorscale = [
+                [0.0, '#FF2E55'],
+                [0.45, '#4c0519'],
+                [0.50, '#0e1117'],
+                [0.55, '#064e3b'],
+                [1.0, '#00F5A0']
+            ];
+
+            const traceHeatmap = {
+                type: 'heatmap',
+                x: x,
+                y: y,
+                z: z,
+                text: hover,
+                hoverinfo: 'text',
+                colorscale: customColorscale,
+                zmin: -maxAbs,
+                zmax: maxAbs,
+                colorbar: {
+                    title: { text: CURRENT_HEATMAP_MODE === 'delta_gex' ? '&Delta;GEX ($M)' : 'Net GEX ($M)', font: { color: '#94a3b8', size: 10 } },
+                    tickfont: { color: '#94a3b8', size: 9 },
+                    thickness: 12,
+                    len: 0.85
+                }
+            };
+
+            const traceSpots = {
+                type: 'scatter',
+                mode: 'lines+markers',
+                x: x,
+                y: data.spots,
+                line: { color: '#ffffff', width: 2.5 },
+                marker: { size: 7, color: '#ffffff', line: { color: '#0e1117', width: 1.5 } },
+                name: 'Spot Price',
+                hovertemplate: 'Spot Price: $%{y:,.2f}<extra></extra>'
+            };
+
+            const traceCW = {
+                type: 'scatter',
+                mode: 'markers',
+                x: x,
+                y: data.call_walls,
+                marker: { symbol: 'diamond', size: 9, color: '#00F5A0', line: { color: '#ffffff', width: 1 } },
+                name: 'Call Wall (Ceiling Pin)',
+                hovertemplate: 'Call Wall Pin: $%{y:,.2f}<extra></extra>'
+            };
+
+            const tracePW = {
+                type: 'scatter',
+                mode: 'markers',
+                x: x,
+                y: data.put_walls,
+                marker: { symbol: 'triangle-up', size: 10, color: '#FF2E55', line: { color: '#ffffff', width: 1 } },
+                name: 'Put Wall (Support Floor)',
+                hovertemplate: 'Put Wall Floor: $%{y:,.2f}<extra></extra>'
+            };
+
+            const modeTitle = CURRENT_HEATMAP_MODE === 'delta_gex' ? 'Day-over-Day &Delta;GEX Shift (Brightness = Change Intensity)' : 'Net Gamma Distribution by Strike ($M)';
+            const layout = {
+                title: {
+                    text: `<b>${data.ticker} Gamma Migration Heat Map</b> | ${modeTitle}<br><span style="font-size:10px; color:#94a3b8; font-weight:normal; font-family:monospace;">White Line = Spot Trajectory &bull; Diamonds = Call Wall &bull; Triangles = Put Wall</span>`,
+                    font: { color: '#f1f5f9', size: 13 }
+                },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { l: 58, r: 25, t: 65, b: 40 },
+                xaxis: {
+                    title: { text: 'Trading Session', font: { color: '#94a3b8', size: 11 } },
+                    gridcolor: 'rgba(255, 255, 255, 0.05)',
+                    tickfont: { color: '#94a3b8', size: 10 }
+                },
+                yaxis: {
+                    title: { text: 'Option Strike Price ($)', font: { color: '#94a3b8', size: 11 } },
+                    gridcolor: 'rgba(255, 255, 255, 0.05)',
+                    tickfont: { color: '#94a3b8', size: 10 }
+                },
+                showlegend: true,
+                legend: {
+                    orientation: 'h',
+                    x: 1,
+                    xanchor: 'right',
+                    y: 1.1,
+                    font: { color: '#94a3b8', size: 10 }
+                }
+            };
+
+            Plotly.newPlot('gammaHeatmapChart', [traceHeatmap, traceSpots, traceCW, tracePW], layout, { responsive: true, displayModeBar: false });
+        }
+
         function renderGammaTableRows(g) {
             const tbody = document.getElementById('gammaDeskStrikesTbody');
             if (!tbody || !g.strikes || g.strikes.length === 0) return;
@@ -4226,6 +4483,9 @@ async function init() {
                 if (countSpan) countSpan.innerText = `${relCount} Relevant / ${totCount} Total Mapped`;
 
                 renderGammaTableRows(g);
+
+                // 5. Load and Render Day-over-Day Gamma Migration & Heatmap
+                loadGammaMigrationAndHeatmap(ticker);
 
             } catch (err) {
                 console.error("Gamma desk fetch error:", err);
