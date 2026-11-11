@@ -807,12 +807,17 @@ def _seed_ticker_if_needed(ticker: str) -> bool:
         k_radius = 20
 
     # Determine contract volume scale based on asset capitalization
+    # Uses realistic call-over-put institutional open interest ratio (~1.35x)
+    # ensuring positive long gamma regimes match live engine scale (~$5.5B - $7.0B)
     if t_up in ["SPY", "QQQ"]:
-        base_vol = 35000.0
+        base_call_vol = 95000.0
+        base_put_vol = 70000.0
     elif t_up in ["NVDA", "AAPL", "MSFT", "AMZN", "META", "TSLA"]:
-        base_vol = 15000.0
+        base_call_vol = 35000.0
+        base_put_vol = 26000.0
     else:
-        base_vol = 8000.0
+        base_call_vol = 18000.0
+        base_put_vol = 14000.0
 
     for idx, (dt_idx, row) in enumerate(tail_df.iterrows()):
         close_px = float(row.get("Close", 100))
@@ -822,16 +827,12 @@ def _seed_ticker_if_needed(ticker: str) -> bool:
         else:
             date_str = pd.to_datetime(date_val).strftime("%Y-%m-%d")
 
-        # Dynamic Call & Put Wall placement
-        cw_offset = step * 5 if t_up in ["SPY", "QQQ"] else step * 3
-        pw_offset = step * 5 if t_up in ["SPY", "QQQ"] else step * 3
-
-        cw = round((close_px + cw_offset) / (step * 5 if step == 1.0 else step)) * (step * 5 if step == 1.0 else step)
-        pw = round((close_px - pw_offset) / (step * 5 if step == 1.0 else step)) * (step * 5 if step == 1.0 else step)
-        if cw <= close_px:
-            cw = close_px + step * 2
-        if pw >= close_px:
-            pw = close_px - step * 2
+        # Dynamic Call & Put Wall placement aligned to psychological strikes
+        wall_step = 5.0 if t_up in ["SPY", "QQQ"] else (step * 2 if step >= 2.5 else step * 5)
+        cw = math.ceil((close_px + 1.0) / wall_step) * wall_step
+        pw = math.floor((close_px - 1.0) / wall_step) * wall_step
+        if cw - pw < wall_step:
+            cw += wall_step
 
         min_k = int(round(close_px - (k_radius * step)))
         max_k = int(round(close_px + (k_radius * step)))
@@ -850,16 +851,16 @@ def _seed_ticker_if_needed(ticker: str) -> bool:
 
             is_round_5 = (k % 5 == 0)
             is_round_10 = (k % 10 == 0)
-            round_boost = 1.6 if is_round_10 else (1.3 if is_round_5 else 1.0)
+            round_boost = 1.4 if is_round_10 else (1.2 if is_round_5 else 1.0)
 
-            c_oi_base = base_vol * math.exp(-0.5 * (dist_cw / (step * 3.5))**2) * 2.8 + \
-                        (base_vol * 0.5) * math.exp(-0.5 * (dist_spot / (step * 5.0))**2) + \
-                        ((base_vol * 0.25) if k >= close_px else (base_vol * 0.08))
+            c_oi_base = base_call_vol * math.exp(-0.5 * (dist_cw / (step * 3.5))**2) * 2.2 + \
+                        (base_call_vol * 0.45) * math.exp(-0.5 * (dist_spot / (step * 5.0))**2) + \
+                        ((base_call_vol * 0.25) if k >= close_px else (base_call_vol * 0.06))
             c_oi = int(c_oi_base * round_boost)
 
-            p_oi_base = base_vol * math.exp(-0.5 * (dist_pw / (step * 3.5))**2) * 2.8 + \
-                        (base_vol * 0.5) * math.exp(-0.5 * (dist_spot / (step * 5.0))**2) + \
-                        ((base_vol * 0.25) if k <= close_px else (base_vol * 0.08))
+            p_oi_base = base_put_vol * math.exp(-0.5 * (dist_pw / (step * 3.5))**2) * 2.2 + \
+                        (base_put_vol * 0.45) * math.exp(-0.5 * (dist_spot / (step * 5.0))**2) + \
+                        ((base_put_vol * 0.25) if k <= close_px else (base_put_vol * 0.06))
             p_oi = int(p_oi_base * round_boost)
 
             c_gex = round(close_px * c_oi * 100.0 * gamma * 0.01 * close_px / 1e6, 1)
@@ -878,8 +879,6 @@ def _seed_ticker_if_needed(ticker: str) -> bool:
             }
 
         tot_net_b = round((total_call_gex - total_put_gex) / 1000.0, 2)
-        if tot_net_b <= 0:
-            tot_net_b = round(4.5 + idx * 0.3, 2) if t_up in ["SPY", "QQQ"] else round(1.2 + idx * 0.1, 2)
 
         sym_history.append({
             "date": date_str,
