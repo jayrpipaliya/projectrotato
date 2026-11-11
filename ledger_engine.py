@@ -97,6 +97,81 @@ def fetch_live_price(ticker: str) -> float:
     return px
 
 
+def _compute_position_metrics(
+    asset_type: str,
+    direction: str,
+    entry_price: float,
+    size: float,
+    spread_type: str = None,
+    short_strike: float = None,
+    long_strike: float = None,
+    spread_width: float = None,
+    net_premium: float = None,
+    strike: float = None,
+) -> dict:
+    """Compute normalized entry price, collateral/position value, max risk, and max profit."""
+    a_type = str(asset_type or "STOCK").upper()
+    qty = float(size or 1.0)
+    px = float(entry_price or 0.0)
+
+    if a_type == "SPREAD":
+        s_type = (
+            spread_type
+            or ("BULL_PUT_CREDIT" if ("LONG" in direction.upper() or "DIP" in direction.upper()) else "BEAR_CALL_CREDIT")
+        ).upper()
+        s_strike = float(short_strike) if short_strike is not None else (float(strike) if strike is not None else 0.0)
+        l_strike = float(long_strike) if long_strike is not None else 0.0
+        calculated_width = abs(s_strike - l_strike) if (s_strike > 0 and l_strike > 0) else 5.0
+        width = float(spread_width) if (spread_width and float(spread_width) > 0) else calculated_width
+        net_prem = float(net_premium if net_premium is not None else px)
+
+        if "CREDIT" in s_type:
+            calc_max_profit = round(net_prem * 100.0 * qty, 2)
+            calc_max_risk = round(max(0.0, width - net_prem) * 100.0 * qty, 2)
+        else:
+            calc_max_risk = round(net_prem * 100.0 * qty, 2)
+            calc_max_profit = round(max(0.0, width - net_prem) * 100.0 * qty, 2)
+
+        return {
+            "entry_price": net_prem,
+            "position_value": round(calc_max_risk, 2),
+            "spread_type": s_type,
+            "short_strike": s_strike,
+            "long_strike": l_strike,
+            "spread_width": width,
+            "net_premium": net_prem,
+            "max_risk": calc_max_risk,
+            "max_profit": calc_max_profit,
+        }
+
+    if a_type == "OPTION":
+        pos_val = round(px * qty * 100.0, 2)
+        return {
+            "entry_price": px,
+            "position_value": pos_val,
+            "spread_type": None,
+            "short_strike": None,
+            "long_strike": None,
+            "spread_width": None,
+            "net_premium": None,
+            "max_risk": pos_val,
+            "max_profit": None,
+        }
+
+    pos_val = round(px * qty, 2)
+    return {
+        "entry_price": px,
+        "position_value": pos_val,
+        "spread_type": None,
+        "short_strike": None,
+        "long_strike": None,
+        "spread_width": None,
+        "net_premium": None,
+        "max_risk": pos_val,
+        "max_profit": None,
+    }
+
+
 def add_trade(
     ticker: str,
     direction: str,
@@ -152,48 +227,33 @@ def add_trade(
             underlying_entry_spot = fetch_live_price(ticker_clean)
 
     # Position Value & Collateral Calculation
+    metrics = _compute_position_metrics(
+        asset_type=asset_type,
+        direction=direction,
+        entry_price=entry_price,
+        size=size,
+        spread_type=spread_type,
+        short_strike=short_strike,
+        long_strike=long_strike,
+        spread_width=spread_width,
+        net_premium=net_premium,
+        strike=strike,
+    )
+    entry_price = metrics["entry_price"]
+    s_type = metrics["spread_type"]
+    s_strike = metrics["short_strike"]
+    l_strike = metrics["long_strike"]
+    width = metrics["spread_width"]
+    net_prem = metrics["net_premium"]
+
     if is_spread:
-        s_type = (spread_type or ("BULL_PUT_CREDIT" if ("LONG" in direction.upper() or "DIP" in direction.upper()) else "BEAR_CALL_CREDIT")).upper()
-        s_strike = float(short_strike) if short_strike is not None else (float(strike) if strike is not None else 0.0)
-        l_strike = float(long_strike) if long_strike is not None else 0.0
-        calculated_width = abs(s_strike - l_strike) if (s_strike > 0 and l_strike > 0) else 5.0
-        width = float(spread_width) if (spread_width and float(spread_width) > 0) else calculated_width
-        net_prem = float(net_premium if net_premium is not None else entry_price)
-
-        is_credit = "CREDIT" in s_type
-        if is_credit:
-            calc_max_profit = round(net_prem * 100.0 * float(size), 2)
-            calc_max_risk = round(max(0.0, width - net_prem) * 100.0 * float(size), 2)
-        else:
-            calc_max_risk = round(net_prem * 100.0 * float(size), 2)
-            calc_max_profit = round(max(0.0, width - net_prem) * 100.0 * float(size), 2)
-
-        final_max_risk = float(max_risk) if (max_risk is not None and float(max_risk) > 0) else calc_max_risk
-        final_max_profit = float(max_profit) if (max_profit is not None and float(max_profit) > 0) else calc_max_profit
-
-        # In a defined-risk spread, the committed capital / margin requirement is the max collateral (max_risk)
+        final_max_risk = float(max_risk) if (max_risk is not None and float(max_risk) > 0) else metrics["max_risk"]
+        final_max_profit = float(max_profit) if (max_profit is not None and float(max_profit) > 0) else metrics["max_profit"]
         position_val = round(final_max_risk, 2)
-        entry_price = net_prem
-    elif is_option:
-        multiplier = 100
-        position_val = round(float(entry_price) * float(size) * multiplier, 2)
-        s_type = None
-        s_strike = None
-        l_strike = None
-        width = None
-        net_prem = None
-        final_max_risk = position_val
-        final_max_profit = None
     else:
-        multiplier = 1
-        position_val = round(float(entry_price) * float(size) * multiplier, 2)
-        s_type = None
-        s_strike = None
-        l_strike = None
-        width = None
-        net_prem = None
-        final_max_risk = position_val
-        final_max_profit = None
+        final_max_risk = metrics["max_risk"]
+        final_max_profit = metrics["max_profit"]
+        position_val = metrics["position_value"]
 
     # Ensure ai_snapshot has entry_price_spot
     snap = ai_snapshot.copy() if ai_snapshot else {}
@@ -241,14 +301,48 @@ def add_trade(
 
 
 def update_trade(trade_id: str, updates: dict) -> dict:
-    """Update fields on an existing trade (e.g. stop loss, notes, targets)."""
+    """Update fields on an existing trade and recalculate spread/position risk metrics when fill or size changes."""
     trades = load_ledger()
     target_trade = None
+    recalc_keys = {"entry_price", "net_premium", "size", "spread_width", "short_strike", "long_strike", "spread_type"}
     for t in trades:
         if t.get("id") == trade_id:
             for k, v in updates.items():
                 if k != "id":  # immutable
                     t[k] = v
+
+            if any(k in updates for k in recalc_keys):
+                if t.get("asset_type") == "SPREAD":
+                    if "entry_price" in updates and "net_premium" not in updates:
+                        t["net_premium"] = float(updates["entry_price"])
+                    elif "net_premium" in updates and "entry_price" not in updates:
+                        t["entry_price"] = float(updates["net_premium"])
+
+                metrics = _compute_position_metrics(
+                    asset_type=t.get("asset_type", "STOCK"),
+                    direction=t.get("direction", "LONG"),
+                    entry_price=float(t.get("entry_price") or 0.0),
+                    size=float(t.get("size") or 1.0),
+                    spread_type=t.get("spread_type"),
+                    short_strike=t.get("short_strike"),
+                    long_strike=t.get("long_strike"),
+                    spread_width=t.get("spread_width"),
+                    net_premium=t.get("net_premium"),
+                    strike=t.get("strike"),
+                )
+                t["entry_price"] = metrics["entry_price"]
+                if t.get("asset_type") == "SPREAD":
+                    t["net_premium"] = metrics["net_premium"]
+                    t["spread_width"] = metrics["spread_width"]
+                    if "max_risk" not in updates:
+                        t["max_risk"] = metrics["max_risk"]
+                    if "max_profit" not in updates:
+                        t["max_profit"] = metrics["max_profit"]
+                    if "position_value" not in updates:
+                        t["position_value"] = round(float(t.get("max_risk") or metrics["position_value"]), 2)
+                elif "position_value" not in updates:
+                    t["position_value"] = metrics["position_value"]
+
             target_trade = t
             break
 

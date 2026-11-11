@@ -1436,12 +1436,29 @@ with tab_ledger:
                             st.rerun()
 
                 with act_col2:
-                    with st.expander("Adjust Invalidation / Target"):
+                    is_spread_trd = trd.get("asset_type") == "SPREAD"
+                    entry_lbl = (
+                        "Net Credit ($)" if (is_spread_trd and "CREDIT" in str(trd.get("spread_type", "")).upper())
+                        else ("Net Debit ($)" if is_spread_trd else ("Option Fill ($)" if is_opt else "Entry Fill ($)"))
+                    )
+                    qty_lbl = "Spreads (Qty)" if is_spread_trd else ("Contracts" if is_opt else "Shares")
+                    with st.expander("Adjust Position & Levels"):
+                        new_entry = st.number_input(entry_lbl, value=float(trd.get("entry_price") or 0.0), min_value=0.0, format="%.2f", key=f"u_entry_{trd['id']}")
+                        new_size = st.number_input(qty_lbl, value=float(trd.get("size") or 1.0), min_value=0.01, format="%.2f", key=f"u_size_{trd['id']}")
                         new_stop = st.number_input("New Stop Loss ($)", value=float(trd["stop_loss"]), format="%.2f", key=f"u_stop_{trd['id']}")
                         new_tp1 = st.number_input("New Target 1 ($)", value=float(trd["target_1"]), format="%.2f", key=f"u_tp1_{trd['id']}")
                         new_notes = st.text_input("Append Notes", key=f"u_notes_{trd['id']}")
                         if st.button("Save Updates", key=f"btn_upd_{trd['id']}", use_container_width=True):
-                            update_trade(trd["id"], {"stop_loss": new_stop, "target_1": new_tp1, "notes": f"{trd.get('notes', '')} | {new_notes}".strip()})
+                            upd_payload = {
+                                "entry_price": new_entry,
+                                "size": new_size,
+                                "stop_loss": new_stop,
+                                "target_1": new_tp1,
+                                "notes": f"{trd.get('notes', '')} | {new_notes}".strip(" |") if new_notes.strip() else trd.get("notes", ""),
+                            }
+                            if is_spread_trd:
+                                upd_payload["net_premium"] = new_entry
+                            update_trade(trd["id"], upd_payload)
                             st.success("Trade updated!")
                             time.sleep(0.5)
                             st.rerun()

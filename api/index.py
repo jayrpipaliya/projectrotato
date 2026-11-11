@@ -5392,11 +5392,30 @@ async function init() {
                         </div>
 
                         <!-- Adjust Inline Drawer -->
-                        <div id="adjustDrawer-${trd.id}" class="hidden mt-3 p-3 rounded-xl bg-[#090b10] border border-white/20 space-y-2 text-xs">
+                        <div id="adjustDrawer-${trd.id}"
+                             data-asset-type="${trd.asset_type || 'STOCK'}"
+                             data-spread-type="${trd.spread_type || ''}"
+                             data-spread-width="${trd.spread_width || (trd.short_strike && trd.long_strike ? Math.abs(trd.short_strike - trd.long_strike) : 5)}"
+                             class="hidden mt-3 p-3 rounded-xl bg-[#090b10] border border-white/20 space-y-2 text-xs">
                             <div class="font-bold text-white flex justify-between">
-                                <span>Adjust Invalidation / Target</span>
+                                <span>Adjust Position & Levels</span>
                                 <button onclick="toggleTradeAdjustDrawer('${trd.id}')" class="text-slate-500 hover:text-white">&times;</button>
                             </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label class="text-[9.5px] uppercase font-bold text-slate-300">${isSpread ? ((trd.spread_type || '').includes('CREDIT') ? 'Net Credit ($)' : 'Net Debit ($)') : (isOpt ? 'Option Fill ($)' : 'Entry Fill ($)')}</label>
+                                    <input id="adjustEntry-${trd.id}" type="number" step="0.01" min="0" value="${(trd.entry_price || 0).toFixed(2)}" oninput="updateAdjustPreview('${trd.id}')" class="w-full mt-0.5 bg-[#161722] border border-white/15 rounded px-2 py-1 text-white text-xs">
+                                </div>
+                                <div>
+                                    <label class="text-[9.5px] uppercase font-bold text-slate-300">${isSpread ? 'Spreads (Qty)' : (isOpt ? 'Contracts' : 'Shares')}</label>
+                                    <input id="adjustSize-${trd.id}" type="number" step="${isSpread || isOpt ? '1' : '0.01'}" min="0.01" value="${trd.size || 1}" oninput="updateAdjustPreview('${trd.id}')" class="w-full mt-0.5 bg-[#161722] border border-white/15 rounded px-2 py-1 text-white text-xs">
+                                </div>
+                            </div>
+                            ${isSpread ? `
+                            <div id="adjustSpreadPreview-${trd.id}" class="text-[10.5px] text-purple-300 font-mono bg-purple-950/20 border border-purple-500/20 rounded px-2 py-1">
+                                Collateral: $${(trd.max_risk || trd.position_value || 0).toFixed(2)} | Max Profit: $${(trd.max_profit || 0).toFixed(2)} (${((trd.max_risk || 0) > 0 ? ((trd.max_profit || 0) / trd.max_risk * 100).toFixed(1) : '0.0')}% ROC)
+                            </div>
+                            ` : ''}
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-[9.5px] uppercase font-bold text-cherry">New Stop ($)</label>
@@ -5808,15 +5827,47 @@ async function init() {
             if (el) el.classList.toggle('hidden');
         }
 
+        function updateAdjustPreview(id) {
+            const drawer = document.getElementById('adjustDrawer-' + id);
+            const previewEl = document.getElementById('adjustSpreadPreview-' + id);
+            if (!drawer || !previewEl) return;
+            const spreadType = (drawer.dataset.spreadType || 'BULL_PUT_CREDIT').toUpperCase();
+            const width = parseFloat(drawer.dataset.spreadWidth) || 5;
+            const prem = Math.max(0, parseFloat(document.getElementById('adjustEntry-' + id).value) || 0);
+            const qty = Math.max(0.01, parseFloat(document.getElementById('adjustSize-' + id).value) || 1);
+            const isCredit = spreadType.includes('CREDIT');
+            const maxProfit = isCredit ? (prem * 100 * qty) : (Math.max(0, width - prem) * 100 * qty);
+            const maxRisk = isCredit ? (Math.max(0, width - prem) * 100 * qty) : (prem * 100 * qty);
+            const roc = maxRisk > 0 ? ((maxProfit / maxRisk) * 100).toFixed(1) : '0.0';
+            previewEl.innerText = `Collateral: $${maxRisk.toFixed(2)} | Max Profit: $${maxProfit.toFixed(2)} (${roc}% ROC)`;
+        }
+
         async function submitAdjustTrade(id) {
+            const drawer = document.getElementById('adjustDrawer-' + id);
+            const assetType = (drawer && drawer.dataset.assetType) ? drawer.dataset.assetType.toUpperCase() : 'STOCK';
+            const entryInput = document.getElementById('adjustEntry-' + id);
+            const sizeInput = document.getElementById('adjustSize-' + id);
+            const newEntry = entryInput ? parseFloat(entryInput.value) : NaN;
+            const newSize = sizeInput ? parseFloat(sizeInput.value) : NaN;
             const newStop = parseFloat(document.getElementById('adjustStop-' + id).value) || 0;
             const newTp1 = parseFloat(document.getElementById('adjustTp1-' + id).value) || 0;
+
+            const updates = {stop_loss: newStop, target_1: newTp1};
+            if (!isNaN(newEntry) && newEntry >= 0) {
+                updates.entry_price = newEntry;
+                if (assetType === 'SPREAD') {
+                    updates.net_premium = newEntry;
+                }
+            }
+            if (!isNaN(newSize) && newSize > 0) {
+                updates.size = newSize;
+            }
 
             try {
                 const res = await fetch('/api/ledger/update', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({id: id, updates: {stop_loss: newStop, target_1: newTp1}})
+                    body: JSON.stringify({id: id, updates: updates})
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
