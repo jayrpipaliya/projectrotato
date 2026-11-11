@@ -64,7 +64,7 @@ def save_ledger(trades: list[dict]) -> bool:
 
 
 def fetch_live_price(ticker: str) -> float:
-    """Retrieve the latest spot close price for a ticker from local data or yfinance with 30s cache."""
+    """Retrieve the latest spot price from synced data (if current) or live yfinance with 30s cache."""
     ticker_up = ticker.upper().strip()
     now = time.time()
     if ticker_up in _PRICE_CACHE:
@@ -73,11 +73,16 @@ def fetch_live_price(ticker: str) -> float:
             return cached_px
 
     px = 0.0
+    fallback_px = 0.0
     try:
         from data_manager import load_ticker_data
         df = load_ticker_data(ticker_up)
         if df is not None and not df.empty and "Close" in df.columns:
-            px = float(df["Close"].iloc[-1])
+            fallback_px = float(df["Close"].iloc[-1])
+            if "Date" in df.columns:
+                last_dt = str(df["Date"].iloc[-1]).split()[0]
+                if last_dt >= datetime.now().strftime("%Y-%m-%d"):
+                    px = fallback_px
     except Exception:
         pass
 
@@ -94,6 +99,9 @@ def fetch_live_price(ticker: str) -> float:
                     px = float(hist["Close"].iloc[-1])
         except Exception:
             pass
+
+    if px <= 0:
+        px = fallback_px
 
     if px > 0:
         _PRICE_CACHE[ticker_up] = (px, now)
@@ -291,6 +299,7 @@ def add_trade(
         "notes": notes or "",
         "status": "ACTIVE",  # ACTIVE, TARGET_1_HIT, TARGET_2_HIT, STOPPED_OUT, CLOSED
         "logged_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "updated_at": int(time.time() * 1000),
         "closed_at": None,
         "exit_price": None,
         "realized_pnl": None,
@@ -346,6 +355,7 @@ def update_trade(trade_id: str, updates: dict) -> dict:
                 elif "position_value" not in updates:
                     t["position_value"] = metrics["position_value"]
 
+            t["updated_at"] = int(time.time() * 1000)
             target_trade = t
             break
 
@@ -414,6 +424,7 @@ def close_trade(trade_id: str, exit_price: float, outcome: str = "CLOSED", notes
 
             t["realized_pct"] = round(pct, 2)
             t["realized_pnl"] = round(pnl, 2)
+            t["updated_at"] = int(time.time() * 1000)
             target_trade = t
             break
 
@@ -431,6 +442,38 @@ def delete_trade(trade_id: str) -> bool:
         save_ledger(trades)
         return True
     return False
+
+
+def restore_trades(incoming_trades: list[dict]) -> list[dict]:
+    """Merge client-cached trades into the active server ledger (idempotent on trade id)."""
+    trades = load_ledger()
+    if not isinstance(incoming_trades, list) or not incoming_trades:
+        return trades
+
+    idx_by_id = {t.get("id"): i for i, t in enumerate(trades) if t.get("id")}
+    changed = False
+    for raw in incoming_trades:
+        if not isinstance(raw, dict):
+            continue
+        tid = raw.get("id")
+        if not tid or not raw.get("ticker"):
+            continue
+        clean = {k: v for k, v in raw.items() if k != "mtm"}
+        if tid not in idx_by_id:
+            trades.append(clean)
+            idx_by_id[tid] = len(trades) - 1
+            changed = True
+        else:
+            existing = trades[idx_by_id[tid]]
+            in_ts = int(clean.get("updated_at") or 0)
+            ex_ts = int(existing.get("updated_at") or 0)
+            if in_ts > ex_ts:
+                trades[idx_by_id[tid]] = clean
+                changed = True
+
+    if changed:
+        save_ledger(trades)
+    return trades
 
 
 def _fetch_option_chain_cached(ticker: str, expiration: str):

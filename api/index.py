@@ -131,29 +131,43 @@ async def api_agent_chat(payload: dict):
 
 
 # ================= TRADE LEDGER API ENDPOINTS =================
+def _build_ledger_payload():
+    from ledger_engine import get_ledger_stats, compute_mark_to_market
+    stats = get_ledger_stats()
+    enriched_active = []
+    for t in stats.get("active_trades", []):
+        mtm = compute_mark_to_market(t)
+        enriched_active.append({**t, "mtm": mtm})
+
+    return clean_json({
+        "status": "success",
+        "stats": {
+            "total_trades": stats.get("total_trades", 0),
+            "active_trades_count": stats.get("active_trades_count", 0),
+            "closed_trades_count": stats.get("closed_trades_count", 0),
+            "win_rate_closed": stats.get("win_rate_closed", 0.0),
+            "realized_pnl": stats.get("realized_pnl", 0.0),
+            "open_unrealized_pnl": stats.get("open_unrealized_pnl", 0.0),
+        },
+        "active_trades": enriched_active,
+        "closed_trades": stats.get("closed_trades", [])
+    })
+
+
 @app.get("/api/ledger")
 def api_get_ledger():
     try:
-        from ledger_engine import get_ledger_stats, load_ledger, compute_mark_to_market
-        stats = get_ledger_stats()
-        enriched_active = []
-        for t in stats.get("active_trades", []):
-            mtm = compute_mark_to_market(t)
-            enriched_active.append({**t, "mtm": mtm})
+        return _build_ledger_payload()
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
-        return clean_json({
-            "status": "success",
-            "stats": {
-                "total_trades": stats.get("total_trades", 0),
-                "active_trades_count": stats.get("active_trades_count", 0),
-                "closed_trades_count": stats.get("closed_trades_count", 0),
-                "win_rate_closed": stats.get("win_rate_closed", 0.0),
-                "realized_pnl": stats.get("realized_pnl", 0.0),
-                "open_unrealized_pnl": stats.get("open_unrealized_pnl", 0.0),
-            },
-            "active_trades": enriched_active,
-            "closed_trades": stats.get("closed_trades", [])
-        })
+
+@app.post("/api/ledger/restore")
+async def api_ledger_restore(payload: dict):
+    try:
+        from ledger_engine import restore_trades
+        restore_trades(payload.get("trades", []))
+        return _build_ledger_payload()
     except Exception as e:
         return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
@@ -5130,11 +5144,82 @@ async function init() {
             }
         }
 
+        const LEDGER_STORAGE_KEY = 'rotato_trade_ledger_v1';
+
+        function readLocalLedger() {
+            try {
+                const raw = localStorage.getItem(LEDGER_STORAGE_KEY);
+                const parsed = raw ? JSON.parse(raw) : [];
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function writeLocalLedger(trades) {
+            try {
+                const clean = (trades || [])
+                    .filter(t => t && t.id)
+                    .map(t => {
+                        const copy = Object.assign({}, t);
+                        delete copy.mtm;
+                        return copy;
+                    });
+                localStorage.setItem(LEDGER_STORAGE_KEY, JSON.stringify(clean));
+            } catch (e) {
+                console.warn("Unable to save local ledger backup:", e);
+            }
+        }
+
+        function upsertLocalTrade(trd) {
+            if (!trd || !trd.id) return;
+            const list = readLocalLedger().filter(t => t && t.id !== trd.id);
+            const copy = Object.assign({}, trd);
+            delete copy.mtm;
+            list.unshift(copy);
+            writeLocalLedger(list);
+        }
+
+        function removeLocalTrade(id) {
+            if (!id) return;
+            const list = readLocalLedger().filter(t => t && t.id !== id);
+            writeLocalLedger(list);
+        }
+
         async function loadLedger() {
             try {
                 const res = await fetch('/api/ledger');
-                const data = await res.json();
+                let data = await res.json();
                 if (data.status !== 'success') return;
+
+                // Reconcile ephemeral serverless /tmp storage with persistent browser localStorage backup
+                const localTrades = readLocalLedger();
+                if (localTrades.length > 0) {
+                    const serverTrades = [...(data.active_trades || []), ...(data.closed_trades || [])];
+                    const serverById = {};
+                    serverTrades.forEach(t => {
+                        if (t && t.id) serverById[t.id] = t;
+                    });
+                    const toRestore = localTrades.filter(lt => {
+                        if (!lt || !lt.id) return false;
+                        const st = serverById[lt.id];
+                        if (!st) return true;
+                        return Number(lt.updated_at || 0) > Number(st.updated_at || 0);
+                    });
+                    if (toRestore.length > 0) {
+                        const rRes = await fetch('/api/ledger/restore', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({trades: toRestore})
+                        });
+                        const rData = await rRes.json();
+                        if (rData.status === 'success') {
+                            data = rData;
+                        }
+                    }
+                }
+
+                writeLocalLedger([...(data.active_trades || []), ...(data.closed_trades || [])]);
                 LEDGER_DATA = data;
 
                 const stats = data.stats || {};
@@ -5655,6 +5740,7 @@ async function init() {
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
+                    upsertLocalTrade(data.trade);
                     if (btn) btn.innerText = 'Committed to Ledger!';
                     setTimeout(() => {
                         toggleCardLogger(idx);
@@ -5784,6 +5870,7 @@ async function init() {
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
+                    upsertLocalTrade(data.trade);
                     alert(`${ticker} successfully committed to active ledger!`);
                     switchLedgerSub('active');
                     loadLedger();
@@ -5813,6 +5900,7 @@ async function init() {
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
+                    upsertLocalTrade(data.trade);
                     loadLedger();
                 } else {
                     alert('Error closing trade: ' + (data.message || 'unknown error'));
@@ -5871,6 +5959,7 @@ async function init() {
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
+                    upsertLocalTrade(data.trade);
                     loadLedger();
                 } else {
                     alert('Error updating trade: ' + (data.message || 'unknown error'));
@@ -5886,6 +5975,7 @@ async function init() {
                 const res = await fetch('/api/ledger/' + id, {method: 'DELETE'});
                 const data = await res.json();
                 if (data.status === 'success') {
+                    removeLocalTrade(id);
                     loadLedger();
                 }
             } catch (err) {
