@@ -9,6 +9,26 @@ from data_manager import MAG_7, INDEXES, SECTORS, MACRO_ASSETS
 load_dotenv()
 DEFAULT_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
 
+def get_asset_benchmark(ticker: str) -> str:
+    """
+    Returns the primary systemic benchmark ETF for a given ticker:
+    - Tech & Mega-Cap Growth (MSFT, NVDA, AAPL, AMZN, GOOGL, META, TSLA, AMD, PLTR, etc.) -> QQQ (Nasdaq 100)
+    - Small Caps (IWM, XBI) -> IWM (Russell 2000)
+    - Broad Market / Sectors / Defensives -> SPY (S&P 500)
+    """
+    tech_growth = {
+        "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA",
+        "PLTR", "AMD", "SMH", "XLK", "XLC", "QQQ"
+    }
+    small_caps = {"IWM", "XBI"}
+    t = (ticker or "").upper().strip()
+    if t in tech_growth:
+        return "QQQ"
+    elif t in small_caps:
+        return "IWM"
+    return "SPY"
+
+
 # Validated working model cascade (leading with fastest supported models)
 GEMINI_MODELS = [
     "gemini-3.5-flash-lite",
@@ -344,6 +364,8 @@ def query_ai_agent(
         )
         from data_manager import load_ticker_data
 
+        from concurrent.futures import ThreadPoolExecutor
+
         symbols_to_check = ["SPY", "QQQ", "IWM"]
         # Extract any specific stock symbol mentioned in the user's prompt
         for cand in MAG_7 + INDEXES + SECTORS + ["PLTR", "AMD", "SMH", "GLD", "TLT", "IBIT"]:
@@ -362,9 +384,38 @@ def query_ai_agent(
         except Exception:
             pass
 
-        for sym in symbols_to_check:
-            g = compute_gamma_exposure_profile(sym, max_expirations=3)
-            if g and "error" not in g:
+        # Automatically index top candidate setups from confluence universe
+        top_candidates = sorted(
+            [c for c in confluences if c.get("ticker") not in ["SPY", "QQQ", "IWM", "DIA", "RSP"]],
+            key=lambda x: abs(x.get("score", 0)),
+            reverse=True
+        )
+        for c_cand in top_candidates[:3]:
+            t_cand = c_cand.get("ticker")
+            if t_cand and t_cand not in symbols_to_check:
+                symbols_to_check.append(t_cand)
+
+        # Ensure the primary benchmark for every symbol is also checked
+        for sym in list(symbols_to_check):
+            b_sym = get_asset_benchmark(sym)
+            if b_sym not in symbols_to_check:
+                symbols_to_check.append(b_sym)
+
+        # Parallel GEX fetching
+        def _fetch_gex_item(s):
+            try:
+                res = compute_gamma_exposure_profile(s, max_expirations=3)
+                if res and "error" not in res:
+                    return s, res
+            except Exception:
+                pass
+            return s, None
+
+        with ThreadPoolExecutor(max_workers=min(len(symbols_to_check), 5)) as pool:
+            results = pool.map(_fetch_gex_item, symbols_to_check)
+
+        for sym, g in results:
+            if g:
                 gamma_context[sym] = {
                     "spot": g.get("spot_price"),
                     "call_wall": g.get("call_wall"),
@@ -376,67 +427,72 @@ def query_ai_agent(
                     "zero_gamma_flip": g.get("zero_gamma_level"),
                     "net_gex_b": f"${g.get('total_net_gex_billions'):+.2f}B",
                     "gex_intensity": g.get("gex_intensity"),
-                    "regime": g.get("regime_short")
+                    "regime": g.get("regime_short"),
+                    "primary_benchmark": get_asset_benchmark(sym)
                 }
 
-            # Fetch options surface if this specific symbol is mentioned or if it's the target focus
-            sym_in_query = bool(re.search(r'\b' + re.escape(sym) + r'\b', user_query, re.IGNORECASE))
-            if sym_in_query or (sym == "SPY" and not any(re.search(r'\b' + re.escape(c) + r'\b', user_query, re.IGNORECASE) for c in MAG_7 + INDEXES + SECTORS)):
-                try:
-                    df_t = load_ticker_data(sym)
-                    if df_t is not None and not df_t.empty:
-                        hvs_t = compute_realized_volatilities(df_t, sym)
-                        term_df_t, spot_t, _ = fetch_term_structure(sym, hvs_t)
-                        if term_df_t is not None and not term_df_t.empty:
-                            term_recs = []
-                            for _, r in term_df_t.head(4).iterrows():
-                                term_recs.append({
-                                    "expiration": str(r.get("Expiration")),
-                                    "dte": int(r.get("DTE", 0)),
-                                    "atm_iv": round(float(r.get("ATM_IV", 0)), 1),
-                                    "iv_hv_ratio": round(float(r.get("IV_HV_Ratio", 1)), 2),
-                                    "is_cheap": bool(r.get("Is_Cheap", False))
+        # Fetch options surface for SPY, QQQ, user query symbols, and top candidate setups
+        cand_tickers = [c.get("ticker") for c in top_candidates[:2]]
+        vol_symbols = [
+            s for s in symbols_to_check 
+            if s in ["SPY", "QQQ"] or re.search(r'\b' + re.escape(s) + r'\b', user_query, re.IGNORECASE) or s in cand_tickers
+        ]
+        for sym in vol_symbols[:4]:
+            try:
+                df_t = load_ticker_data(sym)
+                if df_t is not None and not df_t.empty:
+                    hvs_t = compute_realized_volatilities(df_t, sym)
+                    term_df_t, spot_t, _ = fetch_term_structure(sym, hvs_t)
+                    if term_df_t is not None and not term_df_t.empty:
+                        term_recs = []
+                        for _, r in term_df_t.head(4).iterrows():
+                            term_recs.append({
+                                "expiration": str(r.get("Expiration")),
+                                "dte": int(r.get("DTE", 0)),
+                                "atm_iv": round(float(r.get("ATM_IV", 0)), 1),
+                                "iv_hv_ratio": round(float(r.get("IV_HV_Ratio", 1)), 2),
+                                "is_cheap": bool(r.get("Is_Cheap", False))
+                            })
+
+                        front_exp = str(term_df_t["Expiration"].iloc[0])
+                        smile_calls = analyze_smile_and_skew(sym, front_exp, spot_t, direction="Calls", side="Buy")
+                        smile_puts = analyze_smile_and_skew(sym, front_exp, spot_t, direction="Puts", side="Sell")
+
+                        top_calls_list = []
+                        if smile_calls and "top_strikes" in smile_calls and hasattr(smile_calls["top_strikes"], "iterrows"):
+                            for _, tc in smile_calls["top_strikes"].head(3).iterrows():
+                                top_calls_list.append({
+                                    "strike": float(tc.get("strike", 0)),
+                                    "ask": float(tc.get("ask", 0)),
+                                    "ask_iv": round(float(tc.get("Ask_IV_Pct", 0)), 1),
+                                    "ask_edge": round(float(tc.get("Ask_Edge", 0)), 2),
+                                    "delta": round(float(tc.get("Est_Delta", 0)), 2)
                                 })
 
-                            front_exp = str(term_df_t["Expiration"].iloc[0])
-                            smile_calls = analyze_smile_and_skew(sym, front_exp, spot_t, direction="Calls", side="Buy")
-                            smile_puts = analyze_smile_and_skew(sym, front_exp, spot_t, direction="Puts", side="Sell")
+                        top_puts_list = []
+                        if smile_puts and "top_strikes" in smile_puts and hasattr(smile_puts["top_strikes"], "iterrows"):
+                            for _, tp in smile_puts["top_strikes"].head(3).iterrows():
+                                top_puts_list.append({
+                                    "strike": float(tp.get("strike", 0)),
+                                    "bid": float(tp.get("bid", 0)),
+                                    "bid_iv": round(float(tp.get("Bid_IV_Pct", 0)), 1),
+                                    "bid_edge": round(float(tp.get("Bid_Edge", 0)), 2),
+                                    "delta": round(float(tp.get("Est_Delta", 0)), 2),
+                                    "cushion": tp.get("Downside_Cushion_Pct")
+                                })
 
-                            top_calls_list = []
-                            if smile_calls and "top_strikes" in smile_calls and hasattr(smile_calls["top_strikes"], "iterrows"):
-                                for _, tc in smile_calls["top_strikes"].head(3).iterrows():
-                                    top_calls_list.append({
-                                        "strike": float(tc.get("strike", 0)),
-                                        "ask": float(tc.get("ask", 0)),
-                                        "ask_iv": round(float(tc.get("Ask_IV_Pct", 0)), 1),
-                                        "ask_edge": round(float(tc.get("Ask_Edge", 0)), 2),
-                                        "delta": round(float(tc.get("Est_Delta", 0)), 2)
-                                    })
-
-                            top_puts_list = []
-                            if smile_puts and "top_strikes" in smile_puts and hasattr(smile_puts["top_strikes"], "iterrows"):
-                                for _, tp in smile_puts["top_strikes"].head(3).iterrows():
-                                    top_puts_list.append({
-                                        "strike": float(tp.get("strike", 0)),
-                                        "bid": float(tp.get("bid", 0)),
-                                        "bid_iv": round(float(tp.get("Bid_IV_Pct", 0)), 1),
-                                        "bid_edge": round(float(tp.get("Bid_Edge", 0)), 2),
-                                        "delta": round(float(tp.get("Est_Delta", 0)), 2),
-                                        "cushion": tp.get("Downside_Cushion_Pct")
-                                    })
-
-                            s_metrics = (smile_calls.get("metrics") or {}) if smile_calls else {}
-                            options_vol_context[sym] = {
-                                "spot": spot_t,
-                                "hvs": hvs_t,
-                                "term_structure": term_recs,
-                                "skew_25d": s_metrics.get("skew_25d_text"),
-                                "skew_slope": s_metrics.get("skew_slope_text"),
-                                "top_discount_calls": top_calls_list,
-                                "top_overpriced_puts": top_puts_list
-                            }
-                except Exception:
-                    pass
+                        s_metrics = (smile_calls.get("metrics") or {}) if smile_calls else {}
+                        options_vol_context[sym] = {
+                            "spot": spot_t,
+                            "hvs": hvs_t,
+                            "term_structure": term_recs,
+                            "skew_25d": s_metrics.get("skew_25d_text"),
+                            "skew_slope": s_metrics.get("skew_slope_text"),
+                            "top_discount_calls": top_calls_list,
+                            "top_overpriced_puts": top_puts_list
+                        }
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -491,7 +547,18 @@ CURRENT LIVE MARKET SNAPSHOT ({datetime.now().strftime('%Y-%m-%d %H:%M')}):
 {json.dumps(active_ledger_summary, indent=1) if active_ledger_summary else "No active trades currently open in ledger."}
 
 INSTITUTIONAL DEALER GAMMA & RISK/REWARD MASTER DIRECTIVES:
-1. Gamma Positioning Regimes & Magnitude Conviction:
+1. Dual Gamma Decision Framework (Asset Gamma + Benchmark Gamma):
+   - **CRITICAL DUAL GAMMA DECISION RULE FOR SINGLE STOCKS**:
+     * When analyzing a single-stock setup (e.g. MSFT), NEVER evaluate it purely on SPY gamma or substitute SPY levels into the stock's quantitative matrix.
+     * You must evaluate BOTH levels simultaneously:
+       a) **Asset's Own Gamma (Micro Execution Floor & Pin)**: The stock's own Call Wall (resistance ceiling / profit magnet) and Put Wall (liquidity bid floor). For MSFT ($530), the Put Wall is MSFT's own strike (e.g. $520.0) and Call Wall is MSFT's own strike (e.g. $550.0).
+       b) **Sector Benchmark Gamma (Systemic Macro Tide)**:
+          - For **Tech & Mega-Cap Growth** (MSFT, NVDA, AAPL, AMZN, META, GOOGL, AMD, PLTR, TSLA): The primary sector tide is **QQQ** (Nasdaq 100). Evaluate QQQ's Put Wall and Zero-Gamma flip alongside SPY. If QQQ is in Net Long Gamma and above its Put Wall, it suppresses tech volatility and validates bidding MSFT pullbacks. If QQQ breaks below its Put Wall / Zero-Gamma flip, tech dealers dump futures and the MSFT trade is killed immediately!
+          - For **Small Caps (IWM, XBI)**: Evaluate **IWM** dealer gamma.
+          - For **Broad Market / Cyclicals / Financials / Industrials**: Evaluate **SPY** dealer gamma.
+       * A long tech setup requires BOTH:
+         1. The asset holding its own technical support and above its own Put Wall floor.
+         2. The primary benchmark (QQQ for tech, SPY for broad) trading above its Zero-Gamma Flip and Put Wall, ensuring market-making dealers are suppressing market volatility rather than dumping index/tech futures.
    - **Magnitude / Intensity is Crucial**: If Net GEX is "Neutral / Low Conviction" (near zero, e.g. <$250M on SPY/QQQ or <$50M on single stocks), dealers have minimal delta-hedging impact. Do NOT over-index on gamma pinning. Instead, prioritize Trend Ribbons (20/50 EMA), RVOL, and Macro Baskets.
    - **Localized Strike Concentration**: Even if total Net GEX is neutral, check if a single Call Wall or Put Wall has high concentration (>= 25%). If so, that individual strike still acts as a localized price magnet or barrier.
    - **Net Long Gamma (+$B GEX, Substantial)**: Dealers are net long options gamma. To maintain delta neutrality, they BUY weakness and SELL strength. This dampens realized intraday volatility, compresses price swings, and pins price between the Put Wall (support) and Call Wall (resistance). High probability for mean-reversion, range fades, bidding pullbacks, and taking profit at Call Walls.
@@ -551,10 +618,11 @@ INSTITUTIONAL DEALER GAMMA & RISK/REWARD MASTER DIRECTIVES:
           Do NOT write run-on paragraphs of text for the metrics. Lay out the 4 evidence pillars in a clean comparison table:
 | Confluence Pillar | Live Reading / Level | Institutional Edge & Proof |
 | :--- | :--- | :--- |
-| **Trend & Structure** | $259.30 (Above 20/50/200 EMA) | Bullish ribbon intact; Confluence Score +40 |
-| **Historical Edge (20yr)** | Rule: Uptrend Pullback (-11% to -7%) | **63.6% Win Rate** (20d), +3.02% median alpha (N=217) |
-| **Dealer Gamma Support** | Put Wall: $250.0 / Call Wall: $275.0 | Put Wall cushions downside; Call Wall is target magnet |
-| **Options Volatility** | IV/HV 0.78x (Cheap Volatility) | Volatility underpriced; directional calls have convexity edge |
+| **Trend & Structure** | $530.61 (Above 20/50/200 EMA) | Bullish ribbon fully intact; Confluence Score +45 |
+| **Historical Edge (20yr)** | Rule: Uptrend Pullback (-7% to -3%) | **59.4% Win Rate** (20d), +2.38% median alpha (N=473) |
+| **Asset Gamma (MSFT)** | Put Wall: $520.0 / Call Wall: $550.0 | Net Long Gamma (+$180M); Put Wall cushions dips & Call Wall pins target |
+| **Benchmark Gamma (QQQ)** | QQQ Put Wall: $585.0 / Zero Flip: $588.20 | Tech macro tide supportive; Nasdaq Long Gamma dampens volatility |
+| **Options Volatility** | MSFT IV/HV 0.72x (Cheap Volatility) | Underlying IV underpriced; directional calls have convexity edge |
        3. **Tactical Execution Blueprint (Markdown Table)**:
           Never write execution levels in plain bullet text. Present them in an institutional parameter table:
 | Execution Parameter | Level / Zone | Tactical Rationale |
@@ -901,6 +969,9 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
         gex = _fetch_gex_safe(ticker)
         opt = calculate_optimized_trade_entry("LONG", t_data, edge, gamma_levels=gex)
 
+        bench_sym = get_asset_benchmark(ticker)
+        bench_gex = _fetch_gex_safe(bench_sym)
+
         trades.append({
             "ticker": ticker,
             "direction": "LONG",
@@ -934,7 +1005,11 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             "put_wall": opt.get("put_wall"),
             "zero_gamma": opt.get("zero_gamma"),
             "gamma_regime": opt.get("gamma_regime"),
-            "net_gex_b": opt.get("net_gex_b")
+            "net_gex_b": opt.get("net_gex_b"),
+            "benchmark_symbol": bench_sym,
+            "benchmark_put_wall": bench_gex.get("put_wall") if bench_gex else None,
+            "benchmark_zero_gamma": bench_gex.get("zero_gamma_level") if bench_gex else None,
+            "benchmark_regime": bench_gex.get("regime_short") if bench_gex else None
         })
 
     # Trade 2: Weakest Asset (Fade / De-Risk Warning)
@@ -1006,6 +1081,9 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
             d_gex = _fetch_gex_safe(d_ticker)
             d_opt = calculate_optimized_trade_entry("DIP BUY", d_data, d_edge, gamma_levels=d_gex)
 
+            d_bench_sym = get_asset_benchmark(d_ticker)
+            d_bench_gex = _fetch_gex_safe(d_bench_sym)
+
             trades.append({
                 "ticker": d_ticker,
                 "direction": "DIP BUY",
@@ -1039,7 +1117,11 @@ def build_structured_briefing_and_trades(market_data: dict, confluences: list[di
                 "put_wall": d_opt.get("put_wall"),
                 "zero_gamma": d_opt.get("zero_gamma"),
                 "gamma_regime": d_opt.get("gamma_regime"),
-                "net_gex_b": d_opt.get("net_gex_b")
+                "net_gex_b": d_opt.get("net_gex_b"),
+                "benchmark_symbol": d_bench_sym,
+                "benchmark_put_wall": d_bench_gex.get("put_wall") if d_bench_gex else None,
+                "benchmark_zero_gamma": d_bench_gex.get("zero_gamma_level") if d_bench_gex else None,
+                "benchmark_regime": d_bench_gex.get("regime_short") if d_bench_gex else None
             })
 
     # Trade 3: Pairs Rotation (IWM vs QQQ or SPY vs RSP)

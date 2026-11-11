@@ -757,6 +757,9 @@ def render_trade_logging_widget(t, key_suffix):
                 "zero_gamma": t.get("zero_gamma"),
                 "net_gex_b": t.get("net_gex_b"),
                 "gamma_regime": t.get("gamma_regime"),
+                "benchmark_symbol": t.get("benchmark_symbol"),
+                "benchmark_put_wall": t.get("benchmark_put_wall"),
+                "benchmark_zero_gamma": t.get("benchmark_zero_gamma"),
                 "risk_reward": t.get("risk_reward")
             }
             new_trd = add_trade(
@@ -1022,14 +1025,32 @@ with tab2:
             g_reg = t.get("gamma_regime")
             net_gex = t.get("net_gex_b")
             gex_html = ""
+            bench_sym = t.get("benchmark_symbol")
+            bench_pw = t.get("benchmark_put_wall")
+            bench_zg = t.get("benchmark_zero_gamma")
+            bench_reg = t.get("benchmark_regime")
+            bench_gex_html = ""
+            if bench_sym and bench_pw:
+                bench_zg_part = f'<span style="color:#475569; margin:0 2px;">|</span><span style="color:#94a3b8;">Zero Flip:</span> <b style="color:#38bdf8; font-family:monospace;">{bench_zg}</b>' if bench_zg else ""
+                bench_gex_html = (
+                    f'<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(56, 189, 248, 0.05); border:1px solid rgba(56, 189, 248, 0.2); border-radius:6px; padding:3px 8px; margin-bottom:8px; font-size:10px; flex-wrap:wrap; gap:4px;">'
+                    f'<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">'
+                    f'<span style="color:#38bdf8; font-weight:700;">Benchmark Floor ({bench_sym}):</span>'
+                    f'<span style="color:#94a3b8;">Put Wall:</span> <b style="color:#FF2E55; font-family:monospace;">{bench_pw}</b>'
+                    f'{bench_zg_part}'
+                    f'</div>'
+                    f'<span style="color:#94a3b8; font-size:9.5px; font-family:monospace;">{bench_reg or "Macro Floor"}</span>'
+                    f'</div>'
+                )
+
             if cw and pw:
                 g_pill = "green" if g_reg == "Long Gamma" else "red"
                 zg_part = f'<span style="color:#475569; margin:0 2px;">|</span><span style="color:#94a3b8;">Zero Flip:</span> <b style="color:#38bdf8; font-family:monospace;">{zg}</b>' if zg else ""
                 net_part = f'<span style="color:#94a3b8; font-family:monospace; font-size:9.5px; margin-left:3px;">({net_gex})</span>' if net_gex else ""
                 gex_html = (
-                    f'<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(99, 102, 241, 0.08); border:1px solid rgba(99, 102, 241, 0.2); border-radius:6px; padding:4px 8px; margin-bottom:8px; font-size:10.5px; flex-wrap:wrap; gap:4px;">'
+                    f'<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(99, 102, 241, 0.08); border:1px solid rgba(99, 102, 241, 0.2); border-radius:6px; padding:4px 8px; margin-bottom:6px; font-size:10.5px; flex-wrap:wrap; gap:4px;">'
                     f'<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">'
-                    f'<span style="color:#a5b4fc; font-weight:700;">GEX:</span>'
+                    f'<span style="color:#a5b4fc; font-weight:700;">Stock GEX:</span>'
                     f'<span style="color:#94a3b8;">Call Wall:</span> <b style="color:#00F5A0; font-family:monospace;">{cw}</b>'
                     f'<span style="color:#475569; margin:0 2px;">|</span>'
                     f'<span style="color:#94a3b8;">Put Wall:</span> <b style="color:#FF2E55; font-family:monospace;">{pw}</b>'
@@ -1321,6 +1342,8 @@ with tab_ledger:
                         st.markdown(f"**Zero-Gamma Flip:** `${snap.get('zero_gamma', 'N/A')}`")
                         st.markdown(f"**Net GEX Regime:** `{snap.get('gamma_regime', 'N/A')} ({snap.get('net_gex_b', 'N/A')})`")
 
+                    if snap.get("benchmark_symbol") and snap.get("benchmark_put_wall"):
+                        st.markdown(f"**Benchmark Floor ({snap.get('benchmark_symbol')}):** Put Wall `${snap.get('benchmark_put_wall')}` | Zero Flip `${snap.get('benchmark_zero_gamma', 'N/A')}`")
                     if snap.get("thesis"):
                         st.markdown(f"> **Original AI Thesis:** {snap.get('thesis')}")
 

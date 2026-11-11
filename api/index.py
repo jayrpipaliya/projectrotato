@@ -3057,10 +3057,22 @@ async function init() {
                     const entryBg = isLong ? 'from-mint/10 to-transparent border-mint/25' : 'from-cherry/10 to-transparent border-cherry/25';
                     const entryCol = isLong ? 'text-mint' : 'text-cherry';
 
-                    const gexHtml = (t.call_wall && t.put_wall) ? `
-                        <div class="flex flex-wrap items-center justify-between gap-1.5 p-1.5 px-2 mb-2 rounded-lg bg-indigo-950/20 border border-indigo-500/20 text-[10.5px]">
+                    const benchGexHtml = (t.benchmark_symbol && t.benchmark_put_wall) ? `
+                        <div class="flex flex-wrap items-center justify-between gap-1.5 p-1 px-2 mb-2 rounded bg-sky-950/20 border border-sky-500/20 text-[10px]">
                             <div class="flex items-center gap-1.5 flex-wrap">
-                                <span class="text-indigo-400 font-bold">GEX:</span>
+                                <span class="text-sky-400 font-bold">Benchmark Floor (${t.benchmark_symbol}):</span>
+                                <span class="text-slate-400">Put Wall:</span>
+                                <b class="text-cherry font-mono">${t.benchmark_put_wall}</b>
+                                ${t.benchmark_zero_gamma ? `<span class="text-slate-600">|</span><span class="text-slate-400">Zero Flip:</span><b class="text-sky-300 font-mono">${t.benchmark_zero_gamma}</b>` : ''}
+                            </div>
+                            <span class="text-slate-400 font-mono text-[9px]">${t.benchmark_regime || 'Macro Hedge'}</span>
+                        </div>
+                    ` : '';
+
+                    const gexHtml = (t.call_wall && t.put_wall) ? `
+                        <div class="flex flex-wrap items-center justify-between gap-1.5 p-1.5 px-2 mb-1.5 rounded-lg bg-indigo-950/20 border border-indigo-500/20 text-[10.5px]">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-indigo-400 font-bold">Stock GEX:</span>
                                 <span class="text-slate-400">Call Wall:</span>
                                 <b class="text-mint font-mono">${t.call_wall}</b>
                                 <span class="text-slate-600">|</span>
@@ -4905,6 +4917,13 @@ async function init() {
                                         <span class="text-slate-500">Zero Gamma / Net GEX:</span>
                                         <b class="text-sky-400 font-mono">${snap.zero_gamma || 'N/A'} (${snap.net_gex_b || ''})</b>
                                     </div>
+                                    ${snap.benchmark_symbol && snap.benchmark_put_wall ? `
+                                        <div class="col-span-2 pt-1 border-t border-white/5">
+                                            <span class="text-slate-500">Benchmark Floor (${snap.benchmark_symbol}):</span>
+                                            <b class="text-cherry font-mono">$${snap.benchmark_put_wall}</b>
+                                            ${snap.benchmark_zero_gamma ? `<span class="text-slate-600">|</span> <span class="text-slate-500">Zero Flip:</span> <b class="text-sky-300 font-mono">$${snap.benchmark_zero_gamma}</b>` : ''}
+                                        </div>
+                                    ` : ''}
                                 </div>
                                 ${snap.thesis ? `
                                     <div class="mt-2 pt-2 border-t border-white/5 text-[10.5px] text-slate-300 leading-snug">
@@ -5107,6 +5126,9 @@ async function init() {
                     zero_gamma: t.zero_gamma,
                     net_gex_b: t.net_gex_b,
                     gamma_regime: t.gamma_regime,
+                    benchmark_symbol: t.benchmark_symbol,
+                    benchmark_put_wall: t.benchmark_put_wall,
+                    benchmark_zero_gamma: t.benchmark_zero_gamma,
                     risk_reward: t.risk_reward
                 }
             };

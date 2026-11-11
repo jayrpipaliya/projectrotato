@@ -428,14 +428,26 @@ def generate_ai_portfolio_audit(market_data: dict = None, gemini_api_key: str = 
         current_pw = None
         current_zg = None
         current_gex = None
+        bench_sym = None
+        bench_pw = None
+        bench_zg = None
+        bench_regime = None
         try:
             from options_engine import compute_gamma_exposure_profile
+            from ai_strategist import get_asset_benchmark
             g = compute_gamma_exposure_profile(t.get("ticker"), max_expirations=3)
             if g and "error" not in g:
                 current_cw = g.get("call_wall")
                 current_pw = g.get("put_wall")
                 current_zg = g.get("zero_gamma_level")
                 current_gex = f"${g.get('total_net_gex_billions'):+.2f}B"
+
+            bench_sym = get_asset_benchmark(t.get("ticker"))
+            bg = compute_gamma_exposure_profile(bench_sym, max_expirations=3)
+            if bg and "error" not in bg:
+                bench_pw = bg.get("put_wall")
+                bench_zg = bg.get("zero_gamma_level")
+                bench_regime = bg.get("regime_short")
         except Exception:
             pass
 
@@ -465,6 +477,10 @@ def generate_ai_portfolio_audit(market_data: dict = None, gemini_api_key: str = 
             "current_live_put_wall": current_pw,
             "current_live_zero_gamma": current_zg,
             "current_live_net_gex": current_gex,
+            "primary_benchmark": bench_sym,
+            "benchmark_live_put_wall": bench_pw,
+            "benchmark_live_zero_gamma": bench_zg,
+            "benchmark_live_regime": bench_regime,
             "original_ai_thesis": snap.get("thesis")
         })
 
@@ -480,7 +496,7 @@ AUDIT REPORT REQUIREMENTS:
    | Ticker | Position | Live P&L ($ / %) | Progress to Target | Stop Risk | Action Directive (HOLD / TRIM / TRAIL STOP / CUT) |
 2. For each active trade, deliver a crisp 3-sentence institutional review:
    - Progress vs. Original AI Thesis & 20-Year Historical Odds.
-   - Gamma Evaluation: Compare Entry Call/Put Walls against Current Live Call/Put Walls. Note whether pinning resistance or support has shifted.
+   - Dual Gamma Evaluation: Compare Entry Call/Put Walls against Current Live Call/Put Walls. Confirm whether the primary benchmark (e.g. QQQ for tech equities like MSFT) is holding above its Put Wall / Zero-Gamma flip or triggering systematic de-risking.
    - Concrete Action Directive: Where to adjust the stop loss (e.g. breakeven, trailing 20 EMA), or whether to harvest profits now.
 3. Strict Terminal Tone: Crisp, mathematical, visual tables, zero fluff, no memo headers or formal letters.
 """
