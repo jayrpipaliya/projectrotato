@@ -3270,6 +3270,15 @@ async function init() {
                                     </div>
                                 </div>
 
+                                ${(t.options_spread.pinning_ratio || t.options_spread.net_gex_billions) ? `
+                                <div class="flex items-center gap-1.5 flex-wrap mb-1.5">
+                                    ${t.options_spread.net_gex_billions ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-mint/10 text-mint border border-mint/20">Net GEX: +$${t.options_spread.net_gex_billions.toFixed(2)}B</span>` : ''}
+                                    ${t.options_spread.net_gex_velocity ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/25">ΔGEX: ${t.options_spread.net_gex_velocity}</span>` : ''}
+                                    ${t.options_spread.pinning_ratio ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/15 text-blue-300 border border-blue-500/25">🎯 Pin Index: ${(t.options_spread.pinning_ratio * 100).toFixed(0)}%</span>` : ''}
+                                    ${t.options_spread.downside_air_pocket ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/20">Void: $${t.options_spread.downside_air_pocket.toFixed(0)}</span>` : ''}
+                                </div>
+                                ` : ''}
+
                                 <div class="text-[10px] text-slate-300 leading-snug mb-1.5">
                                     <b class="text-purple-300">Dealer Edge:</b> ${t.options_spread.dealer_thesis}
                                 </div>

@@ -432,10 +432,16 @@ def query_ai_agent(
                     "loaded_at": g.get("loaded_at_display") or g.get("loaded_at_str")
                 }
 
-        # Collect Day-over-Day Gamma Shifts for checked symbols
+        # Collect Day-over-Day Gamma Shifts and Advanced Microstructure for checked symbols
         gamma_shift_context = {}
+        advanced_gamma_context = {}
         try:
-            from gamma_tracker import compute_gamma_shift, format_signed_currency, _safe_float
+            from gamma_tracker import (
+                compute_gamma_shift,
+                compute_advanced_gamma_analytics,
+                format_signed_currency,
+                _safe_float
+            )
             for s in symbols_to_check:
                 s_shift = compute_gamma_shift(s)
                 if s_shift and s_shift.get("has_history"):
@@ -451,6 +457,9 @@ def query_ai_agent(
                         "velocity_label": s_shift.get("velocity_label", "STABLE"),
                         "synthesis": s_shift.get("institutional_synthesis", "")
                     }
+                adv = compute_advanced_gamma_analytics(s)
+                if adv:
+                    advanced_gamma_context[s] = adv
         except Exception:
             pass
 
@@ -562,6 +571,7 @@ CURRENT LIVE MARKET SNAPSHOT ({datetime.now().strftime('%Y-%m-%d %H:%M')}):
 - Market Regime: {market_data.get('narrative_title')} | Bias: {market_data.get('macro_context')}
 - Dealer Gamma Exposure Profiles (Live Options GEX): {json.dumps(gamma_context, indent=1)}
 - Day-over-Day Gamma Migration & Wall Roll Shifts: {json.dumps(gamma_shift_context, indent=1)}
+- Advanced Dealer Microstructure (Net GEX, Pin Index, Gamma Voids, Overnight Flow Vectors): {json.dumps(advanced_gamma_context, indent=1)}
 - Live Options Volatility Skew, Smile & Mispricings: {json.dumps(options_vol_context, indent=1)}
 - 5-Day Sector Velocity Baskets: {json.dumps(baskets)}
 - Key Ratio Analytics (SPY/RSP, QQQ/RSP, IWM/QQQ): {json.dumps({k: {'val': v.get('current'), '5d': v.get('pct_5d'), 'z_score': v.get('z_score_50d')} for k, v in ratios.items() if k in ['SPY_RSP', 'QQQ_RSP', 'IWM_QQQ']})}
@@ -571,7 +581,24 @@ CURRENT LIVE MARKET SNAPSHOT ({datetime.now().strftime('%Y-%m-%d %H:%M')}):
 {json.dumps(active_ledger_summary, indent=1) if active_ledger_summary else "No active trades currently open in ledger."}
 
 INSTITUTIONAL DEALER GAMMA & RISK/REWARD MASTER DIRECTIVES:
-1. Dual Gamma Decision Framework (Asset Gamma + Benchmark Gamma):
+1. Dual Gamma Decision Framework & Advanced Microstructure:
+   - **UTILIZE BOTH ABSOLUTE NET GEX TERRAIN & DAY-OVER-DAY GEX SHIFT**:
+     * **Absolute Net GEX Magnitude & Regime**:
+       - Deep Long Gamma (+$2.5B+): Massive dealer volatility dampening. Dealers aggressively buy dips and fade rips. Range-bound pinning probability is maximal. Target defined-risk credit spreads (Bull Put Spread below Put Wall, Bear Call Spread above Call Wall) or Iron Condors.
+       - Net Short Gamma (-$B): Dealers amplify moves; breakout acceleration risk is high. Avoid tight credit spreads; favor directional debit spreads or long volatility.
+     * **Local Pinning Density (Pin Index around Spot)**:
+       - If Pinning Index is `HIGH_PIN_DENSITY` (>= 0.40): 40-90%+ of total dealer gamma is clustered tightly within +/-1.2% of spot. Price is trapped in an institutional "volatility black hole" (mean-reverting pin). Highly favorable for harvesting theta via credit spreads anchored around the pin strikes.
+       - If Pinning Index is `DIFFUSE_UNPINNED` (<= 0.20): Gamma is spread across far OTM wings. Spot is "slippery"; expect wide trending days and breakout follow-through.
+     * **Air Pockets & Gamma Voids (Liquidity Vacuum Corridors)**:
+       - **Upside Vacuum Corridor**: Note the `upside_vacuum_strike` where dealer call resistance drops below 15% of peak. If spot breaks through the Call Wall into this air pocket, dealer selling ceases, enabling explosive breakout expansion. Recommend Call Debit Spreads targeting through the air pocket!
+       - **Downside Vacuum Corridor**: Note the `downside_vacuum_strike` where put cushioning drops off a cliff. If the Put Wall fails, price freefalls through the vacuum. All stop losses MUST be placed strictly above the downside vacuum strike.
+     * **Overnight Flow Vectors (Strike-by-Strike ΔGEX Shift)**:
+       - Analyze `top_call_accumulation` (where institutions added new calls overnight) vs. `top_put_hedging` (where fresh downside protection was established) vs. `top_gamma_drain` (where dealers shed inventory).
+       - Never place a short strike at a strike undergoing massive new call or put accumulation—position your short credit strike behind the newly established institutional hedge!
+     * **Convexity Skew (Upside vs Downside Resistance)**:
+       - If `CALL_HEAVY_RESISTANCE` (Ratio >= 1.35x): Upside is heavily capped by dealer inventory selling; take profits aggressively at the Call Wall.
+       - If `PUT_HEAVY_SUPPORT` (Ratio <= 0.65x): Downside is protected by dealers buying dips; sell put credit spreads with high structural conviction.
+
    - **CRITICAL DUAL GAMMA DECISION RULE FOR SINGLE STOCKS**:
      * When analyzing a single-stock setup (e.g. MSFT), NEVER evaluate it purely on SPY gamma or substitute SPY levels into the stock's quantitative matrix.
      * You must evaluate BOTH levels simultaneously:
@@ -979,11 +1006,15 @@ def generate_next_day_spread_recommendation(ticker: str, direction: str, current
     pw = float(gamma_levels.get("put_wall", 0)) if gamma_levels else 0.0
 
     # Determine strike interval and spread width based on asset price tier
-    if close >= 400:
+    t_up = (ticker or "").upper().strip()
+    if t_up in ["SPY", "QQQ", "IWM"]:
+        step = 1.0
+        width = 5.0
+    elif close >= 400:
         step = 5.0
         width = 5.0
     elif close >= 150:
-        step = 5.0
+        step = 2.5
         width = 5.0
     elif close >= 75:
         step = 2.5
@@ -1001,12 +1032,28 @@ def generate_next_day_spread_recommendation(ticker: str, direction: str, current
     exp_date = (target_dt + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
     dte = (datetime.strptime(exp_date, "%Y-%m-%d") - datetime.now()).days
 
+    # Fetch advanced microstructure analytics (Net GEX, Pinning Density, Air Pockets, Flow Vectors)
+    adv_gamma = {}
+    try:
+        from gamma_tracker import compute_advanced_gamma_analytics
+        adv_gamma = compute_advanced_gamma_analytics(ticker) or {}
+    except Exception:
+        pass
+
+    pin_ratio = float(adv_gamma.get("pinning_index", {}).get("ratio", 0.0))
+    pin_label = adv_gamma.get("pinning_index", {}).get("label", "MODERATE_PIN")
+    net_gex_b = float(adv_gamma.get("net_gex_billions", 0.0))
+    net_vel = adv_gamma.get("net_gex_velocity_b", "")
+    vel_label = adv_gamma.get("velocity_label", "")
+    top_calls = adv_gamma.get("overnight_flow_vectors", {}).get("top_call_accumulation", [])
+    top_puts = adv_gamma.get("overnight_flow_vectors", {}).get("top_put_hedging", [])
+    upside_vacuum = adv_gamma.get("gamma_voids_air_pockets", {}).get("upside_vacuum_strike")
+    downside_vacuum = adv_gamma.get("gamma_voids_air_pockets", {}).get("downside_vacuum_strike")
+
     if is_long:
         # Strategy: Bull Put Credit Spread (Sell at Put Wall, Buy protective lower put)
-        if pw > 0 and pw <= close * 1.01:
-            short_k = round(pw / step) * step
-            if short_k > close:
-                short_k = math.floor((close * 0.985) / step) * step
+        if pw > 0 and pw < close:
+            short_k = math.floor(pw / step) * step
         else:
             short_k = math.floor((close * 0.985) / step) * step
 
@@ -1023,16 +1070,22 @@ def generate_next_day_spread_recommendation(ticker: str, direction: str, current
         spread_type = "BULL_PUT_CREDIT"
         short_desc = f"SELL ${short_k:,.0f} Put"
         long_desc = f"BUY ${long_k:,.0f} Put (Tail Hedge)"
-        thesis = (
-            f"Short strike anchored at Dealer Put Wall floor (${short_k:,.0f}) where positive dealer gamma dampens volatility. "
+        
+        thesis_parts = [
+            f"Short strike anchored at Dealer Put Wall floor (${short_k:,.0f}) where positive dealer gamma dampens volatility.",
             f"Long Put (${long_k:,.0f}) strictly caps max loss to ${max_risk:,.0f} collateral (Zero Naked Risk)."
-        )
+        ]
+        if pin_ratio >= 0.35:
+            thesis_parts.append(f"Pin Index at {int(pin_ratio*100)}% confirms heavy dealer pinning around spot.")
+        if net_gex_b > 0:
+            thesis_parts.append(f"Net GEX (+${net_gex_b:.2f}B) provides structural dealer bidding on weakness.")
+        if top_puts:
+            thesis_parts.append(f"Overnight flow confirmed fresh put hedging at {top_puts[0]}.")
+        thesis = " ".join(thesis_parts)
     else:
         # Strategy: Bear Call Credit Spread (Sell at Call Wall, Buy protective higher call)
-        if cw > 0 and cw >= close * 0.99:
-            short_k = round(cw / step) * step
-            if short_k < close:
-                short_k = math.ceil((close * 1.015) / step) * step
+        if cw > 0 and cw > close:
+            short_k = math.ceil(cw / step) * step
         else:
             short_k = math.ceil((close * 1.015) / step) * step
 
@@ -1048,10 +1101,18 @@ def generate_next_day_spread_recommendation(ticker: str, direction: str, current
         spread_type = "BEAR_CALL_CREDIT"
         short_desc = f"SELL ${short_k:,.0f} Call"
         long_desc = f"BUY ${long_k:,.0f} Call (Tail Hedge)"
-        thesis = (
-            f"Short strike anchored at Dealer Call Wall (${short_k:,.0f}) where dealer inventory caps upside. "
+        
+        thesis_parts = [
+            f"Short strike anchored at Dealer Call Wall (${short_k:,.0f}) where dealer inventory caps upside.",
             f"Long Call (${long_k:,.0f}) strictly defines maximum risk to ${max_risk:,.0f} collateral (Zero Naked Risk)."
-        )
+        ]
+        if pin_ratio >= 0.35:
+            thesis_parts.append(f"Pin Index at {int(pin_ratio*100)}% confirms heavy dealer pinning around spot.")
+        if top_calls:
+            thesis_parts.append(f"Overnight flow confirmed call accumulation at {top_calls[0]}.")
+        if upside_vacuum:
+            thesis_parts.append(f"Upper wing protects before the ${upside_vacuum:,.0f} air pocket.")
+        thesis = " ".join(thesis_parts)
 
     return {
         "strategy_name": strategy_name,
@@ -1068,7 +1129,16 @@ def generate_next_day_spread_recommendation(ticker: str, direction: str, current
         "max_profit": max_profit,
         "roc_pct": roc_pct,
         "breakeven": be_spot,
-        "dealer_thesis": thesis
+        "dealer_thesis": thesis,
+        "pinning_ratio": pin_ratio,
+        "pinning_label": pin_label,
+        "net_gex_billions": net_gex_b,
+        "net_gex_velocity": net_vel,
+        "velocity_label": vel_label,
+        "top_call_accumulation": top_calls,
+        "top_put_hedging": top_puts,
+        "upside_air_pocket": upside_vacuum,
+        "downside_air_pocket": downside_vacuum
     }
 
 

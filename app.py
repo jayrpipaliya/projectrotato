@@ -750,6 +750,11 @@ def render_trade_logging_widget(t, key_suffix):
             roc_disp = round((in_max_profit / in_max_risk) * 100.0, 1) if in_max_risk > 0 else 0.0
 
             st.caption(f"🛡️ **100% Defined Risk**: Collateral Locked = **${in_max_risk:,.0f}** | Max Profit = **${in_max_profit:,.0f}** (+{roc_disp}% ROC). *Zero naked options exposure.*")
+            if spread_rec.get("pinning_ratio") or spread_rec.get("net_gex_billions"):
+                pin_r = spread_rec.get("pinning_ratio", 0)
+                net_b = spread_rec.get("net_gex_billions", 0)
+                vel_s = spread_rec.get("net_gex_velocity", "")
+                st.caption(f"📊 **Dealer Microstructure**: Net GEX: **+${net_b:.2f}B** | Pin Index: **{int(pin_r*100)}%** | ΔGEX: **{vel_s}**")
 
             cs1, cs2 = st.columns(2)
             with cs1:

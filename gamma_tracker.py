@@ -486,6 +486,162 @@ def compute_gamma_shift(ticker: str) -> dict:
     }
 
 
+def compute_advanced_gamma_analytics(ticker: str) -> dict:
+    """
+    Computes institutional micro-structural gamma analytics beyond simple static walls:
+    1. Local Pinning Density (Pin Index around spot: whether dealers are trapping price in a volatility black hole or if price is slippery)
+    2. Air Pockets / Gamma Voids (low-GEX corridors above/below walls where moves accelerate violently with no dealer resistance)
+    3. Top Overnight Accumulation & Hedging Vectors (exact strikes where fresh Call OI / Put Hedging entered overnight in the ΔGEX matrix)
+    4. Gamma Skew Asymmetry & Convexity Slopes (ratio of upside to downside gamma resistance)
+    5. Net GEX Magnitude & Regime Classification
+    """
+    shift = compute_gamma_shift(ticker)
+    if not shift or not shift.get("has_history"):
+        return {}
+
+    t_up = ticker.upper().strip()
+    history = load_gamma_history(t_up)
+    if not history:
+        return {}
+
+    curr = history[-1]
+    spot = _safe_float(curr.get("spot_price"), 100.0)
+    cw = _safe_float(curr.get("call_wall"), spot)
+    pw = _safe_float(curr.get("put_wall"), spot)
+    zg = _safe_float(curr.get("zero_gamma_level"), spot)
+    net_gex_b = _safe_float(curr.get("total_net_gex_billions"), 0.0)
+    vel_b = _safe_float(shift.get("net_gex_velocity_b"), 0.0)
+
+    strikes = curr.get("strikes", {})
+    all_shifts = shift.get("all_strike_shifts", [])
+
+    # 1. Local Pinning Density (ATM +/- 1.2% moneyness band)
+    atm_band = 0.012
+    atm_abs_gex = 0.0
+    total_abs_gex = 0.0
+
+    # 2. Asymmetric Skew (+2.5% above spot vs -2.5% below spot)
+    gex_upside = 0.0
+    gex_downside = 0.0
+
+    for k_s, v in strikes.items():
+        k = _safe_float(k_s, spot)
+        net_g = _safe_float(v.get("net_gex"), 0.0)
+        abs_g = abs(net_g)
+        total_abs_gex += abs_g
+
+        if abs(k - spot) / spot <= atm_band:
+            atm_abs_gex += abs_g
+
+        if 0 < (k - spot) / spot <= 0.025:
+            gex_upside += net_g
+        elif -0.025 <= (k - spot) / spot < 0:
+            gex_downside += net_g
+
+    pinning_ratio = round(atm_abs_gex / total_abs_gex, 2) if total_abs_gex > 0 else 0.0
+    if pinning_ratio >= 0.40:
+        pin_label = "HIGH_PIN_DENSITY"
+        pin_desc = f"{int(pinning_ratio*100)}% of dealer inventory clustered within +/-1.2% of spot (${spot:,.1f}). Heavy volatility dampening; price behaves like a mean-reverting pin."
+    elif pinning_ratio <= 0.20:
+        pin_label = "DIFFUSE_UNPINNED"
+        pin_desc = f"Only {int(pinning_ratio*100)}% of gamma near spot. Dealer pinning is weak; expect wider directional excursions."
+    else:
+        pin_label = "MODERATE_PIN"
+        pin_desc = f"{int(pinning_ratio*100)}% gamma near spot. Moderate dealer constraint with standard mean-reversion tendencies."
+
+    # 3. Air Pocket / Vacuum Detector
+    call_strikes_above = [(float(k), _safe_float(v.get("call_gex"), 0.0)) for k, v in strikes.items() if float(k) >= spot]
+    call_strikes_above.sort(key=lambda x: x[0])
+    peak_call_gex = max([x[1] for x in call_strikes_above], default=1.0)
+
+    upside_air_pocket = None
+    for k, cg in call_strikes_above:
+        if k > cw and cg < (peak_call_gex * 0.15):
+            upside_air_pocket = k
+            break
+    if not upside_air_pocket and call_strikes_above:
+        upside_air_pocket = call_strikes_above[-1][0]
+
+    put_strikes_below = [(float(k), _safe_float(v.get("put_gex"), 0.0)) for k, v in strikes.items() if float(k) <= spot]
+    put_strikes_below.sort(key=lambda x: x[0], reverse=True)
+    peak_put_gex = max([x[1] for x in put_strikes_below], default=1.0)
+
+    downside_air_pocket = None
+    for k, pg in put_strikes_below:
+        if k < pw and pg < (peak_put_gex * 0.15):
+            downside_air_pocket = k
+            break
+    if not downside_air_pocket and put_strikes_below:
+        downside_air_pocket = put_strikes_below[-1][0]
+
+    # 4. Top Delta GEX Shifts (Overnight flow vectors)
+    top_calls_accum = shift.get("top_calls_accumulating", [])[:2]
+    top_puts_hedged = shift.get("top_puts_hedging", [])[:2]
+    top_drained = sorted(all_shifts, key=lambda x: x.get("delta_net_gex_m", 0.0))[:2]
+
+    # 5. Skew Asymmetry
+    skew_ratio = round(gex_upside / abs(gex_downside), 2) if abs(gex_downside) > 0 else 1.0
+    if skew_ratio >= 1.35:
+        skew_label = "CALL_HEAVY_RESISTANCE"
+        skew_desc = f"Call gamma outweighs put gamma by {skew_ratio:.1f}x. Rallies face heavy dealer supply, but downside has thinner cushioning."
+    elif skew_ratio <= 0.65:
+        skew_label = "PUT_HEAVY_SUPPORT"
+        skew_desc = f"Put cushion outweighs overhead calls ({skew_ratio:.1f}x ratio). Dips are aggressively bought by dealers; upside room is cleaner."
+    else:
+        skew_label = "BALANCED_GAMMA_SLOPE"
+        skew_desc = f"Dealer gamma is symmetrically distributed ({skew_ratio:.1f}x ratio) around spot."
+
+    # 6. Absolute Net GEX Regime
+    if net_gex_b >= 2.5:
+        regime_desc = f"+${net_gex_b:.2f}B Deep Long Gamma — Heavy dealer volatility dampening (buy dips & fade rips)."
+    elif net_gex_b >= 0.5:
+        regime_desc = f"+${net_gex_b:.2f}B Long Gamma — Moderated range mean-reversion."
+    elif net_gex_b <= -2.5:
+        regime_desc = f"-${abs(net_gex_b):.2f}B Deep Short Gamma — Severe tail fragility & cascade risk."
+    elif net_gex_b <= -0.5:
+        regime_desc = f"-${abs(net_gex_b):.2f}B Short Gamma — Volatility expansion & directional momentum."
+    else:
+        regime_desc = f"{format_signed_currency(net_gex_b, 'B', 2)} Neutral Gamma — Minimal dealer delta-hedging constraint."
+
+    return {
+        "ticker": t_up,
+        "spot": spot,
+        "net_gex_billions": net_gex_b,
+        "net_gex_regime_desc": regime_desc,
+        "net_gex_velocity_b": format_signed_currency(vel_b, "B", 2),
+        "velocity_label": shift.get("velocity_label"),
+        "call_wall": cw,
+        "call_wall_shift": f"{shift.get('call_wall_shift', 0.0):+.2f}",
+        "call_wall_status": shift.get("call_wall_status"),
+        "put_wall": pw,
+        "put_wall_shift": f"{shift.get('put_wall_shift', 0.0):+.2f}",
+        "put_wall_status": shift.get("put_wall_status"),
+        "zero_gamma_level": zg,
+        "pinning_index": {
+            "ratio": pinning_ratio,
+            "label": pin_label,
+            "description": pin_desc
+        },
+        "gamma_voids_air_pockets": {
+            "upside_vacuum_strike": upside_air_pocket,
+            "upside_vacuum_desc": f"Above ${upside_air_pocket:,.1f}, dealer call resistance drops below 15% of peak. Breakouts past ${cw:,.1f} enter a gamma vacuum with explosive expansion risk.",
+            "downside_vacuum_strike": downside_air_pocket,
+            "downside_vacuum_desc": f"Below ${downside_air_pocket:,.1f}, put support floor vanishes. Cascades below ${pw:,.1f} enter a gamma vacuum."
+        },
+        "overnight_flow_vectors": {
+            "top_call_accumulation": [f"${x['strike']:,.1f} (+{x['delta_call_gex_m']:,.1f}M)" for x in top_calls_accum],
+            "top_put_hedging": [f"${x['strike']:,.1f} (+{x['delta_put_gex_m']:,.1f}M)" for x in top_puts_hedged],
+            "top_gamma_drain": [f"${x['strike']:,.1f} ({x['delta_net_gex_m']:,.1f}M)" for x in top_drained]
+        },
+        "convexity_skew": {
+            "ratio": skew_ratio,
+            "label": skew_label,
+            "description": skew_desc
+        },
+        "institutional_synthesis": shift.get("institutional_synthesis")
+    }
+
+
 def generate_gamma_heatmap_matrix(ticker: str, mode: str = "net_gex", max_days: int = 10) -> dict:
     """
     Constructs a 2D matrix suitable for Plotly Heatmap:
