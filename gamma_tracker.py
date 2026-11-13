@@ -255,17 +255,23 @@ def record_gamma_snapshot(ticker: str, profile: dict) -> bool:
     # Session date string YYYY-MM-DD anchored to US Eastern market calendar
     today_str = get_market_session_date()
 
-    # Extract strike GEX dictionary (relevant strikes)
+    # Extract strike GEX dictionary (relevant strikes and active OI within +/- 18% moneyness)
     strikes_compact = {}
+    spot_ref = _safe_float(profile.get("spot_price"), 100.0)
     for s in profile.get("strikes", []):
-        if s.get("is_relevant", True) or abs(s["strike"] - profile["spot_price"]) / profile["spot_price"] <= 0.08:
-            k_str = f"{s['strike']:.2f}"
+        k_val = _safe_float(s.get("strike"), 0.0)
+        c_oi = int(_safe_float(s.get("call_oi"), 0))
+        p_oi = int(_safe_float(s.get("put_oi"), 0))
+        dist_ratio = abs(k_val - spot_ref) / spot_ref if spot_ref > 0 else 0.0
+
+        if s.get("is_relevant", True) or dist_ratio <= 0.18 or (c_oi + p_oi >= 500):
+            k_str = f"{k_val:.2f}"
             strikes_compact[k_str] = {
                 "net_gex": round(s.get("net_gex", 0), 1),
                 "call_gex": round(s.get("call_gex", 0), 1),
                 "put_gex": round(s.get("put_gex", 0), 1),
-                "call_oi": s.get("call_oi", 0),
-                "put_oi": s.get("put_oi", 0)
+                "call_oi": c_oi,
+                "put_oi": p_oi
             }
 
     entry = {
@@ -816,14 +822,22 @@ def get_historical_oi_migration(ticker: str, max_days: int = 5) -> dict:
     pw = _safe_float(curr.get("put_wall"), 0.0)
     zg = _safe_float(curr.get("zero_gamma_level"), 0.0)
 
-    # Gather union of all strikes present in the history slice
+    # Gather union of all strikes present in the history slice and per-snapshot strike boundaries
     strike_set = set()
+    snapshot_ranges = []
     for h in history_slice:
+        s_keys = []
         for k_s in h.get("strikes", {}).keys():
             try:
-                strike_set.add(float(k_s))
+                k_val = float(k_s)
+                strike_set.add(k_val)
+                s_keys.append(k_val)
             except Exception:
                 continue
+        if s_keys:
+            snapshot_ranges.append((min(s_keys), max(s_keys)))
+        else:
+            snapshot_ranges.append((0.0, 0.0))
 
     sorted_strikes = sorted(list(strike_set))
     strike_rows = []
@@ -832,20 +846,52 @@ def get_historical_oi_migration(ticker: str, max_days: int = 5) -> dict:
         call_series = []
         put_series = []
 
-        for h in history_slice:
+        for idx, h in enumerate(history_slice):
             s_dict = h.get("strikes", {})
-            item = _lookup_strike(s_dict, k)
-            call_series.append(int(_safe_float(item.get("call_oi"), 0)))
-            put_series.append(int(_safe_float(item.get("put_oi"), 0)))
+            min_k, max_k = snapshot_ranges[idx] if idx < len(snapshot_ranges) else (0.0, 0.0)
 
-        c_latest = call_series[-1]
-        p_latest = put_series[-1]
-        c_1d = call_series[-1] - call_series[-2] if len(call_series) >= 2 else 0
-        p_1d = put_series[-1] - put_series[-2] if len(put_series) >= 2 else 0
-        c_tot = call_series[-1] - call_series[0] if len(call_series) >= 2 else 0
-        p_tot = put_series[-1] - put_series[0] if len(put_series) >= 2 else 0
-        c_pct = round((c_tot / call_series[0] * 100.0), 1) if call_series[0] > 0 else (100.0 if c_tot > 0 else 0.0)
-        p_pct = round((p_tot / put_series[0] * 100.0), 1) if put_series[0] > 0 else (100.0 if p_tot > 0 else 0.0)
+            # Check if strike was tracked in this session snapshot
+            if min_k > 0 and (k < min_k - 0.05 or k > max_k + 0.05):
+                # Outside the recorded grid on this date -> untracked
+                call_series.append(None)
+                put_series.append(None)
+            else:
+                item = _lookup_strike(s_dict, k, interpolate=False)
+                c_val = int(_safe_float(item.get("call_oi"), 0)) if item else 0
+                p_val = int(_safe_float(item.get("put_oi"), 0)) if item else 0
+                call_series.append(c_val)
+                put_series.append(p_val)
+
+        valid_c = [v for v in call_series if v is not None]
+        valid_p = [v for v in put_series if v is not None]
+
+        c_latest = valid_c[-1] if valid_c else 0
+        p_latest = valid_p[-1] if valid_p else 0
+
+        # 1-Day change: compare latest to previous valid value
+        if len(valid_c) >= 2 and call_series[-1] is not None and call_series[-2] is not None:
+            c_1d = call_series[-1] - call_series[-2]
+        elif len(valid_c) >= 2:
+            c_1d = valid_c[-1] - valid_c[-2]
+        else:
+            c_1d = 0
+
+        if len(valid_p) >= 2 and put_series[-1] is not None and put_series[-2] is not None:
+            p_1d = put_series[-1] - put_series[-2]
+        elif len(valid_p) >= 2:
+            p_1d = valid_p[-1] - valid_p[-2]
+        else:
+            p_1d = 0
+
+        # Total multi-day change: calculated from the FIRST tracked valid session
+        c_baseline = valid_c[0] if valid_c else 0
+        p_baseline = valid_p[0] if valid_p else 0
+
+        c_tot = c_latest - c_baseline
+        p_tot = p_latest - p_baseline
+
+        c_pct = round((c_tot / c_baseline * 100.0), 1) if c_baseline > 0 else (100.0 if c_tot > 0 else 0.0)
+        p_pct = round((p_tot / p_baseline * 100.0), 1) if p_baseline > 0 else (100.0 if p_tot > 0 else 0.0)
 
         # Dist vs spot
         dist_pct = round(((k - spot) / spot) * 100.0, 2)

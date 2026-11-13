@@ -2545,9 +2545,9 @@ def render_gamma_desk_page(available_tickers=None):
                             "Role": s.get("role") or "—"
                         }
                         for i, d in enumerate(dates):
-                            val = series[i] if i < len(series) else 0
+                            val = series[i] if i < len(series) else None
                             lbl = f"{d} (Today)" if i == len(dates) - 1 else d
-                            row[lbl] = f"{val:,}"
+                            row[lbl] = f"{val:,}" if val is not None else "—"
                         row["1D ΔOI"] = f"{d1d:+,}"
                         row["Net ΔOI"] = f"{dtot:+,} ({pct:+.1f}%)"
                         row["Pace"] = pace

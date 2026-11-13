@@ -4597,6 +4597,9 @@ async function init() {
                     // Series cells
                     const seriesCells = series.map((val, idx) => {
                         const isLatest = (idx === series.length - 1);
+                        if (val === null || val === undefined) {
+                            return `<td class="py-2.5 px-3 text-right font-mono text-slate-600" title="Outside tracked strike window on this date">—</td>`;
+                        }
                         const cellClass = isLatest ? 'font-bold text-white bg-white/[0.02]' : 'text-slate-300';
                         return `<td class="py-2.5 px-3 text-right font-mono ${cellClass}">${val.toLocaleString()}</td>`;
                     }).join('');
