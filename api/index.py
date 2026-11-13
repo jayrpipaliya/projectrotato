@@ -1879,6 +1879,13 @@ HTML_CONTENT = """<!DOCTYPE html>
 
                 const marketRes = await fetch('/api/market-data');
                 DATA = await marketRes.json();
+                if (syncResult && syncResult.last_date && syncResult.last_date !== 'N/A') {
+                    DATA.last_market_session = syncResult.last_date;
+                }
+                const sessionBadge = document.getElementById('sessionDateBadge');
+                if (sessionBadge && DATA.last_market_session) {
+                    sessionBadge.innerText = 'Prices: ' + DATA.last_market_session;
+                }
 
                 renderBenchmarks();
                 renderMacroBarometers();
@@ -1938,15 +1945,18 @@ HTML_CONTENT = """<!DOCTYPE html>
 
                 const marketRes = await fetch('/api/market-data');
                 DATA = await marketRes.json();
+                if (csvResult && csvResult.last_date && csvResult.last_date !== 'N/A') {
+                    DATA.last_market_session = csvResult.last_date;
+                }
+                const sessionBadge = document.getElementById('sessionDateBadge');
+                if (sessionBadge && DATA.last_market_session) {
+                    sessionBadge.innerText = 'Prices: ' + DATA.last_market_session;
+                }
 
                 renderBenchmarks();
                 renderMacroBarometers();
                 renderBriefingBaskets();
                 renderRegime();
-                if (DATA.last_market_session) {
-                    const sessionBadge = document.getElementById('sessionDateBadge');
-                    if (sessionBadge) sessionBadge.innerText = 'Prices: ' + DATA.last_market_session;
-                }
 
                 if (sBtnText) sBtnText.innerText = `CSVs Synced! (${csvResult.loaded_count || 0} Assets)`;
                 setTimeout(() => {
