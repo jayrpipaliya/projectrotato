@@ -287,6 +287,10 @@ def record_gamma_snapshot(ticker: str, profile: dict) -> bool:
         "total_call_gex_billions": profile.get("total_call_gex_billions"),
         "total_put_gex_billions": profile.get("total_put_gex_billions"),
         "regime_short": profile.get("regime_short"),
+        "current_iv": profile.get("current_iv"),
+        "iv_rank": profile.get("iv_rank"),
+        "iv_percentile": profile.get("iv_percentile"),
+        "vol_regime": profile.get("vol_regime"),
         "strikes": strikes_compact
     }
 
@@ -488,6 +492,10 @@ def compute_gamma_shift(ticker: str) -> dict:
         "top_puts_hedging": top_puts_hedged,
         "all_strike_shifts": strike_shifts,
         "institutional_synthesis": synthesis,
+        "current_iv": curr.get("current_iv"),
+        "iv_rank": curr.get("iv_rank"),
+        "iv_percentile": curr.get("iv_percentile"),
+        "vol_regime": curr.get("vol_regime"),
         "history_count": len(history)
     }
 

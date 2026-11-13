@@ -127,6 +127,87 @@ def black_scholes_gamma(S, K, T, sigma, r=0.045, q=0.0075):
     gamma = (norm_pdf(d1) * np.exp(-q * T)) / (S * sigma * np.sqrt(T))
     return float(gamma)
 
+def compute_iv_rank_and_percentile(ticker_symbol, current_iv_pct=None):
+    """
+    Computes 1-Year (252 trading sessions) IV Rank and IV Percentile:
+    - IV Rank = (Current IV - 52w Low IV) / (52w High IV - 52w Low IV) * 100
+    - IV Percentile = % of sessions over past 252 days with IV < Current IV
+    """
+    t_up = str(ticker_symbol).upper().strip()
+    df = None
+    try:
+        from data_manager import load_ticker_data
+        df = load_ticker_data(t_up)
+    except Exception:
+        pass
+
+    if df is None or len(df) < 30:
+        try:
+            hist = yf.Ticker(t_up).history(period="1y")
+            if not hist.empty and len(hist) >= 30:
+                df = hist.reset_index()
+        except Exception:
+            pass
+
+    if df is None or len(df) < 30:
+        fallback_iv = current_iv_pct if current_iv_pct and current_iv_pct > 0 else 20.0
+        return {
+            'current_iv': round(fallback_iv, 1),
+            'iv_rank': 50.0,
+            'iv_percentile': 50.0,
+            'iv_52w_low': round(fallback_iv * 0.6, 1),
+            'iv_52w_high': round(fallback_iv * 1.8, 1),
+            'vol_regime': 'Neutral Volatility',
+            'style': 'slate'
+        }
+
+    ret = df['Close'].pct_change().dropna()
+    rolling_21 = ret.rolling(21).std() * np.sqrt(252) * 100
+    hist_1y = rolling_21.tail(252).dropna()
+    if len(hist_1y) < 20:
+        hist_1y = rolling_21.dropna()
+
+    iv_min = float(hist_1y.min()) if not hist_1y.empty else 10.0
+    iv_max = float(hist_1y.max()) if not hist_1y.empty else 40.0
+
+    if current_iv_pct is None or current_iv_pct <= 0:
+        current_iv_pct = float(rolling_21.iloc[-1]) if not rolling_21.empty else 20.0
+
+    if iv_max > iv_min:
+        ivr = ((current_iv_pct - iv_min) / (iv_max - iv_min)) * 100.0
+    else:
+        ivr = 50.0
+    ivr = max(0.0, min(100.0, ivr))
+
+    ivp = float((hist_1y < current_iv_pct).mean() * 100.0) if not hist_1y.empty else 50.0
+    ivp = max(0.0, min(100.0, ivp))
+
+    if ivp >= 80.0:
+        regime = 'Elevated Premium (Top 20% Vol)'
+        style = 'cherry'
+    elif ivp >= 60.0:
+        regime = 'Above Average Vol'
+        style = 'amber'
+    elif ivp <= 20.0:
+        regime = 'Deep Cheap Vol (Bottom 20%)'
+        style = 'mint'
+    elif ivp <= 40.0:
+        regime = 'Below Average Vol'
+        style = 'sky'
+    else:
+        regime = 'Neutral Volatility'
+        style = 'slate'
+
+    return {
+        'current_iv': round(current_iv_pct, 1),
+        'iv_rank': round(ivr, 1),
+        'iv_percentile': round(ivp, 1),
+        'iv_52w_low': round(iv_min, 1),
+        'iv_52w_high': round(iv_max, 1),
+        'vol_regime': regime,
+        'style': style
+    }
+
 def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force_refresh=False):
     """
     Calculates institutional dealer Gamma Exposure (GEX) profile:
@@ -289,12 +370,16 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
                 if pd.notna(p_max):
                     exp_max_ts = max(exp_max_ts, p_max) if exp_max_ts is not None else p_max
 
-            return {"gex": local_gex, "calls": local_calls, "puts": local_puts, "max_trade_ts": exp_max_ts}
+            return {"gex": local_gex, "calls": local_calls, "puts": local_puts, "max_trade_ts": exp_max_ts, "base_iv": base_iv}
         except Exception:
-            return {"gex": {}, "calls": [], "puts": [], "max_trade_ts": None}
+            return {"gex": {}, "calls": [], "puts": [], "max_trade_ts": None, "base_iv": None}
 
     with ThreadPoolExecutor(max_workers=min(5, len(valid_exps))) as executor:
         results = list(executor.map(process_exp, valid_exps))
+
+    exp_base_ivs = [res.get("base_iv") for res in results if res and res.get("base_iv")]
+    current_atm_iv_pct = float(np.median(exp_base_ivs) * 100.0) if exp_base_ivs else 20.0
+    iv_stats = compute_iv_rank_and_percentile(ticker_up, current_atm_iv_pct)
 
     all_calls = []
     all_puts = []
@@ -589,6 +674,12 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         "put_wall_concentration_pct": pw_conc,
         "regime": regime,
         "regime_short": regime_short,
+        "current_iv": iv_stats.get("current_iv"),
+        "iv_rank": iv_stats.get("iv_rank"),
+        "iv_percentile": iv_stats.get("iv_percentile"),
+        "iv_52w_low": iv_stats.get("iv_52w_low"),
+        "iv_52w_high": iv_stats.get("iv_52w_high"),
+        "vol_regime": iv_stats.get("vol_regime"),
         "elapsed_seconds": elapsed,
         "loaded_at_timestamp": now_ts,
         "loaded_at_str": loaded_at_str,
@@ -2277,7 +2368,7 @@ def render_gamma_desk_page(available_tickers=None):
     regime_short = gex_data["regime_short"]
 
     # 2. KPI Strip
-    kpi_col1, kpi_col2, kpi_col3, kpi_col4, kpi_col5 = st.columns(5)
+    kpi_col1, kpi_col2, kpi_col3, kpi_col4, kpi_col5, kpi_col6 = st.columns(6)
     with kpi_col1:
         st.metric("Spot Price", f"${spot:.2f}", selected_ticker)
         st.caption("Live underlying reference")
@@ -2293,6 +2384,14 @@ def render_gamma_desk_page(available_tickers=None):
     with kpi_col5:
         st.metric("Total Net Dealer GEX", f"${net_gex:+.2f}B", regime_short)
         st.caption(f"{'Suppresses Volatility' if is_long else 'Amplifies Trending Vol'}")
+    with kpi_col6:
+        st.metric(
+            "IV Percentile (1-Yr)",
+            f"{gex_data.get('iv_percentile', 0):.1f}%",
+            f"IVR: {gex_data.get('iv_rank', 0):.1f}%",
+            delta_color="off"
+        )
+        st.caption(f"{gex_data.get('current_iv', 0):.1f}% ATM IV • {gex_data.get('vol_regime', '')}")
 
     # 3. Tactical Desk Regime Directive Banner
     if is_long:

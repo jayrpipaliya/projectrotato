@@ -1697,9 +1697,9 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Top 5 KPI Strip -->
-            <div id="gammaDeskKpiRow" class="grid grid-cols-2 sm:grid-cols-5 gap-3.5 mb-5">
-                <!-- Populated dynamically: Spot, Call Wall, Put Wall, Zero Gamma Flip, Total Net GEX -->
+            <!-- Top 6 KPI Strip (including IV Percentile) -->
+            <div id="gammaDeskKpiRow" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 mb-5">
+                <!-- Populated dynamically: Spot, Call Wall, Put Wall, Zero Gamma Flip, Total Net GEX, IV Percentile -->
             </div>
 
             <!-- Tactical Regime Directive Banner -->
@@ -4719,6 +4719,11 @@ async function init() {
                             <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Total Net Dealer GEX</div>
                             <div class="text-lg font-bold ${isLong ? 'text-mint' : 'text-rose-400'} mt-0.5">${g.total_net_gex_billions >= 0 ? '+' : ''}${g.total_net_gex_billions.toFixed(2)}B</div>
                             <div class="text-[10px] text-slate-400 mt-0.5">${g.regime_short} • ${isLong ? 'Suppresses Volatility' : 'Amplifies Trending Vol'}</div>
+                        </div>
+                        <div class="lux-card p-3 border-l-2 border-purple-400">
+                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">IV Percentile (1-Yr)</div>
+                            <div class="text-lg font-bold text-purple-300 mt-0.5">${(g.iv_percentile !== undefined && g.iv_percentile !== null) ? g.iv_percentile.toFixed(1) : '—'}% <span class="text-xs font-normal text-slate-300">(IVR: ${(g.iv_rank !== undefined && g.iv_rank !== null) ? g.iv_rank.toFixed(1) : '—'}%)</span></div>
+                            <div class="text-[10px] text-slate-400 mt-0.5">${g.current_iv ? g.current_iv.toFixed(1) + '% ATM IV • ' : ''}${g.vol_regime || '1-Yr Distribution'}</div>
                         </div>
                     `;
                 }
