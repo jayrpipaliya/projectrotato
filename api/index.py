@@ -464,34 +464,77 @@ def api_gamma_oi_history(ticker: str, days: int = Query(5)):
         return {"error": str(e)}
 
 @app.get("/api/options/{ticker}")
-def api_options(ticker: str, direction: str = Query("Calls"), side: str = Query("Buy"), expiration: str = Query(None)):
+def api_options(ticker: str, direction: str = Query(None), side: str = Query(None), expiration: str = Query(None)):
     try:
         t_up = ticker.upper()
-        dir_clean = "Calls" if ("Call" in str(direction) or str(direction) == "Bullish") else "Puts"
-        side_clean = "Sell" if "Sell" in str(side) else "Buy"
-        from options_engine import compute_realized_volatilities, fetch_term_structure, scan_cross_chain_recommendations, analyze_smile_and_skew, compute_gamma_exposure_profile
+        from options_engine import compute_realized_volatilities, fetch_term_structure, compute_iv_rank_and_percentile, analyze_smile_and_skew
         df_hist = load_ticker_data(t_up)
         hvs = compute_realized_volatilities(df_hist, ticker_symbol=t_up)
         term_df, spot_price, next_earnings = fetch_term_structure(t_up, hvs_dict=hvs)
         if term_df.empty or spot_price is None:
             return {"error": f"Live options data not available for {t_up}"}
             
-        chains_list = term_df.to_dict('records')
-        picks, ranked_chain = scan_cross_chain_recommendations(t_up, chains_list, spot_price, direction=dir_clean, side=side_clean, return_all=True)
+        front_atm_iv = float(term_df['ATM_IV'].iloc[0])
+        iv_stats = compute_iv_rank_and_percentile(t_up, current_iv_pct=front_atm_iv)
         
+        # Enrich term_df with Term Slopes vs Front and vs Prev
         valid_exps = [str(e) for e in term_df['Expiration'].tolist()]
+        enriched_chains = []
+        for idx, row in term_df.iterrows():
+            atm_iv = float(row['ATM_IV'])
+            slope_front = round(atm_iv - front_atm_iv, 2)
+            if idx == 0:
+                slope_prev = 0.0
+                struct_label = "Front Baseline"
+            else:
+                prev_atm = float(term_df.iloc[idx - 1]['ATM_IV'])
+                slope_prev = round(atm_iv - prev_atm, 2)
+                if slope_front > 0.5:
+                    struct_label = "Contango"
+                elif slope_front < -0.5:
+                    struct_label = "Backwardation"
+                else:
+                    struct_label = "Flat"
+            
+            r_dict = row.to_dict()
+            r_dict['Expiration'] = str(row['Expiration'])
+            r_dict['Slope_Front'] = slope_front
+            r_dict['Slope_Prev'] = slope_prev
+            r_dict['Structure'] = struct_label
+            enriched_chains.append(r_dict)
+            
+        # Determine overall Term Structure Regime
+        back_atm = float(term_df['ATM_IV'].iloc[-1])
+        net_slope = round(back_atm - front_atm_iv, 2)
+        if net_slope > 1.0:
+            regime_name = f"Contango (+{net_slope} pts)"
+            regime_desc = "Normal upward term slope: Back-month IV trades at premium to front"
+            regime_style = "mint"
+        elif net_slope < -1.0:
+            regime_name = f"Backwardation ({net_slope} pts)"
+            regime_desc = "Inverted term slope: Front-month elevated / event spike"
+            regime_style = "cherry"
+        else:
+            regime_name = f"Flat Term ({net_slope:+} pts)"
+            regime_desc = "Balanced volatility term slope across horizons"
+            regime_style = "slate"
+            
+        term_regime = {
+            "name": regime_name,
+            "slope": net_slope,
+            "style": regime_style,
+            "description": regime_desc
+        }
+        
+        # Expiration selection for smile analysis
         if expiration and expiration in valid_exps:
             chosen_exp = expiration
         else:
             chosen_exp = valid_exps[0]
             
-        smile = analyze_smile_and_skew(t_up, chosen_exp, spot_price, direction=dir_clean, side=side_clean)
+        smile = analyze_smile_and_skew(t_up, chosen_exp, spot_price)
         smile_payload = None
         if smile:
-            target_df = smile['target_df']
-            top_edges = smile['top_strikes']['Bid_Edge'] if side_clean == 'Sell' else smile['top_strikes']['Ask_Edge']
-            
-            # Compute term slope vs next expiration in term_df
             metrics = smile.get('metrics', {})
             try:
                 exps = term_df['Expiration'].tolist()
@@ -519,13 +562,6 @@ def api_options(ticker: str, direction: str = Query("Calls"), side: str = Query(
                 metrics['term_slope'] = 0.0
                 metrics['term_slope_text'] = "N/A"
 
-            # Filter execution spread overlay to active tradable moneyness (eliminates deep ITM 50%+ IV spread spikes)
-            if "Call" in dir_clean:
-                exec_mask = (target_df['strike'] >= spot_price * 0.95) & (target_df['strike'] <= spot_price * 1.15)
-            else:
-                exec_mask = (target_df['strike'] <= spot_price * 1.05) & (target_df['strike'] >= spot_price * 0.85)
-            exec_df = target_df[exec_mask] if exec_mask.any() else target_df
-
             smile_payload = {
                 "expiration": chosen_exp,
                 "dte": smile['dte'],
@@ -536,16 +572,6 @@ def api_options(ticker: str, direction: str = Query("Calls"), side: str = Query(
                 "otm_call_curve": smile.get('otm_call_curve', {}),
                 "otm_puts_market": smile.get('otm_puts_market', {}),
                 "otm_calls_market": smile.get('otm_calls_market', {}),
-                "model_strikes": smile.get('otm_call_curve' if 'Call' in dir_clean else 'otm_put_curve', {}).get('strikes', []),
-                "model_iv": smile.get('otm_call_curve' if 'Call' in dir_clean else 'otm_put_curve', {}).get('iv', []),
-                "market_strikes": [round(float(s), 2) for s in exec_df['strike']],
-                "market_iv": [round(float(iv), 2) for iv in exec_df['IV_Pct']],
-                "market_ask_iv": [round(float(iv), 2) for iv in exec_df['Ask_IV_Pct']],
-                "market_bid_iv": [round(float(iv), 2) for iv in exec_df['Bid_IV_Pct']],
-                "top_strikes": [round(float(s), 2) for s in smile['top_strikes']['strike']],
-                "top_strikes_iv": [round(float(iv), 2) for iv in smile['top_strikes']['IV_Pct']],
-                "top_strikes_delta": [round(float(d), 2) for d in smile['top_strikes'].get('Est_Delta', [0]*len(smile['top_strikes']))],
-                "top_strikes_edge": [round(float(e), 2) for e in top_edges]
             }
             
         expirations_list = [
@@ -555,43 +581,33 @@ def api_options(ticker: str, direction: str = Query("Calls"), side: str = Query(
                 "atm_iv": round(float(row.get('ATM_IV', 0)), 1),
                 "iv_hv_ratio": round(float(row.get('IV_HV_Ratio', 1.0)), 2),
                 "exp_move_pct": round(float(row.get('Expected_Move_Pct', 0)), 1),
-                "exp_move_dollars": round(float(row.get('Expected_Move', 0)), 2)
+                "exp_move_dollars": round(float(row.get('Expected_Move', 0)), 2),
+                "spans_earnings": bool(row.get('Spans_Earnings', False)),
+                "structure": row.get('Structure', 'Flat'),
+                "slope_front": row.get('Slope_Front', 0.0)
             }
-            for _, row in term_df.iterrows()
+            for row in enriched_chains
         ]
-            
-        gex_payload = None
-        try:
-            gex_data = compute_gamma_exposure_profile(t_up, max_expirations=5)
-            if gex_data and "error" not in gex_data:
-                gex_payload = gex_data
-        except Exception:
-            pass
 
         return clean_json({
             "ticker": t_up,
-            "direction": dir_clean,
-            "side": side_clean,
             "spot_price": round(spot_price, 2),
             "next_earnings": next_earnings.strftime("%b %d, %Y") if next_earnings else None,
             "hvs": hvs,
-            "term_chains": chains_list[:8],
+            "iv_stats": iv_stats,
+            "term_regime": term_regime,
+            "term_chains": enriched_chains,
             "expirations": expirations_list,
             "selected_expiration": chosen_exp,
-            "picks": picks,
-            "ranked_chain": ranked_chain,
-            "smile": smile_payload,
-            "gamma": gex_payload
+            "smile": smile_payload
         })
     except Exception as e:
         return {"error": str(e)}
 
 @app.get("/api/options/{ticker}/smile")
-def api_options_smile(ticker: str, expiration: str = Query(...), direction: str = Query("Calls"), side: str = Query("Buy"), spot: float = Query(None)):
+def api_options_smile(ticker: str, expiration: str = Query(...), direction: str = Query(None), side: str = Query(None), spot: float = Query(None)):
     try:
         t_up = ticker.upper()
-        dir_clean = "Calls" if ("Call" in str(direction) or str(direction) == "Bullish") else "Puts"
-        side_clean = "Sell" if "Sell" in str(side) else "Buy"
         from options_engine import analyze_smile_and_skew
         spot_price = spot
         if spot_price is None or spot_price <= 0:
@@ -603,14 +619,10 @@ def api_options_smile(ticker: str, expiration: str = Query(...), direction: str 
                 t = yf.Ticker(t_up)
                 spot_price = float(t.fast_info.last_price or t.fast_info.previous_close)
                 
-        smile = analyze_smile_and_skew(t_up, expiration, spot_price, direction=dir_clean, side=side_clean)
+        smile = analyze_smile_and_skew(t_up, expiration, spot_price)
         if not smile:
             return {"error": f"Could not construct volatility smile for {expiration}"}
             
-        target_df = smile['target_df']
-        top_edges = smile['top_strikes']['Bid_Edge'] if side_clean == 'Sell' else smile['top_strikes']['Ask_Edge']
-        
-        # Calculate term slope vs adjacent cycle
         metrics = smile.get('metrics', {})
         try:
             from options_engine import fetch_term_structure
@@ -637,18 +649,9 @@ def api_options_smile(ticker: str, expiration: str = Query(...), direction: str 
         except Exception:
             metrics['term_slope'] = 0.0
             metrics['term_slope_text'] = "N/A"
-            
-        # Filter execution spread overlay to active tradable moneyness (eliminates deep ITM 50%+ IV spread spikes)
-        if "Call" in dir_clean:
-            exec_mask = (target_df['strike'] >= spot_price * 0.95) & (target_df['strike'] <= spot_price * 1.15)
-        else:
-            exec_mask = (target_df['strike'] <= spot_price * 1.05) & (target_df['strike'] >= spot_price * 0.85)
-        exec_df = target_df[exec_mask] if exec_mask.any() else target_df
 
         return clean_json({
             "ticker": t_up,
-            "direction": dir_clean,
-            "side": side_clean,
             "spot_price": round(spot_price, 2),
             "smile": {
                 "expiration": expiration,
@@ -660,18 +663,10 @@ def api_options_smile(ticker: str, expiration: str = Query(...), direction: str 
                 "otm_call_curve": smile.get('otm_call_curve', {}),
                 "otm_puts_market": smile.get('otm_puts_market', {}),
                 "otm_calls_market": smile.get('otm_calls_market', {}),
-                "model_strikes": smile.get('otm_call_curve' if 'Call' in dir_clean else 'otm_put_curve', {}).get('strikes', []),
-                "model_iv": smile.get('otm_call_curve' if 'Call' in dir_clean else 'otm_put_curve', {}).get('iv', []),
-                "market_strikes": [round(float(s), 2) for s in exec_df['strike']],
-                "market_iv": [round(float(iv), 2) for iv in exec_df['IV_Pct']],
-                "market_ask_iv": [round(float(iv), 2) for iv in exec_df['Ask_IV_Pct']],
-                "market_bid_iv": [round(float(iv), 2) for iv in exec_df['Bid_IV_Pct']],
-                "top_strikes": [round(float(s), 2) for s in smile['top_strikes']['strike']],
-                "top_strikes_iv": [round(float(iv), 2) for iv in smile['top_strikes']['IV_Pct']],
-                "top_strikes_delta": [round(float(d), 2) for d in smile['top_strikes'].get('Est_Delta', [0]*len(smile['top_strikes']))],
-                "top_strikes_edge": [round(float(e), 2) for e in top_edges]
             }
         })
+    except Exception as e:
+        return {"error": str(e)}
     except Exception as e:
         return {"error": str(e)}
 
@@ -1624,18 +1619,18 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                     <div>
                         <div class="flex items-center gap-2">
-                            <h2 class="text-lg font-black text-white tracking-wide">Institutional Volatility Pricing Desk</h2>
-                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-mint/15 text-mint border border-mint/25">Live Options Vol</span>
+                            <h2 class="text-lg font-black text-white tracking-wide">Macro Volatility & Term Structure Desk</h2>
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/25">Macro Vol Architecture</span>
                         </div>
-                        <p class="text-xs text-slate-400 mt-1 max-w-2xl">
-                            Institutional volatility architecture: Switch between <b>Buy Side (Ask Edge)</b> for underpriced cheap IV and <b>Sell Side (Bid Edge)</b> for overpriced premium harvesting. De-jumps historical volatility, models Asymmetric Log-Moneyness Skew, and executes full Bid/Ask spread inversion.
+                        <p class="text-xs text-slate-400 mt-1 max-w-3xl">
+                            15-Minute Delayed Data from YFinance analyzing 1-Year IV Percentile (IVP), Volatility Skew / Smile, and Expiration Term Slopes across contract cycles (Contango vs Backwardation).
                         </p>
                     </div>
                     
                     <div class="flex flex-wrap items-center gap-3">
                         <div>
                             <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Ticker</label>
-                            <select id="optionsTickerSelect" onchange="loadOptionsDesk()" class="bg-[#0b0d12] text-xs font-bold text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-mint">
+                            <select id="optionsTickerSelect" onchange="loadOptionsDesk()" class="bg-[#0b0d12] text-xs font-bold text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-mint min-w-[150px]">
                                 <option value="QQQ" selected>QQQ (Nasdaq 100)</option>
                                 <option value="SPY">SPY (S&P 500)</option>
                                 <option value="NVDA">NVDA (Nvidia)</option>
@@ -1723,60 +1718,86 @@ HTML_CONTENT = """<!DOCTYPE html>
                                 <option value="XOM">XOM</option>
                             </select>
                         </div>
-                        
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Execution Side</label>
-                            <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="optionsSideGroup">
-                                <button onclick="setOptionsSide('Buy')" id="btnOptBuy" class="px-3 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30">🟢 Buy (Ask Edge)</button>
-                                <button onclick="setOptionsSide('Sell')" id="btnOptSell" class="px-3 py-1 rounded font-bold transition text-slate-400">🔴 Sell (Bid Edge)</button>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Contract Type</label>
-                            <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="optionsDirGroup">
-                                <button onclick="setOptionsDirection('Calls')" id="btnOptCalls" class="px-3 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30">Calls</button>
-                                <button onclick="setOptionsDirection('Puts')" id="btnOptPuts" class="px-3 py-1 rounded font-bold transition text-slate-400">Puts</button>
-                            </div>
-                        </div>
 
                         <div class="self-end">
-                            <button onclick="loadOptionsDesk(true)" class="px-3 py-1.5 rounded-lg bg-mint hover:bg-mint/80 text-black font-bold text-xs shadow-lg shadow-mint/20 transition flex items-center gap-1.5">
-                                Scan Chains
+                            <button onclick="loadOptionsDesk(true)" class="px-3.5 py-1.5 rounded-lg bg-mint hover:bg-mint/80 text-black font-bold text-xs shadow-lg shadow-mint/20 transition flex items-center gap-1.5">
+                                ↻ Refresh Surface
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Options KPI Strip -->
+            <!-- Top 5 Macro Volatility KPI Cards -->
             <div id="optionsKpiRow" class="grid grid-cols-2 sm:grid-cols-5 gap-3.5 mb-5">
-                <!-- Populated dynamically -->
+                <!-- Dynamically populated: Spot, 30D ATM IV, 1Y IVP/IVR, 30D HV & Ratio, Term Regime -->
             </div>
 
-            <!-- Cross-Chain Recommendations Header -->
-            <div class="flex justify-between items-center mb-3">
-                <div>
-                    <h3 class="text-sm font-bold text-white flex items-center gap-2" id="optionsRecHeaderTitle">
-                        Top Recommended Cheap IV Contracts Across Different Expirations
-                    </h3>
-                    <p class="text-[11px] text-slate-400" id="optionsRecHeaderSubtitle">Guaranteed multi-expiry diversity: Evaluates term pricing ($IV/HV$), execution edge (Ask-Edge or Bid-Edge), delta positioning, and liquidity.</p>
+            <!-- SECTION 1: Volatility Term Structure Curve (Plotly Chart) -->
+            <div class="lux-card p-4 mb-5">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-3">
+                    <div>
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <span>Volatility Term Structure Curve (ATM IV across Expirations)</span>
+                            <span id="termSlopeBadge" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/20">Term Structure</span>
+                        </h3>
+                        <p class="text-xs text-slate-400 mt-0.5" id="optionsTermSubtitle">Plots ATM implied volatility across contract cycles. Normal markets slope upward (Contango); event risk or heavy hedging creates near-term inversion (Backwardation).</p>
+                    </div>
+                    <div class="text-xs text-slate-400 flex items-center gap-3">
+                        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 bg-mint inline-block"></span> ATM IV Curve</span>
+                        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 border-t border-dashed border-slate-400 inline-block"></span> 30D Realized HV</span>
+                    </div>
+                </div>
+                <div id="optionsTermStructureChart" style="height: 330px;"></div>
+            </div>
+
+            <!-- SECTION 2: Multi-Expiry Contract Comparison Matrix -->
+            <div class="lux-card p-4 mb-5">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                    <div>
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            <span>Multi-Expiry Contract Comparison Matrix</span>
+                            <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-mint/15 text-mint border border-mint/20">Cycle Comparison</span>
+                        </h3>
+                        <p class="text-xs text-slate-400 mt-0.5">Compare contract horizons across months (Dec, Jan, Mar, Jun) to evaluate relative cheapness, term slope steps (ΔIV), and expected moves.</p>
+                    </div>
+                    <div class="text-[11px] text-slate-400">
+                        Click any contract row or <b class="text-mint font-semibold">Inspect</b> to view its Volatility Smile & Skew below.
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto rounded-lg border border-white/10 bg-[#0b0d12]">
+                    <table class="w-full text-left text-xs" id="optionsTermComparisonTable">
+                        <thead class="bg-white/[0.03] text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/10">
+                            <tr>
+                                <th class="py-2.5 px-3">Expiration Date</th>
+                                <th class="py-2.5 px-3">DTE</th>
+                                <th class="py-2.5 px-3">ATM Strike</th>
+                                <th class="py-2.5 px-3">ATM IV</th>
+                                <th class="py-2.5 px-3">Term Slope vs Front</th>
+                                <th class="py-2.5 px-3">Slope vs Prev</th>
+                                <th class="py-2.5 px-3">Structure</th>
+                                <th class="py-2.5 px-3">Expected Move (1σ)</th>
+                                <th class="py-2.5 px-3">Expected Range</th>
+                                <th class="py-2.5 px-3">Catalysts</th>
+                                <th class="py-2.5 px-3 text-right">Inspect</th>
+                            </tr>
+                        </thead>
+                        <tbody id="optionsTermComparisonTbody" class="divide-y divide-white/5">
+                            <tr><td colspan="11" class="text-center py-4 text-slate-500">Loading term structure cycles...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
-            <!-- Cross-Chain Cards Container -->
-            <div id="optionsRecCards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <!-- Dynamically populated -->
-            </div>
-
-            <!-- Volatility Smile & Skew Inspector Chart -->
+            <!-- SECTION 3: Volatility Skew & Smile Surface Inspector -->
             <div class="lux-card p-4 mb-4">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
                     <div>
                         <h4 class="text-sm font-bold text-white flex items-center gap-1.5">
-                            Volatility Skew <span class="text-slate-500 hover:text-slate-300 cursor-pointer text-xs" title="Institutional Volatility Surface: Stitched OTM Puts (Cherry Red) & OTM Calls (Mint Green) with Risk Reversal Skew Metrics">ⓘ</span>
+                            Volatility Skew & Smile Surface <span class="text-slate-500 hover:text-slate-300 cursor-pointer text-xs" title="Institutional Volatility Surface: Stitched OTM Puts (Downside Crash Risk) & OTM Calls (Upside Speculation) with Risk Reversal Skew Metrics">ⓘ</span>
                         </h4>
-                        <p class="text-[11px] text-slate-400" id="optionsSmileSubtitle">Showing nearest active expiration chain, monotonic PCHIP skew surface, and 1σ expected move boundary</p>
+                        <p class="text-[11px] text-slate-400" id="optionsSmileSubtitle">Showing stitched OTM put/call surface, monotonic PCHIP curve, and 1σ expected move boundary</p>
                     </div>
                     <!-- Expiration Date Slicer / Selector -->
                     <div class="flex items-center gap-2">
@@ -1793,43 +1814,6 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </div>
 
                 <div id="optionsSmileChart" style="height: 440px;"></div>
-
-                <!-- Whole-Chain Tiered Discount Scanner Table -->
-                <div class="mt-6 border-t border-white/10 pt-5">
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                        <div>
-                            <h4 class="text-sm font-bold text-white flex items-center gap-2">
-                                <span>Whole-Chain Value Scanner: Top Discounted Contracts</span>
-                                <span id="chainDiscountBadge" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-mint/15 text-mint border border-mint/20">Ranked by Edge</span>
-                            </h4>
-                            <p class="text-xs text-slate-400 mt-0.5">Scans all expirations across the volatility surface to rank contracts with the highest mathematical edge surviving the spread.</p>
-                        </div>
-                        <div class="text-xs text-slate-400 hidden sm:flex items-center gap-2">
-                            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-mint"></span> Tier 1 Prime</span>
-                            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-sky-400"></span> Tier 2 High</span>
-                            <span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-purple-400"></span> Tier 3 Selective</span>
-                        </div>
-                    </div>
-                    <div class="overflow-x-auto rounded-lg border border-white/10 bg-[#0b0d12]">
-                        <table class="w-full text-left text-xs">
-                            <thead class="bg-white/[0.03] text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/10">
-                                <tr>
-                                    <th class="py-2.5 px-3">Tier / Rank</th>
-                                    <th class="py-2.5 px-3">Expiration (DTE)</th>
-                                    <th class="py-2.5 px-3">Strike</th>
-                                    <th class="py-2.5 px-3" id="thChainCost">Ask Cost</th>
-                                    <th class="py-2.5 px-3">Market IV</th>
-                                    <th class="py-2.5 px-3">OI (Vol)</th>
-                                    <th class="py-2.5 px-3" id="thChainEdge">Ask Edge</th>
-                                    <th class="py-2.5 px-3">Delta</th>
-                                </tr>
-                            </thead>
-                            <tbody id="optionsChainDiscountTbody" class="divide-y divide-white/5">
-                                <tr><td colspan="8" class="text-center py-4 text-slate-500">Loading whole-chain candidates...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -3513,201 +3497,100 @@ async function init() {
             Plotly.newPlot('singleTickerCombinedChart', [tracePrice, traceEMA20, traceEMA50, traceEMA200, traceDD], layout, {responsive: true});
         }
 
-        let CURRENT_OPTIONS_DIR = "Calls";
-        let CURRENT_OPTIONS_SIDE = "Buy";
         let CURRENT_OPTIONS_EXPIRATION = "";
         let CURRENT_OPTIONS_SPOT = 0;
         let CURRENT_OPTIONS_TICKER = "QQQ";
 
-        function setOptionsSide(side) {
-            CURRENT_OPTIONS_SIDE = side;
-            const btnBuy = document.getElementById('btnOptBuy');
-            const btnSell = document.getElementById('btnOptSell');
-            const titleEl = document.getElementById('optionsRecHeaderTitle');
-            const subEl = document.getElementById('optionsRecHeaderSubtitle');
-
-            if (side === 'Buy') {
-                if (btnBuy) btnBuy.className = "px-3 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30";
-                if (btnSell) btnSell.className = "px-3 py-1 rounded font-bold transition text-slate-400";
-                if (titleEl) titleEl.innerHTML = `Top Recommended Cheap IV Contracts Across Different Expirations`;
-                if (subEl) subEl.innerText = "Guaranteed multi-expiry diversity: Evaluates term cheapness (IV/HV), Ask-Edge (edge after crossing the spread to buy at Ask), and liquidity.";
-            } else {
-                if (btnSell) btnSell.className = "px-3 py-1 rounded font-bold transition bg-cherry/20 text-cherry border border-cherry/30";
-                if (btnBuy) btnBuy.className = "px-3 py-1 rounded font-bold transition text-slate-400";
-                if (titleEl) titleEl.innerHTML = `Top Recommended Overpriced Premium Sells (Bid Edge)`;
-                if (subEl) subEl.innerText = "Harvest elevated premium: Evaluates rich term IV (IV/HV), Bid-Edge (edge after crossing spread to sell at Bid), and downside cushion.";
-            }
-            loadOptionsDesk();
-        }
-
-        function setOptionsDirection(dir) {
-            CURRENT_OPTIONS_DIR = dir;
-            const btnCalls = document.getElementById('btnOptCalls');
-            const btnPuts = document.getElementById('btnOptPuts');
-            if (dir === 'Calls') {
-                if (btnCalls) btnCalls.className = "px-3 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30";
-                if (btnPuts) btnPuts.className = "px-3 py-1 rounded font-bold transition text-slate-400";
-            } else {
-                if (btnPuts) btnPuts.className = "px-3 py-1 rounded font-bold transition bg-cherry/20 text-cherry border border-cherry/30";
-                if (btnCalls) btnCalls.className = "px-3 py-1 rounded font-bold transition text-slate-400";
-            }
-            loadOptionsDesk();
-        }
-
         async function loadOptionsDesk(force = false) {
             const ticker = document.getElementById('optionsTickerSelect').value || 'QQQ';
             const kpiRow = document.getElementById('optionsKpiRow');
-            const cardsContainer = document.getElementById('optionsRecCards');
-            const isBuy = CURRENT_OPTIONS_SIDE === 'Buy';
+            const termTbody = document.getElementById('optionsTermComparisonTbody');
             
-            kpiRow.innerHTML = `<div class="col-span-full py-4 text-center text-xs text-slate-400">Scanning live option chains, IV skew, and historical volatilities for <b>${ticker}</b> (${CURRENT_OPTIONS_SIDE} Side)...</div>`;
-            cardsContainer.innerHTML = `<div class="col-span-full py-8 text-center text-xs text-slate-500 animate-pulse">Calculating ${isBuy ? 'Ask-IV inversion' : 'Bid-IV premium'} and log-moneyness skew curve...</div>`;
+            kpiRow.innerHTML = `<div class="col-span-full py-4 text-center text-xs text-slate-400">Loading macro volatility surface, term slopes, and skew for <b>${ticker}</b>...</div>`;
+            if (termTbody) {
+                termTbody.innerHTML = `<tr><td colspan="11" class="text-center py-6 text-xs text-slate-500 animate-pulse">Calculating expiration term structure and slope metrics...</td></tr>`;
+            }
 
             try {
                 CURRENT_OPTIONS_TICKER = ticker;
                 const expParam = CURRENT_OPTIONS_EXPIRATION ? `&expiration=${encodeURIComponent(CURRENT_OPTIONS_EXPIRATION)}` : '';
-                const res = await fetch(`/api/options/${ticker}?direction=${encodeURIComponent(CURRENT_OPTIONS_DIR)}&side=${encodeURIComponent(CURRENT_OPTIONS_SIDE)}${expParam}`);
+                const res = await fetch(`/api/options/${ticker}?${expParam.replace('&', '')}`);
                 const data = await res.json();
                 if (data.error) {
                     kpiRow.innerHTML = `<div class="col-span-full text-xs text-amber-400 bg-amber-500/10 p-3 rounded-lg border border-amber-500/20">${data.error}</div>`;
-                    cardsContainer.innerHTML = '';
+                    if (termTbody) termTbody.innerHTML = `<tr><td colspan="11" class="text-center py-4 text-slate-500">Data unavailable.</td></tr>`;
                     return;
                 }
 
                 const h = data.hvs || {};
-                const spot = data.spot_price;
+                const spot = data.spot_price || 0;
+                const ivStats = data.iv_stats || {};
+                const termRegime = data.term_regime || {};
+                const termChains = data.term_chains || [];
                 const earns = data.next_earnings || "Macro Index / ETF";
-
-                // Render KPI Strip
-                kpiRow.innerHTML = `
-                    <div class="lux-card p-3.5">
-                        <div class="text-[11px] font-semibold text-slate-400 uppercase">Spot Price</div>
-                        <div class="text-xl font-bold text-white mt-1">$${spot.toFixed(2)}</div>
-                        <div class="text-[11px] text-mint font-semibold mt-0.5">${ticker} Live Underlying</div>
-                    </div>
-                    <div class="lux-card p-3.5">
-                        <div class="text-[11px] font-semibold text-slate-400 uppercase">10D Realized Vol</div>
-                        <div class="text-xl font-bold text-white mt-1">${h.HV_10 || 20}%</div>
-                        <div class="text-[11px] text-slate-400 mt-0.5">Tactical Momentum</div>
-                    </div>
-                    <div class="lux-card p-3.5">
-                        <div class="text-[11px] font-semibold text-slate-400 uppercase">20D Realized Vol</div>
-                        <div class="text-xl font-bold text-white mt-1">${h.HV_20 || 20}%</div>
-                        <div class="text-[11px] text-slate-400 mt-0.5">Short-Term Baseline</div>
-                    </div>
-                    <div class="lux-card p-3.5 border-l-2 border-mint">
-                        <div class="text-[11px] font-semibold text-mint uppercase">30D Clean HV</div>
-                        <div class="text-xl font-bold text-mint mt-1">${h.HV_30_clean || h.HV_30 || 20}%</div>
-                        <div class="text-[11px] text-slate-400 mt-0.5">De-Jumped (Winsorized)</div>
-                    </div>
-                    <div class="lux-card p-3.5">
-                        <div class="text-[11px] font-semibold text-slate-400 uppercase">Earnings / Event</div>
-                        <div class="text-base font-bold ${data.next_earnings ? 'text-mint' : 'text-slate-300'} mt-1 truncate">${earns}</div>
-                        <div class="text-[11px] text-slate-400 mt-0.5">${data.next_earnings ? 'Binary Event Risk' : 'No Single Report'}</div>
-                    </div>
-                `;
-
-                // Render Recommendations Cards
-                const picks = data.picks || [];
-                if (picks.length === 0) {
-                    cardsContainer.innerHTML = `<div class="col-span-full text-center text-xs text-slate-400 py-6">No liquid ${isBuy ? 'cheap' : 'overpriced'} contracts identified matching criteria.</div>`;
-                } else {
-                    cardsContainer.innerHTML = picks.map((p, idx) => {
-                        const isCall = (CURRENT_OPTIONS_DIR === 'Calls');
-                        const cType = isCall ? 'Call' : 'Put';
-                        
-                        let hTag = 'Tactical (10–21d)';
-                        let badgeColor = 'text-mint';
-                        if (p.DTE > 70) { hTag = 'Quarterly (75d+)'; badgeColor = 'text-mint'; }
-                        else if (p.DTE > 45) { hTag = 'Core Monthly (60d)'; badgeColor = 'text-mint'; }
-                        else if (p.DTE > 22) { hTag = 'Fast Swing (25–45d)'; badgeColor = 'text-mint'; }
-
-                        const evTag = p.Spans_Earnings ? 'Spans Earnings' : 'Inter-Earnings';
-                        const evColor = p.Spans_Earnings ? 'bg-cherry/15 text-cherry' : 'bg-mint/10 text-mint';
-                        const spreadBadge = p.Spread_Quality || '🟢 Tight';
-
-                        let edgeVal, edgeColor, edgeSign, ivVal, actionHtml, extraHtml, pickBadge, wingHtml = '';
-                        
-                        if (isBuy) {
-                            edgeVal = p.Ask_Edge !== undefined ? p.Ask_Edge : 0;
-                            edgeColor = edgeVal >= 0 ? 'text-mint' : 'text-cherry';
-                            edgeSign = edgeVal >= 0 ? '+' : '';
-                            ivVal = (p.Ask_IV_Pct !== undefined ? p.Ask_IV_Pct : p.IV_Pct).toFixed(1);
-                            const beVal = isCall ? (p.strike + p.ask) : Math.max(p.strike - p.ask, 0.01);
-                            const beDiff = ((beVal / spot) - 1) * 100;
-                            pickBadge = `<span class="bg-mint/15 text-mint text-[10px] px-2 py-0.5 rounded font-bold">Pick #${idx + 1} • Buy</span>`;
-                            actionHtml = `<div>Ask (Cost): <b class="text-mint">$${p.ask.toFixed(2)}</b> ($${Math.round(p.ask * 100)}/ct)</div>`;
-                            extraHtml = `<div>Breakeven: <b class="text-slate-200">$${beVal.toFixed(2)} (${beDiff >= 0 ? '+' : ''}${beDiff.toFixed(1)}%)</b> • ${spreadBadge}</div>`;
-                        } else {
-                            edgeVal = p.Bid_Edge !== undefined ? p.Bid_Edge : 0;
-                            edgeColor = edgeVal >= 0 ? 'text-mint' : 'text-cherry';
-                            edgeSign = edgeVal >= 0 ? '+' : '';
-                            ivVal = (p.Bid_IV_Pct !== undefined ? p.Bid_IV_Pct : p.IV_Pct).toFixed(1);
-                            const cushionPct = (Math.abs(p.strike - spot) / spot) * 100;
-                            pickBadge = `<span class="bg-cherry/15 text-cherry text-[10px] px-2 py-0.5 rounded font-bold">Pick #${idx + 1} • Sell</span>`;
-                            actionHtml = `<div>Bid (Credit): <b class="text-mint">$${p.bid.toFixed(2)}</b> ($${Math.round(p.bid * 100)}/ct collected)</div>`;
-                            extraHtml = `<div>Safety Cushion: <b class="text-slate-200">${cushionPct.toFixed(1)}% buffer</b> • ${spreadBadge}</div>`;
-                            
-                            if (p.Wing_Strike) {
-                                wingHtml = `
-                                <div class="mt-2.5 p-2 bg-white/[0.02] border border-dashed border-white/10 rounded text-[10.5px]">
-                                    <div class="text-mint font-semibold flex items-center justify-between">
-                                        <span>Hedged Spread Wing:</span>
-                                        <span class="text-white font-mono">+$${Number(p.Wing_Strike).toFixed(0)} ${cType}</span>
-                                    </div>
-                                    <div class="text-slate-300 mt-1 flex justify-between">
-                                        <span>Net Credit: <b class="text-mint">$${Number(p.Net_Credit).toFixed(2)}</b> ($${Math.round(p.Net_Credit*100)}/ct)</span>
-                                        <span>Max Risk: <b>$${Number(p.Max_Risk).toFixed(2)}</b></span>
-                                    </div>
-                                    <div class="text-slate-400 text-[10px] mt-0.5 text-right">
-                                        Return on Risk: <b class="text-mint font-mono">${Number(p.RoR_Pct).toFixed(1)}%</b>
-                                    </div>
-                                </div>`;
-                            }
-                        }
-
-                        return `
-                        <div class="lux-card p-4 border border-white/5 hover:border-mint/40 transition">
-                            <div class="flex justify-between items-center mb-1">
-                                <span class="text-base font-extrabold text-white">$${p.strike.toFixed(0)} ${cType}</span>
-                                ${pickBadge}
-                            </div>
-                            <div class="flex items-center gap-2 mb-2">
-                                <span class="text-[11px] font-semibold ${badgeColor}">${hTag}</span>
-                                <span class="text-[10px] px-1.5 py-0.5 rounded ${evColor}">${evTag}</span>
-                            </div>
-                            <div class="bg-white/[0.03] p-2 rounded-lg flex justify-between items-center text-xs mb-3">
-                                <span class="text-slate-200"><b>${p.Expiration}</b> (${p.DTE}d)</span>
-                                <span class="text-[11px] ${p.Within_1_Sigma ? 'text-mint' : 'text-slate-400'}">${p.Within_1_Sigma ? 'In 1σ' : 'Out 1σ'}</span>
-                            </div>
-                            <div class="grid grid-cols-2 gap-2 text-xs mb-3">
-                                <div><span class="text-slate-400 text-[11px]">${isBuy ? 'Ask IV:' : 'Bid IV:'}</span> <b class="text-white">${ivVal}%</b></div>
-                                <div><span class="text-slate-400 text-[11px]">IV/HV:</span> <b class="text-white">${p.IV_HV_Ratio}x</b></div>
-                                <div><span class="text-slate-400 text-[11px]">${isBuy ? 'Ask Edge:' : 'Bid Edge:'}</span> <b class="${edgeColor}">${edgeSign}${edgeVal.toFixed(2)}%</b></div>
-                                <div><span class="text-slate-400 text-[11px]">Delta:</span> <b class="text-white">${p.Est_Delta.toFixed(2)}</b></div>
-                            </div>
-                            <div class="border-t border-white/5 pt-2 text-[11px] text-slate-400 space-y-0.5">
-                                ${actionHtml}
-                                <div>Bid / Mid: $${p.bid.toFixed(2)} / $${p.Mid_Price.toFixed(2)}</div>
-                                ${extraHtml}
-                                <div>
-                                    Open Interest: <b class="text-slate-300">${(p.openInterest || 0).toLocaleString()}</b>
-                                    ${((!p.openInterest || p.openInterest === 0) && (p.volume && p.volume > 0))
-                                        ? `<span class="text-[10px] text-mint font-semibold">(${Number(p.volume).toLocaleString()} Vol • OCC Overnight Reset)</span>`
-                                        : (p.volume && p.volume > 0 ? `<span class="text-[10px] text-slate-400 font-mono">(${Number(p.volume).toLocaleString()} Vol)</span>` : '')
-                                    }
-                                </div>
-                                ${wingHtml}
-                            </div>
-                        </div>
-                        `;
-                    }).join('');
-                }
+                const frontRow = termChains.length > 0 ? termChains[0] : {};
+                const frontAtmIv = frontRow.ATM_IV != null ? Number(frontRow.ATM_IV).toFixed(1) : (ivStats.current_iv || 20.0).toFixed(1);
 
                 CURRENT_OPTIONS_SPOT = spot;
                 CURRENT_OPTIONS_EXPIRATION = data.selected_expiration || (data.smile ? data.smile.expiration : '');
 
-                // Populate Expiration Date Slicer
+                // 1. Render Top 5 Macro Volatility KPI Cards
+                const ivp = ivStats.iv_percentile != null ? Number(ivStats.iv_percentile).toFixed(0) : '--';
+                const ivr = ivStats.iv_rank != null ? Number(ivStats.iv_rank).toFixed(0) : '--';
+                const ivStyle = ivStats.style === 'cherry' ? 'text-cherry' : (ivStats.style === 'mint' ? 'text-mint' : (ivStats.style === 'sky' ? 'text-sky-400' : 'text-slate-300'));
+                const ivPillBg = ivStats.style === 'cherry' ? 'bg-cherry/15 text-cherry border-cherry/25' : (ivStats.style === 'mint' ? 'bg-mint/15 text-mint border-mint/25' : (ivStats.style === 'sky' ? 'bg-sky-500/15 text-sky-400 border-sky-500/25' : 'bg-slate-700/50 text-slate-300 border-slate-600/30'));
+
+                const cleanHv = Number(h.HV_30_clean || h.HV_30 || 20.0);
+                const ivHvRatio = (Number(frontAtmIv) / Math.max(cleanHv, 1)).toFixed(2);
+                const vrpSpread = (Number(frontAtmIv) - cleanHv).toFixed(1);
+                const vrpSpreadColor = Number(vrpSpread) >= 0 ? 'text-mint' : 'text-cherry';
+
+                const termRegimeName = termRegime.name || 'Flat Term';
+                const termRegimeColor = termRegime.style === 'mint' ? 'text-mint' : (termRegime.style === 'cherry' ? 'text-cherry' : 'text-slate-200');
+
+                kpiRow.innerHTML = `
+                    <div class="lux-card p-3.5">
+                        <div class="text-[11px] font-semibold text-slate-400 uppercase">Spot Price</div>
+                        <div class="text-xl font-bold text-white mt-1 font-mono">$${spot.toFixed(2)}</div>
+                        <div class="text-[11px] text-mint font-semibold mt-0.5">${ticker} Live Underlying</div>
+                    </div>
+                    <div class="lux-card p-3.5">
+                        <div class="text-[11px] font-semibold text-slate-400 uppercase">30D ATM IV</div>
+                        <div class="text-xl font-bold text-white mt-1 font-mono">${frontAtmIv}%</div>
+                        <div class="text-[11px] text-slate-400 mt-0.5">Front Baseline Vol</div>
+                    </div>
+                    <div class="lux-card p-3.5 border-l-2 border-mint">
+                        <div class="text-[11px] font-semibold text-mint uppercase">1-Yr IV Percentile (IVP)</div>
+                        <div class="text-xl font-bold ${ivStyle} mt-1 font-mono">${ivp}% <span class="text-xs font-normal text-slate-400">| ${ivr}% IVR</span></div>
+                        <div class="mt-1 flex items-center gap-1.5 flex-wrap">
+                            <span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold border ${ivPillBg}">${ivStats.vol_regime || 'Neutral Vol'}</span>
+                            <span class="text-[10px] text-slate-500">52w: ${ivStats.iv_52w_low || 10}%-${ivStats.iv_52w_high || 40}%</span>
+                        </div>
+                    </div>
+                    <div class="lux-card p-3.5">
+                        <div class="text-[11px] font-semibold text-slate-400 uppercase">Realized Vol & Ratio</div>
+                        <div class="text-xl font-bold text-white mt-1 font-mono">${cleanHv.toFixed(1)}% <span class="text-xs font-normal text-slate-400">| ${ivHvRatio}x</span></div>
+                        <div class="text-[11px] ${vrpSpreadColor} mt-0.5 font-medium">VRP: ${Number(vrpSpread) >= 0 ? '+' : ''}${vrpSpread} pts vs 30D HV</div>
+                    </div>
+                    <div class="lux-card p-3.5">
+                        <div class="text-[11px] font-semibold text-slate-400 uppercase">Term Structure Regime</div>
+                        <div class="text-base font-bold ${termRegimeColor} mt-1 truncate">${termRegimeName}</div>
+                        <div class="text-[11px] text-slate-400 mt-0.5 truncate" title="${termRegime.description || ''}">${termRegime.description || 'Horizons Balanced'}</div>
+                    </div>
+                `;
+
+
+
+                CURRENT_OPTIONS_SPOT = spot;
+                CURRENT_OPTIONS_EXPIRATION = data.selected_expiration || (data.smile ? data.smile.expiration : '');
+
+                // 2. Render Volatility Term Structure Curve (Plotly Chart)
+                renderTermStructureChart(termChains, cleanHv, frontAtmIv);
+
+                // 3. Render Multi-Expiry Contract Comparison Matrix Table
+                renderTermComparisonTable(termChains, CURRENT_OPTIONS_EXPIRATION);
+
+                // 4. Populate Expiration Dropdown Selector
                 const expSelect = document.getElementById('optionsExpSelect');
                 if (expSelect && data.expirations && data.expirations.length > 0) {
                     expSelect.innerHTML = data.expirations.map(exp => `
@@ -3717,17 +3600,165 @@ async function init() {
                     `).join('');
                 }
 
-                // Render Smile Chart
+                // 5. Render Volatility Smile & Skew Chart
                 if (data.smile) {
-                    renderSmileChart(data.smile, CURRENT_OPTIONS_DIR, isBuy, spot);
+                    renderSmileChart(data.smile, spot);
                 }
-
-                // Render Whole-Chain Tiered Discount Table
-                renderWholeChainTable(data.ranked_chain, isBuy);
 
             } catch (err) {
                 kpiRow.innerHTML = `<div class="col-span-full text-xs text-cherry bg-cherry/10 p-3 rounded-lg border border-cherry/20">Error loading options desk: ${err.message}</div>`;
-                cardsContainer.innerHTML = '';
+            }
+        }
+
+        function renderTermStructureChart(chains, cleanHv, frontAtmIv) {
+            if (!chains || chains.length === 0) return;
+            const xLabels = chains.map(r => `${r.Expiration}<br><b>${r.DTE}d</b>`);
+            const yIvs = chains.map(r => r.ATM_IV);
+
+            const hoverTexts = chains.map(r => {
+                const slopeSign = r.Slope_Front >= 0 ? '+' : '';
+                const earnTag = r.Spans_Earnings ? '⚠️ Spans Earnings Event' : 'Inter-Earnings';
+                return `<b>${r.Expiration} (${r.DTE} DTE)</b><br>` +
+                       `ATM Strike: <b>$${r.ATM_Strike}</b><br>` +
+                       `ATM IV: <b>${r.ATM_IV.toFixed(2)}%</b><br>` +
+                       `Term Slope vs Front: <b>${slopeSign}${r.Slope_Front.toFixed(2)} pts</b> (${r.Structure})<br>` +
+                       `Slope vs Prev: <b>${r.Slope_Prev >= 0 ? '+' : ''}${r.Slope_Prev.toFixed(2)} pts</b><br>` +
+                       `1σ Expected Move: <b>±$${r.Expected_Move.toFixed(2)} (±${r.Expected_Move_Pct.toFixed(1)}%)</b><br>` +
+                       `Expected Range: <b>${r.Expected_Range}</b><br>` +
+                       `${earnTag}<extra></extra>`;
+            });
+
+            const markerColors = chains.map(r => r.Spans_Earnings ? '#F59E0B' : (r.Structure === 'Contango' ? '#00F5A0' : (r.Structure === 'Backwardation' ? '#FF2E55' : '#38BDF8')));
+            const markerSizes = chains.map(r => r.Spans_Earnings ? 11 : 9);
+
+            const traces = [
+                {
+                    x: xLabels,
+                    y: yIvs,
+                    name: 'ATM Implied Volatility',
+                    type: 'scatter',
+                    mode: 'lines+markers',
+                    line: { color: '#00F5A0', width: 2.5, shape: 'spline' },
+                    marker: { color: markerColors, size: markerSizes, line: { color: '#FFFFFF', width: 1.5 } },
+                    hovertemplate: hoverTexts
+                }
+            ];
+
+            const shapes = [];
+            const annotations = [];
+
+            // 30D Realized HV Benchmark Line
+            if (cleanHv && cleanHv > 0) {
+                shapes.push({
+                    type: 'line', x0: 0, x1: 1, xref: 'paper', y0: cleanHv, y1: cleanHv,
+                    line: { color: '#94a3b8', width: 1.5, dash: 'dash' }
+                });
+                annotations.push({
+                    x: 1.0, xref: 'paper', y: cleanHv,
+                    text: `30D Realized HV: ${cleanHv.toFixed(1)}%`,
+                    showarrow: false,
+                    xanchor: 'right',
+                    yanchor: 'bottom',
+                    font: { color: '#94a3b8', size: 10, family: 'Plus Jakarta Sans, sans-serif' }
+                });
+            }
+
+            const yVals = [...yIvs, cleanHv].filter(v => v > 0);
+            const minY = Math.max(0, Math.floor(Math.min(...yVals) - 2));
+            const maxY = Math.ceil(Math.max(...yVals) + 3);
+
+            const layout = {
+                plot_bgcolor: "#0D0F14",
+                paper_bgcolor: "#0D0F14",
+                font: { family: "Plus Jakarta Sans, sans-serif", color: "#94a3b8", size: 11 },
+                margin: { l: 45, r: 45, t: 25, b: 65 },
+                xaxis: { title: "Expiration Maturity (DTE)", gridcolor: "#1B212D", tickangle: -20 },
+                yaxis: { title: "Implied Volatility (%)", gridcolor: "#1B212D", ticksuffix: "%", range: [minY, maxY] },
+                legend: { orientation: "h", y: -0.25, x: 0.5, xanchor: "center" },
+                shapes: shapes,
+                annotations: annotations
+            };
+
+            Plotly.newPlot('optionsTermStructureChart', traces, layout, {responsive: true});
+        }
+
+        function renderTermComparisonTable(chains, activeExp) {
+            const tbody = document.getElementById('optionsTermComparisonTbody');
+            if (!tbody) return;
+            if (!chains || chains.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-slate-500">No active cycles found.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = chains.map((r, idx) => {
+                const isActive = (r.Expiration === activeExp);
+                const rowClass = isActive 
+                    ? 'bg-mint/10 border-l-2 border-mint transition' 
+                    : 'hover:bg-white/[0.02] transition border-b border-white/5 last:border-0';
+                
+                const slopeFrontSign = r.Slope_Front >= 0 ? '+' : '';
+                const slopeFrontColor = r.Slope_Front > 0.5 ? 'text-mint font-bold' : (r.Slope_Front < -0.5 ? 'text-cherry font-bold' : 'text-slate-300 font-medium');
+                
+                const slopePrevSign = r.Slope_Prev >= 0 ? '+' : '';
+                const slopePrevColor = idx === 0 ? 'text-slate-500' : (r.Slope_Prev > 0.5 ? 'text-mint' : (r.Slope_Prev < -0.5 ? 'text-cherry' : 'text-slate-400'));
+                const slopePrevText = idx === 0 ? '--' : `${slopePrevSign}${r.Slope_Prev.toFixed(2)} pts`;
+
+                let structBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700/50 text-slate-300 border border-slate-600/30">Flat</span>';
+                if (idx === 0) {
+                    structBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/15 text-sky-400 border border-sky-500/25">Front Baseline</span>';
+                } else if (r.Structure === 'Contango') {
+                    structBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/15 text-mint border border-mint/25">Contango</span>';
+                } else if (r.Structure === 'Backwardation') {
+                    structBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-cherry/15 text-cherry border border-cherry/25">Backwardation</span>';
+                }
+
+                const earnBadge = r.Spans_Earnings 
+                    ? '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-cherry/15 text-cherry border border-cherry/25">Spans Earnings</span>' 
+                    : '<span class="px-2 py-0.5 rounded text-[10px] text-slate-400">Inter-Earnings</span>';
+
+                return `
+                    <tr class="${rowClass}" data-exp="${r.Expiration}" onclick="inspectSmileForExpiration('${r.Expiration}')" style="cursor: pointer;">
+                        <td class="py-2.5 px-3 font-semibold text-white whitespace-nowrap">
+                            ${r.Expiration}
+                            ${isActive ? '<span class="ml-1.5 text-[9px] px-1.5 py-0.2 rounded bg-mint text-black font-extrabold uppercase">Viewing</span>' : ''}
+                        </td>
+                        <td class="py-2.5 px-3 font-mono text-slate-300 font-bold whitespace-nowrap">${r.DTE}d</td>
+                        <td class="py-2.5 px-3 font-mono text-white whitespace-nowrap">$${r.ATM_Strike.toFixed(0)}</td>
+                        <td class="py-2.5 px-3 font-mono font-bold text-white whitespace-nowrap">${r.ATM_IV.toFixed(2)}%</td>
+                        <td class="py-2.5 px-3 font-mono ${slopeFrontColor} whitespace-nowrap">${idx === 0 ? '--' : `${slopeFrontSign}${r.Slope_Front.toFixed(2)} pts`}</td>
+                        <td class="py-2.5 px-3 font-mono ${slopePrevColor} whitespace-nowrap">${slopePrevText}</td>
+                        <td class="py-2.5 px-3 whitespace-nowrap">${structBadge}</td>
+                        <td class="py-2.5 px-3 font-mono text-slate-200 whitespace-nowrap">±$${r.Expected_Move.toFixed(2)} <span class="text-slate-400 text-[11px]">(±${r.Expected_Move_Pct.toFixed(1)}%)</span></td>
+                        <td class="py-2.5 px-3 font-mono text-slate-300 whitespace-nowrap">${r.Expected_Range}</td>
+                        <td class="py-2.5 px-3 whitespace-nowrap">${earnBadge}</td>
+                        <td class="py-2.5 px-3 text-right whitespace-nowrap">
+                            <button onclick="event.stopPropagation(); inspectSmileForExpiration('${r.Expiration}')" class="px-2 py-1 rounded bg-white/5 hover:bg-mint/20 text-slate-300 hover:text-mint font-semibold text-[11px] transition border border-white/10 hover:border-mint/30">
+                                Inspect 🔍
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function inspectSmileForExpiration(expDate) {
+            if (!expDate) return;
+            CURRENT_OPTIONS_EXPIRATION = expDate;
+            const expSelect = document.getElementById('optionsExpSelect');
+            if (expSelect) expSelect.value = expDate;
+            await onExpirationChange(expDate);
+
+            // Re-render table active row highlight
+            const tbody = document.getElementById('optionsTermComparisonTbody');
+            if (tbody) {
+                Array.from(tbody.children).forEach(tr => {
+                    const rowExp = tr.getAttribute('data-exp');
+                    if (rowExp === expDate) {
+                        tr.className = 'bg-mint/10 border-l-2 border-mint transition';
+                    } else {
+                        tr.className = 'hover:bg-white/[0.02] transition border-b border-white/5 last:border-0';
+                    }
+                });
             }
         }
 
@@ -4132,55 +4163,15 @@ async function init() {
 
         function renderGammaTerrainChart(g) {}
 
-        function renderWholeChainTable(ranked_chain, isBuy) {
-            const tbody = document.getElementById("optionsChainDiscountTbody");
-            const costTh = document.getElementById("thChainCost");
-            const edgeTh = document.getElementById("thChainEdge");
-            if (costTh) costTh.innerText = isBuy ? "Ask Cost" : "Bid Credit";
-            if (edgeTh) edgeTh.innerText = isBuy ? "Ask Edge" : "Bid Edge";
+        function renderWholeChainTable() {}
 
-            if (!tbody) return;
-            if (!ranked_chain || ranked_chain.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-slate-500">No active chain contracts found.</td></tr>';
-                return;
-            }
-
-            tbody.innerHTML = ranked_chain.map(r => {
-                const tierBadge = r.tier_num === 1 
-                    ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/15 text-mint border border-mint/20">Tier 1 • Prime</span>'
-                    : (r.tier_num === 2 
-                        ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/15 text-sky-400 border border-sky-500/20">Tier 2 • High</span>'
-                        : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-400 border border-purple-500/20">Tier 3 • Selective</span>');
-
-                const edgeVal = isBuy ? r.ask_edge : r.bid_edge;
-                const edgeSign = edgeVal >= 0 ? "+" : "";
-                const edgeColor = edgeVal >= 0 ? "text-mint font-bold" : "text-slate-300";
-                const costVal = isBuy ? r.ask_cost : r.bid_cost;
-                const costStr = "$" + costVal.toFixed(2);
-                const oiStr = r.oi > 0 ? r.oi.toLocaleString() : '<span class="text-slate-500">0</span> <span class="text-[10px] text-slate-400">(' + r.volume.toLocaleString() + ' vol)</span>';
-                const deltaStr = Math.abs(r.delta).toFixed(2) + "Δ";
-                const earnBadge = r.spans_earnings ? '<span class="ml-1 text-[9px] px-1.5 py-0.5 rounded bg-cherry/15 text-cherry font-semibold">Earn</span>' : "";
-
-                return '<' + 'tr class="hover:bg-white/[0.02] transition border-b border-white/5 last:border-0">' +
-                    '<td class="py-2.5 px-3 flex items-center gap-2"><span class="text-slate-500 font-mono text-[11px]">#' + r.rank + '</span>' + tierBadge + '</td>' +
-                    '<td class="py-2.5 px-3 font-semibold text-white whitespace-nowrap">' + r.expiration + ' <span class="text-slate-400 text-[11px] font-normal">(' + r.dte + 'd)</span>' + earnBadge + '</td>' +
-                    '<td class="py-2.5 px-3 font-bold text-white whitespace-nowrap">$' + Math.round(r.strike) + ' ' + r.type + '</td>' +
-                    '<td class="py-2.5 px-3 font-mono font-medium text-white whitespace-nowrap">' + costStr + '</td>' +
-                    '<td class="py-2.5 px-3 font-mono text-slate-300">' + r.iv.toFixed(1) + '%</td>' +
-                    '<td class="py-2.5 px-3 font-mono text-slate-300 whitespace-nowrap">' + oiStr + '</td>' +
-                    '<td class="py-2.5 px-3 font-mono ' + edgeColor + ' whitespace-nowrap">' + edgeSign + edgeVal.toFixed(2) + '%</td>' +
-                    '<td class="py-2.5 px-3 font-mono text-slate-300">' + deltaStr + '</td>' +
-                    '</tr>';
-            }).join("");
-        }
-
-        function renderSmileChart(s, direction, isBuy, spot) {
+        function renderSmileChart(s, spot) {
             if (!s) return;
             const subEl = document.getElementById('optionsSmileSubtitle');
             const m = s.metrics || {};
             const totalContracts = m.total_contracts ? ` · ${m.total_contracts} contracts` : '';
             if (subEl) {
-                subEl.innerText = `${s.expiration} · ${s.dte}DTE${totalContracts} | 1σ Expected Move: ±$${s.exp_move} | ${isBuy ? 'Buy Side (Ask Edge)' : 'Sell Side (Bid Edge)'}`;
+                subEl.innerText = `${s.expiration} · ${s.dte}DTE${totalContracts} | 1σ Expected Move: ±$${s.exp_move}`;
             }
 
             // Populate the 6 Institutional Skew KPI Cards
@@ -4445,69 +4436,12 @@ async function init() {
                 });
             }
 
-            // 6. Execution Overlay: Effective Ask IV / Bid IV
-            // Filter to active trading moneyness and clamp any illiquid spread spikes
-            const spreadStrikes = [];
-            const spreadIvs = [];
-            if (s.market_strikes && (s.market_ask_iv || s.market_bid_iv)) {
-                const rawIvs = isBuy ? s.market_ask_iv : s.market_bid_iv;
-                const minK = isBuy ? (direction === 'Calls' ? spot * 0.95 : spot * 0.85) : spot * 0.85;
-                const maxK = isBuy ? (direction === 'Calls' ? spot * 1.15 : spot * 1.05) : spot * 1.15;
-                const upperIvCap = atmIvVal + 5.5;
-                const lowerIvFloor = Math.max(8.0, atmIvVal - 6.5);
-                s.market_strikes.forEach((k, idx) => {
-                    const iv = rawIvs[idx];
-                    if (k >= minK && k <= maxK && iv > 0) {
-                        // Clamp outlier spikes caused by wide market-maker spreads on illiquid strikes
-                        const cleanIv = Math.min(Math.max(iv, lowerIvFloor), upperIvCap);
-                        spreadStrikes.push(k);
-                        spreadIvs.push(cleanIv);
-                    }
-                });
-            }
-
-            if (spreadStrikes.length > 0) {
-                const traceSpreadLine = {
-                    x: spreadStrikes,
-                    y: spreadIvs,
-                    name: isBuy ? 'Effective Ask IV (Cost to Buy)' : 'Effective Bid IV (Selling Price)',
-                    type: 'scatter',
-                    mode: 'lines',
-                    line: { color: isBuy ? 'rgba(245, 158, 11, 0.75)' : 'rgba(0, 245, 160, 0.75)', width: 1.5, dash: 'dot' },
-                    hovertemplate: 'Strike: $%{x}<br>' + (isBuy ? 'Ask IV: %{y:.1f}%' : 'Bid IV: %{y:.1f}%') + '<extra></extra>'
-                };
-                traces.push(traceSpreadLine);
-            }
-
-            // 7. Execution Overlay: Recommended Value Strikes (Clean number only, e.g. "295")
-            if (s.top_strikes && s.top_strikes.length > 0) {
-                traces.push({
-                    x: s.top_strikes,
-                    y: s.top_strikes_iv,
-                    name: isBuy ? 'Recommended Buy Strikes' : 'Recommended Sell Strikes',
-                    type: 'scatter',
-                    mode: 'markers+text',
-                    marker: {
-                        color: isBuy ? '#00F5A0' : '#FF2E55',
-                        size: 14,
-                        symbol: 'circle',
-                        line: { color: '#ffffff', width: 2.5 }
-                    },
-                    text: s.top_strikes.map(st => `${st}`),
-                    textposition: 'bottom center',
-                    textfont: { color: isBuy ? '#00F5A0' : '#FF2E55', size: 11, family: 'Plus Jakarta Sans, sans-serif' },
-                    hovertemplate: isBuy ? '<b>VALUE BUY STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>' : '<b>PREMIUM SELL STRIKE</b><br>Strike: $%{x}<br>Market IV: %{y:.2f}%<extra></extra>'
-                });
-            }
-
             // Calculate appropriate y-axis range STRICTLY anchored on the Skew Curve & ATM baseline
             // Guarantees the curve fills the vertical space without deep OTM spread blowout
             const curveIvs = [];
             if (s.otm_put_curve && s.otm_put_curve.iv) curveIvs.push(...s.otm_put_curve.iv);
             if (s.otm_call_curve && s.otm_call_curve.iv) curveIvs.push(...s.otm_call_curve.iv);
             if (atmIvVal) curveIvs.push(atmIvVal);
-            if (s.top_strikes_iv) curveIvs.push(...s.top_strikes_iv);
-            if (spreadIvs.length > 0) curveIvs.push(...spreadIvs);
 
             const yaxisConfig = { 
                 title: "Implied Volatility (%)", 
@@ -4602,15 +4536,14 @@ async function init() {
             }
 
             try {
-                const res = await fetch(`/api/options/${ticker}/smile?expiration=${encodeURIComponent(expDate)}&direction=${encodeURIComponent(CURRENT_OPTIONS_DIR)}&side=${encodeURIComponent(CURRENT_OPTIONS_SIDE)}&spot=${CURRENT_OPTIONS_SPOT || 0}`);
+                const res = await fetch(`/api/options/${ticker}/smile?expiration=${encodeURIComponent(expDate)}&spot=${CURRENT_OPTIONS_SPOT || 0}`);
                 const data = await res.json();
                 if (data.error) {
                     if (subEl) subEl.innerText = `Error: ${data.error}`;
                     return;
                 }
                 if (data.smile) {
-                    const isBuy = CURRENT_OPTIONS_SIDE === 'Buy';
-                    renderSmileChart(data.smile, CURRENT_OPTIONS_DIR, isBuy, data.spot_price || CURRENT_OPTIONS_SPOT);
+                    renderSmileChart(data.smile, data.spot_price || CURRENT_OPTIONS_SPOT);
                 }
             } catch (err) {
                 if (subEl) subEl.innerText = `Error loading skew: ${err.message}`;

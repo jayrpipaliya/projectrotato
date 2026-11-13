@@ -1143,7 +1143,7 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
         spot_price = float(fast_info.last_price or fast_info.previous_close)
         today = pd.Timestamp.now().normalize()
         
-        target_exps = [e for e in expirations if 8 <= (pd.Timestamp(e) - today).days <= 200]
+        target_exps = [e for e in expirations if 5 <= (pd.Timestamp(e) - today).days <= 365]
         
         # Calendar to Trading-Day IV conversion factor: sqrt(252 / 365.25) = 0.8307
         CAL_TO_TRADING_FACTOR = np.sqrt(252.0 / 365.25)
