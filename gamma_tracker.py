@@ -784,6 +784,169 @@ def generate_gamma_heatmap_matrix(ticker: str, mode: str = "net_gex", max_days: 
     }
 
 
+def get_historical_oi_migration(ticker: str, max_days: int = 5) -> dict:
+    """
+    Constructs a multi-day strike-by-strike Open Interest (OI) historical migration matrix:
+    - Tracks date-by-date Call OI & Put OI across consecutive trading sessions.
+    - Computes 1-Day (DoD) ΔOI and multi-day Net Accumulation.
+    - Tags institutional structural roles (Call Wall, Put Wall, Zero Flip, ATM, and OTM Target Base).
+    - Categorizes accumulation velocity (e.g. Heavy Base Building, Steady Accumulation, Unwinding).
+    """
+    t_up = ticker.upper().strip()
+    history = load_gamma_history(t_up)
+    if not history or len(history) < 1:
+        return {
+            "ticker": t_up,
+            "has_data": False,
+            "message": f"Insufficient historical GEX snapshots for {t_up}."
+        }
+
+    history_slice = history[-max_days:]
+    dates_raw = [h.get("date", "") for h in history_slice]
+    dates_labels = []
+    for d_str in dates_raw:
+        try:
+            dates_labels.append(datetime.strptime(d_str, "%Y-%m-%d").strftime("%b %d"))
+        except Exception:
+            dates_labels.append(d_str)
+
+    curr = history_slice[-1]
+    spot = _safe_float(curr.get("spot_price"), 100.0)
+    cw = _safe_float(curr.get("call_wall"), 0.0)
+    pw = _safe_float(curr.get("put_wall"), 0.0)
+    zg = _safe_float(curr.get("zero_gamma_level"), 0.0)
+
+    # Gather union of all strikes present in the history slice
+    strike_set = set()
+    for h in history_slice:
+        for k_s in h.get("strikes", {}).keys():
+            try:
+                strike_set.add(float(k_s))
+            except Exception:
+                continue
+
+    sorted_strikes = sorted(list(strike_set))
+    strike_rows = []
+
+    for k in sorted_strikes:
+        call_series = []
+        put_series = []
+
+        for h in history_slice:
+            s_dict = h.get("strikes", {})
+            item = _lookup_strike(s_dict, k)
+            call_series.append(int(_safe_float(item.get("call_oi"), 0)))
+            put_series.append(int(_safe_float(item.get("put_oi"), 0)))
+
+        c_latest = call_series[-1]
+        p_latest = put_series[-1]
+        c_1d = call_series[-1] - call_series[-2] if len(call_series) >= 2 else 0
+        p_1d = put_series[-1] - put_series[-2] if len(put_series) >= 2 else 0
+        c_tot = call_series[-1] - call_series[0] if len(call_series) >= 2 else 0
+        p_tot = put_series[-1] - put_series[0] if len(put_series) >= 2 else 0
+        c_pct = round((c_tot / call_series[0] * 100.0), 1) if call_series[0] > 0 else (100.0 if c_tot > 0 else 0.0)
+        p_pct = round((p_tot / put_series[0] * 100.0), 1) if put_series[0] > 0 else (100.0 if p_tot > 0 else 0.0)
+
+        # Dist vs spot
+        dist_pct = round(((k - spot) / spot) * 100.0, 2)
+
+        # Role tagging
+        role = ""
+        role_type = "normal"
+        if cw > 0 and abs(k - cw) < 0.25:
+            role = "Call Wall Pin"
+            role_type = "call_wall"
+        elif pw > 0 and abs(k - pw) < 0.25:
+            role = "Put Wall Floor"
+            role_type = "put_wall"
+        elif zg > 0 and abs(k - zg) < 0.45:
+            role = "Zero Vol Flip"
+            role_type = "zero_flip"
+        elif abs(k - spot) / spot < 0.0035:
+            role = "ATM Straddle"
+            role_type = "atm"
+        elif k >= spot * 1.012 and c_latest >= 10000 and (c_tot >= 1500 or c_1d >= 1000):
+            role = "🎯 Target Base"
+            role_type = "target_base"
+
+        # Pace classification
+        if c_tot >= 5000 or c_1d >= 3000:
+            call_pace = "🔥 Heavy Base Accumulation"
+        elif c_tot >= 1000 or c_1d >= 800:
+            call_pace = "🟢 Steady Accumulation"
+        elif c_tot <= -3000 or c_1d <= -2000:
+            call_pace = "🔴 Active Unwinding"
+        elif c_tot <= -800:
+            call_pace = "Muted Reduction"
+        else:
+            call_pace = "Stable"
+
+        if p_tot >= 5000 or p_1d >= 3000:
+            put_pace = "🛡️ Heavy Floor Hedging"
+        elif p_tot >= 1000 or p_1d >= 800:
+            put_pace = "🟢 Floor Accumulation"
+        elif p_tot <= -3000 or p_1d <= -2000:
+            put_pace = "🔴 Protective Unwinding"
+        elif p_tot <= -800:
+            put_pace = "Muted Reduction"
+        else:
+            put_pace = "Stable"
+
+        # Relevant filter: walls, target base, ATM, within +/- 3.5% of spot, or > 12k OI
+        is_rel = (role != "") or (abs(k - spot) / spot <= 0.035) or (max(c_latest, p_latest) >= 12000)
+
+        # Get latest GEX metrics if available
+        curr_item = _lookup_strike(curr.get("strikes", {}), k)
+        net_gex = round(_safe_float(curr_item.get("net_gex"), 0.0), 1)
+        call_gex = round(_safe_float(curr_item.get("call_gex"), 0.0), 1)
+        put_gex = round(_safe_float(curr_item.get("put_gex"), 0.0), 1)
+
+        strike_rows.append({
+            "strike": k,
+            "strike_str": f"${k:,.2f}",
+            "dist_pct": dist_pct,
+            "role": role,
+            "role_type": role_type,
+            "is_relevant": is_rel,
+            "call_series": call_series,
+            "put_series": put_series,
+            "call_latest": c_latest,
+            "put_latest": p_latest,
+            "call_1d": c_1d,
+            "put_1d": p_1d,
+            "call_tot": c_tot,
+            "put_tot": p_tot,
+            "call_pct": c_pct,
+            "put_pct": p_pct,
+            "call_pace": call_pace,
+            "put_pace": put_pace,
+            "net_gex": net_gex,
+            "call_gex": call_gex,
+            "put_gex": put_gex
+        })
+
+    # Summary lists
+    top_calls_accum = sorted(strike_rows, key=lambda x: x["call_tot"], reverse=True)[:5]
+    top_puts_accum = sorted(strike_rows, key=lambda x: x["put_tot"], reverse=True)[:5]
+
+    return {
+        "ticker": t_up,
+        "has_data": True,
+        "dates_raw": dates_raw,
+        "dates_labels": dates_labels,
+        "num_days": len(dates_raw),
+        "spot_price": spot,
+        "call_wall": cw,
+        "put_wall": pw,
+        "zero_gamma": zg,
+        "strikes": strike_rows,
+        "total_strikes": len(strike_rows),
+        "relevant_strikes": sum(1 for s in strike_rows if s["is_relevant"]),
+        "top_calls_accum": top_calls_accum,
+        "top_puts_accum": top_puts_accum
+    }
+
+
 def plot_gamma_shift_heatmap(ticker: str, mode: str = "net_gex", max_days: int = 10):
     """
     Generates an institutional high-contrast Plotly Heat Map visualizing

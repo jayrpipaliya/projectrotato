@@ -2510,6 +2510,53 @@ def render_gamma_desk_page(available_tickers=None):
                                 "Put Open Interest": f"{p_item.get('curr_put_oi'):,}"
                             })
                         st.dataframe(pd.DataFrame(p_rows), use_container_width=True, hide_index=True)
+
+            # Multi-Day Strike Open Interest Migration Matrix
+            try:
+                from gamma_tracker import get_historical_oi_migration
+                oi_hist = get_historical_oi_migration(selected_ticker, max_days=5)
+                if oi_hist and oi_hist.get("has_data") and oi_hist.get("strikes"):
+                    st.markdown("#### Multi-Day Strike Open Interest Migration Table")
+                    st.caption("Track date-by-date Open Interest (OI) evolution across consecutive market sessions to identify OTM base accumulation and put floor cushions.")
+                    
+                    oi_c1, oi_c2 = st.columns([1, 1])
+                    with oi_c1:
+                        oi_side = st.radio("Option Type", ["Calls (OTM Bases & Pins)", "Puts (Hedging Floors & Puts)"], horizontal=True, key="oi_table_side")
+                    with oi_c2:
+                        oi_rel_only = st.checkbox("Relevant Strikes Only (Walls, ATM, Target Bases)", value=True, key="oi_table_rel")
+
+                    is_calls = "Calls" in oi_side
+                    dates = oi_hist.get("dates_labels", [])
+                    strikes_list = oi_hist.get("strikes", [])
+                    if oi_rel_only:
+                        strikes_list = [s for s in strikes_list if s.get("is_relevant")]
+
+                    table_rows = []
+                    for s in strikes_list:
+                        series = s.get("call_series" if is_calls else "put_series", [])
+                        d1d = s.get("call_1d" if is_calls else "put_1d", 0)
+                        dtot = s.get("call_tot" if is_calls else "put_tot", 0)
+                        pct = s.get("call_pct" if is_calls else "put_pct", 0.0)
+                        pace = s.get("call_pace" if is_calls else "put_pace", "Stable")
+                        
+                        row = {
+                            "Strike": s.get("strike_str"),
+                            "Dist Spot": f"{s.get('dist_pct', 0):+.1f}%",
+                            "Role": s.get("role") or "—"
+                        }
+                        for i, d in enumerate(dates):
+                            val = series[i] if i < len(series) else 0
+                            lbl = f"{d} (Today)" if i == len(dates) - 1 else d
+                            row[lbl] = f"{val:,}"
+                        row["1D ΔOI"] = f"{d1d:+,}"
+                        row["Net ΔOI"] = f"{dtot:+,} ({pct:+.1f}%)"
+                        row["Pace"] = pace
+                        table_rows.append(row)
+
+                    if table_rows:
+                        st.dataframe(pd.DataFrame(table_rows), use_container_width=True, hide_index=True)
+            except Exception as oi_err:
+                st.caption(f"Historical OI migration initializing: {oi_err}")
     except Exception as e:
         st.caption(f"Gamma migration tracker initializing: {e}")
 
