@@ -1715,6 +1715,26 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div id="gammaTimestampFooter" class="flex flex-col sm:flex-row justify-between items-center text-[10.5px] font-mono text-slate-500 mt-2 px-1 border-t border-white/5 pt-1.5"></div>
             </div>
 
+            <!-- Gamma Terrain & Ball Rolling Physics Engine Chart -->
+            <div class="lux-card p-4 mb-5 border-t-2 border-emerald-500/40">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
+                    <div>
+                        <h4 class="text-sm font-bold text-white flex items-center gap-2">
+                            <span>Gamma Terrain & Ball Rolling Physics Engine</span>
+                            <span id="gammaTerrainBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-mint/15 text-mint border border-mint/20">Gamma = The Ground • Price = The Ball</span>
+                        </h4>
+                        <p class="text-[11px] text-slate-400">Visualizing market maker delta-hedging friction: Valleys dampen volatility ("Push it back") • Slopes accelerate momentum ("Push it").</p>
+                    </div>
+                    <div id="gammaTerrainStatusBadge" class="text-right text-xs font-mono font-bold"></div>
+                </div>
+                <div id="gammaTerrainChart" style="height: 420px;"></div>
+                <div class="p-2.5 mt-2 rounded-lg bg-slate-900/40 border border-white/5 flex flex-wrap gap-4 text-[11px] text-slate-300 items-center">
+                    <div><span class="text-mint font-bold">● Positive Valley (+GEX):</span> Dealer shock absorbers active ("Push it back") ➔ <b>Mean-reversion pin action</b></div>
+                    <div><span class="text-sky-400 font-bold">● Zero-Gamma Crest:</span> Tipping point inflection ➔ <b>Breakout / breakdown trigger boundary</b></div>
+                    <div><span class="text-rose-400 font-bold">● Negative Slope (-GEX):</span> Dealer momentum acceleration ("Push it") ➔ <b>Fast & abrupt cascading volatility</b></div>
+                </div>
+            </div>
+
             <!-- Day-over-Day Gamma Migration & Strike Heat Map -->
             <div class="lux-card p-4 mb-5 border-t-2 border-indigo-500/30">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
@@ -4600,6 +4620,9 @@ async function init() {
                     }
 
                     Plotly.newPlot('gammaDeskChart', [traceCalls, tracePuts], layout, { responsive: true, displayModeBar: false });
+
+                    // Render Gamma Terrain & Ball Rolling Physics Engine Chart
+                    renderGammaTerrainChart(g);
                 }
 
                 // 4. Tabular Per-Strike Breakdown (Curated Relevant Strikes)
@@ -4621,6 +4644,274 @@ async function init() {
                 console.error("Gamma desk fetch error:", err);
                 if (kpiRow) kpiRow.innerHTML = `<div class="col-span-full text-xs text-cherry bg-cherry/10 p-3 rounded-lg border border-cherry/20">Error loading gamma desk: ${err.message}</div>`;
             }
+        }
+
+        function renderGammaTerrainChart(g) {
+            const chartDiv = document.getElementById('gammaTerrainChart');
+            if (!chartDiv || typeof Plotly === 'undefined' || !g || !g.strikes || g.strikes.length === 0) return;
+
+            const spot = g.spot_price;
+            const zg = g.zero_gamma_level || spot;
+            const cw = g.call_wall || spot;
+            const pw = g.put_wall || spot;
+            const ticker = g.ticker || 'SPY';
+
+            // Sort strikes by strike price
+            const sorted = [...g.strikes].sort((a, b) => a.strike - b.strike);
+            const rawK = sorted.map(s => s.strike);
+            const rawNet = sorted.map(s => s.net_gex);
+
+            if (rawK.length < 3) return;
+
+            // 1D Linear Interpolation
+            function interp(x, xs, ys) {
+                if (x <= xs[0]) return ys[0];
+                if (x >= xs[xs.length - 1]) return ys[ys.length - 1];
+                let i = 0;
+                while (i < xs.length - 1 && xs[i + 1] < x) i++;
+                const t = (x - xs[i]) / (xs[i + 1] - xs[i]);
+                return ys[i] + t * (ys[i + 1] - ys[i]);
+            }
+
+            // Focus bounds around relevant strikes or spot +/- 15%
+            const relStrikes = sorted.filter(s => s.is_relevant).map(s => s.strike);
+            const kMin = relStrikes.length > 0 ? Math.min(...relStrikes) : Math.max(spot * 0.85, rawK[0]);
+            const kMax = relStrikes.length > 0 ? Math.max(...relStrikes) : Math.min(spot * 1.15, rawK[rawK.length - 1]);
+
+            const gridMin = Math.max(rawK[0], kMin - (spot * 0.04));
+            const gridMax = Math.min(rawK[rawK.length - 1], kMax + (spot * 0.04));
+
+            const N = 260;
+            const denseK = [];
+            const denseNet = [];
+            const posTerrain = [];
+            const negTerrain = [];
+
+            for (let i = 0; i < N; i++) {
+                const k = gridMin + (i / (N - 1)) * (gridMax - gridMin);
+                const val = interp(k, rawK, rawNet);
+                denseK.push(k);
+                denseNet.push(val);
+                posTerrain.push(Math.max(val, 0));
+                negTerrain.push(Math.min(val, 0));
+            }
+
+            const spotGex = interp(spot, rawK, rawNet);
+            const zgDistPct = zg > 0 ? (((spot - zg) / spot) * 100) : 0;
+            const isAtCrest = zg > 0 && Math.abs(spot - zg) / spot < 0.008;
+            const isInValley = spotGex >= 0 && !isAtCrest;
+
+            let ballState = '';
+            let ballColor = '';
+            if (isAtCrest) {
+                ballState = 'PERCHED ON THE CREST (Zero-Gamma Tipping Point)';
+                ballColor = '#38bdf8';
+            } else if (isInValley) {
+                ballState = 'COILED IN +GAMMA VALLEY (Shock Absorber Active)';
+                ballColor = '#00F5A0';
+            } else {
+                ballState = 'ROLLING DOWNHILL IN -GAMMA CHASM (Momentum Accelerator)';
+                ballColor = '#FF2E55';
+            }
+
+            const statusBadge = document.getElementById('gammaTerrainStatusBadge');
+            if (statusBadge) {
+                const pillCol = isAtCrest ? 'text-sky-300' : (isInValley ? 'text-mint' : 'text-cherry');
+                statusBadge.innerHTML = `<span class="${pillCol}">⚪ Ball: $${spot.toFixed(2)} (${ballState})</span>`;
+            }
+
+            const traceNeg = {
+                x: denseK,
+                y: negTerrain,
+                mode: 'lines',
+                name: 'Negative Gamma Chasm (Vol Accelerator)',
+                line: { color: '#FF2E55', width: 2.5, shape: 'spline' },
+                fill: 'tozeroy',
+                fillcolor: 'rgba(255, 46, 85, 0.20)',
+                hoverinfo: 'skip'
+            };
+
+            const tracePos = {
+                x: denseK,
+                y: posTerrain,
+                mode: 'lines',
+                name: 'Positive Gamma Valley (Shock Absorber)',
+                line: { color: '#00F5A0', width: 2.5, shape: 'spline' },
+                fill: 'tozeroy',
+                fillcolor: 'rgba(0, 245, 160, 0.20)',
+                hoverinfo: 'skip'
+            };
+
+            const traceStrikes = {
+                x: rawK,
+                y: rawNet,
+                mode: 'markers',
+                name: 'Strike Net GEX ($M)',
+                marker: { size: 4.5, color: 'rgba(255, 255, 255, 0.35)' },
+                hovertemplate: '<b>Strike:</b> $%{x:.1f}<br><b>Net GEX:</b> $%{y:+.1f}M<extra></extra>'
+            };
+
+            const traceBall = {
+                x: [spot],
+                y: [spotGex],
+                mode: 'markers',
+                name: `Price Ball ($${spot.toFixed(2)})`,
+                marker: {
+                    size: 18,
+                    color: ballColor,
+                    line: { width: 3, color: '#ffffff' },
+                    symbol: 'circle'
+                },
+                hovertemplate: `<b>⚪ PRICE BALL: $${spot.toFixed(2)}</b><br>Ground Elevation: ${spotGex >= 0 ? '+' : ''}${spotGex.toFixed(1)}M GEX<br>Status: ${ballState}<extra></extra>`
+            };
+
+            const shapes = [
+                {
+                    type: 'line',
+                    x0: gridMin, x1: gridMax,
+                    y0: 0, y1: 0,
+                    line: { color: 'rgba(148, 163, 184, 0.35)', width: 1.5, dash: 'solid' }
+                },
+                {
+                    type: 'line',
+                    x0: spot, x1: spot,
+                    y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#ffffff', width: 1.5, dash: 'dash' }
+                }
+            ];
+
+            const annotations = [
+                {
+                    x: spot,
+                    y: spotGex,
+                    text: `⚪ <b>PRICE BALL: $${spot.toFixed(2)}</b><br><span style="font-size:9.5px;">${ballState}</span>`,
+                    showarrow: true,
+                    arrowhead: 2,
+                    arrowsize: 1.2,
+                    arrowwidth: 2,
+                    arrowcolor: ballColor,
+                    ax: 0,
+                    ay: spotGex >= 0 ? -55 : 55,
+                    bgcolor: 'rgba(15, 23, 42, 0.94)',
+                    bordercolor: ballColor,
+                    borderwidth: 1.5,
+                    borderpad: 6,
+                    font: { color: '#f8fafc', size: 10 }
+                }
+            ];
+
+            if (zg && Math.abs(zg - spot) / spot < 0.35) {
+                shapes.push({
+                    type: 'line',
+                    x0: zg, x1: zg,
+                    y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#38bdf8', width: 2, dash: 'dashdot' }
+                });
+                annotations.push({
+                    x: zg, y: 1, yref: 'paper',
+                    text: `⚡ Zero-Gamma Crest $${zg.toFixed(1)}`,
+                    showarrow: false,
+                    font: { color: '#38bdf8', size: 9 },
+                    xanchor: 'center', yanchor: 'bottom'
+                });
+            }
+
+            if (cw && Math.abs(cw - spot) / spot < 0.35) {
+                shapes.push({
+                    type: 'line',
+                    x0: cw, x1: cw,
+                    y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#00F5A0', width: 1.5, dash: 'dot' }
+                });
+                annotations.push({
+                    x: cw, y: 1, yref: 'paper',
+                    text: `Call Wall Pin $${cw.toFixed(0)}`,
+                    showarrow: false,
+                    font: { color: '#00F5A0', size: 9 },
+                    xanchor: 'left', yanchor: 'bottom'
+                });
+            }
+
+            if (pw && Math.abs(pw - spot) / spot < 0.35) {
+                shapes.push({
+                    type: 'line',
+                    x0: pw, x1: pw,
+                    y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#FF2E55', width: 1.5, dash: 'dot' }
+                });
+                annotations.push({
+                    x: pw, y: 0, yref: 'paper',
+                    text: `Put Wall Floor $${pw.toFixed(0)}`,
+                    showarrow: false,
+                    font: { color: '#FF2E55', size: 9 },
+                    xanchor: 'right', yanchor: 'top'
+                });
+            }
+
+            // Directional vectors
+            const posIndices = denseNet.map((v, idx) => v > 0 ? idx : -1).filter(idx => idx !== -1);
+            if (posIndices.length > 20) {
+                const mid = posIndices[Math.floor(posIndices.length / 2)];
+                annotations.push({
+                    x: denseK[mid],
+                    y: denseNet[mid] * 0.5,
+                    text: "◀ <b>'PUSH IT BACK'</b> ▶<br><span style='font-size:8.5px;'>Dealers buy dips & sell rips<br>(Mean-reverting bowl)</span>",
+                    showarrow: false,
+                    bgcolor: "rgba(0, 245, 160, 0.12)",
+                    bordercolor: "rgba(0, 245, 160, 0.4)",
+                    borderwidth: 1,
+                    font: { color: "#00F5A0", size: 9 }
+                });
+            }
+
+            const negIndices = denseNet.map((v, idx) => v < 0 ? idx : -1).filter(idx => idx !== -1);
+            if (negIndices.length > 20) {
+                const midNeg = negIndices[Math.floor(negIndices.length / 2)];
+                annotations.push({
+                    x: denseK[midNeg],
+                    y: denseNet[midNeg] * 0.5,
+                    text: "▼ <b>'PUSH IT'</b> ▼<br><span style='font-size:8.5px;'>Dealers sell with momentum<br>(Fast & abrupt cascade)</span>",
+                    showarrow: false,
+                    bgcolor: "rgba(255, 46, 85, 0.12)",
+                    bordercolor: "rgba(255, 46, 85, 0.4)",
+                    borderwidth: 1,
+                    font: { color: "#FF2E55", size: 9 }
+                });
+            }
+
+            const layout = {
+                title: {
+                    text: `<b>${ticker} Gamma Terrain & Ball Rolling Physics Engine</b> | <i>'Gamma = The Ground, Price = The Ball'</i><br><span style="font-size:11px; color:#94a3b8; font-weight:normal;">Ball Status: <b>${ballState}</b> • Ground Elevation: <b>${spotGex >= 0 ? '+' : ''}${spotGex.toFixed(1)}M GEX</b> • Crest Distance: <b>${zgDistPct >= 0 ? '+' : ''}${zgDistPct.toFixed(2)}%</b></span>`,
+                    font: { color: '#f1f5f9', size: 13 }
+                },
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { l: 45, r: 25, t: 55, b: 35 },
+                xaxis: {
+                    title: { text: 'Underlying Strike Price ($)', font: { color: '#94a3b8', size: 11 } },
+                    gridcolor: 'rgba(255, 255, 255, 0.04)',
+                    zerolinecolor: 'rgba(255, 255, 255, 0.1)',
+                    tickfont: { color: '#94a3b8', size: 10 }
+                },
+                yaxis: {
+                    title: { text: 'Ground Elevation: Net GEX ($M / 1% move)', font: { color: '#94a3b8', size: 11 } },
+                    gridcolor: 'rgba(255, 255, 255, 0.04)',
+                    zerolinecolor: 'rgba(255, 255, 255, 0.15)',
+                    tickfont: { color: '#94a3b8', size: 10 }
+                },
+                shapes: shapes,
+                annotations: annotations,
+                showlegend: true,
+                legend: { orientation: 'h', x: 1, xanchor: 'right', y: 1.1, font: { color: '#94a3b8', size: 10 } }
+            };
+
+            if (relStrikes.length > 0) {
+                const span = kMax - kMin;
+                const pad = Math.max(span * 0.08, spot * 0.015);
+                layout.xaxis.range = [kMin - pad, kMax + pad];
+            }
+
+            Plotly.newPlot('gammaTerrainChart', [traceNeg, tracePos, traceStrikes, traceBall], layout, { responsive: true, displayModeBar: false });
         }
 
         function renderWholeChainTable(ranked_chain, isBuy) {
