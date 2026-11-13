@@ -3859,7 +3859,7 @@ async function init() {
             const tbody = document.getElementById('gammaDeskStrikesTbody');
             if (!tbody || !g.strikes || g.strikes.length === 0) return;
             const spot = g.spot_price;
-            const targetZgStrike = g.closest_zero_gamma_strike !== undefined ? g.closest_zero_gamma_strike : g.zero_gamma_level;
+            const targetZgStrike = g.closest_zero_gamma_strike;
             
             const displayList = CURRENT_GAMMA_ONLY_RELEVANT 
                 ? g.strikes.filter(s => s.is_relevant) 
@@ -3881,7 +3881,7 @@ async function init() {
                 } else if (Math.abs(s.strike - g.put_wall) < 0.01) {
                     roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">PUT WALL (Floor)</span>';
                     rowBg += ' bg-rose-500/[0.03]';
-                } else if (Math.abs(s.strike - targetZgStrike) < 0.01) {
+                } else if (targetZgStrike !== null && targetZgStrike !== undefined && Math.abs(s.strike - targetZgStrike) < 0.01) {
                     roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30">ZERO FLIP</span>';
                     rowBg += ' bg-sky-500/[0.03]';
                 } else if (Math.abs(s.strike - spot) < (spot * 0.0075)) {

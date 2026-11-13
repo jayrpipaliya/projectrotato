@@ -546,7 +546,16 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         except Exception:
             zero_gamma_level = spot_price
 
-    closest_zg_strike = min(sorted_strikes, key=lambda k: abs(k - zero_gamma_level))
+    min_k = min(sorted_strikes)
+    max_k = max(sorted_strikes)
+    avg_step = (max_k - min_k) / max(len(sorted_strikes), 1)
+
+    # Only assign a closest zero-gamma strike if zero_gamma_level is actually within or adjacent to the active strike grid
+    if min_k - avg_step <= zero_gamma_level <= max_k + avg_step:
+        cand_zg = min(sorted_strikes, key=lambda k: abs(k - zero_gamma_level))
+        closest_zg_strike = cand_zg if abs(cand_zg - zero_gamma_level) <= max(avg_step * 2.0, 5.0) else None
+    else:
+        closest_zg_strike = None
 
     is_long_gamma = total_net_gex > 0
     net_gex_b = total_net_gex / 1000.0
@@ -577,7 +586,9 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
 
     # Curate high-impact / structurally relevant strikes to eliminate table noise
     atm_k = min(sorted_strikes, key=lambda k: abs(k - spot_price))
-    key_targets = {call_wall, put_wall, closest_zg_strike, abs_gamma_strike, atm_k}
+    key_targets = {call_wall, put_wall, abs_gamma_strike, atm_k}
+    if closest_zg_strike is not None:
+        key_targets.add(closest_zg_strike)
     top_c_k = set(sorted(sorted_strikes, key=lambda k: strikes_gex[k]["call_gex"], reverse=True)[:5])
     top_p_k = set(sorted(sorted_strikes, key=lambda k: strikes_gex[k]["put_gex"], reverse=True)[:5])
     top_net_k = set(sorted(sorted_strikes, key=lambda k: abs(strikes_gex[k]["call_gex"] - strikes_gex[k]["put_gex"]), reverse=True)[:5])
@@ -599,7 +610,7 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
             role = "Call Wall (Pin)"
         elif abs(k - put_wall) < 0.01:
             role = "Put Wall (Floor)"
-        elif abs(k - closest_zg_strike) < 0.01:
+        elif closest_zg_strike is not None and abs(k - closest_zg_strike) < 0.01:
             role = "Zero Flip"
         elif abs(k - atm_k) < 0.01:
             role = "ATM Spot"
@@ -659,7 +670,7 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         "put_wall_dist_pct": round(((put_wall / spot_price) - 1) * 100, 2),
         "absolute_gamma_strike": round(abs_gamma_strike, 2),
         "zero_gamma_level": round(zero_gamma_level, 2),
-        "closest_zero_gamma_strike": round(closest_zg_strike, 2),
+        "closest_zero_gamma_strike": round(closest_zg_strike, 2) if closest_zg_strike is not None else None,
         "zero_gamma_dist_pct": round(((zero_gamma_level / spot_price) - 1) * 100, 2),
         "target_base_strike": target_base_strike,
         "target_base_oi": target_base_oi,
