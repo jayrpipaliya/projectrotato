@@ -1039,16 +1039,16 @@ HTML_CONTENT = """<!DOCTYPE html>
           <span id="sessionDateBadge" class="text-slate-400 tabular-num text-[11px] font-mono">Prices: 2026-11-04</span>
         </div>
 
-        <!-- Gemini Key Active Pill -->
-        <button onclick="promptApiKey()" class="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-stealth-900 hover:bg-stealth-850 border border-stealth-border hover:border-mint/40 text-xs text-slate-300 transition group shadow-sm">
+        <!-- Quantitative Engine Status Pill -->
+        <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-stealth-900 border border-stealth-border text-xs text-slate-300 shadow-sm">
           <div class="flex items-center space-x-2">
-            <svg class="w-3.5 h-3.5 text-mint group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+            <svg class="w-3.5 h-3.5 text-mint" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
-            <span id="aiGlobalStatusText" class="font-medium text-mint">Gemini Key Active</span>
+            <span class="font-medium text-slate-300">Quantitative Engine</span>
           </div>
           <span class="w-1.5 h-1.5 rounded-full bg-mint shadow-[0_0_6px_#00F5A0]"></span>
-        </button>
+        </div>
       </div>
 
       <!-- Section: DATA FEEDS -->
@@ -1083,32 +1083,6 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
             <span class="w-1.5 h-1.5 rounded-full bg-slate-500 group-hover:bg-mint transition-colors"></span>
           </button>
-        </div>
-      </div>
-
-      <!-- Section: AI STRATEGIST ENGINE -->
-      <div class="space-y-3 pt-3 border-t border-stealth-border">
-        <div class="text-[11px] font-bold text-slate-400 tracking-wider uppercase">AI Strategist Engine</div>
-        
-        <div>
-          <label class="block text-xs text-slate-400 mb-1.5 font-medium">Gemini API Key</label>
-          <div class="relative">
-            <input type="password" id="sidebarApiKey" placeholder="Enter Gemini Key..." onchange="saveSidebarApiKey()"
-                   class="w-full bg-stealth-900 border border-stealth-border focus:border-mint/50 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none transition-colors" />
-          </div>
-        </div>
-
-        <!-- Save Key for Session Button -->
-        <button onclick="saveSidebarApiKey()" id="saveKeyBtn" class="w-full py-2.5 px-3 rounded-lg bg-mint/10 hover:bg-mint hover:text-stealth-950 text-mint border border-mint/30 text-xs font-bold transition-all shadow-[0_0_12px_rgba(0,245,160,0.15)] flex items-center justify-center space-x-1.5">
-          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-          </svg>
-          <span id="saveKeyBtnText">Save Key for Session</span>
-        </button>
-
-        <div class="flex items-center space-x-2 text-xs text-mint font-medium pt-1">
-          <span class="w-2 h-2 rounded-full bg-mint shadow-[0_0_8px_#00F5A0]"></span>
-          <span id="sidebarEngineStatus">Status: Gemini AI Active</span>
         </div>
       </div>
 
@@ -1168,18 +1142,14 @@ HTML_CONTENT = """<!DOCTYPE html>
 
       <!-- ================= 3. NAVIGATION PILL TABS ================= -->
       <nav class="flex items-center space-x-1.5 overflow-x-auto py-1 border-b border-stealth-border text-xs scrollbar-none font-medium">
-        <button onclick="switchTab('tab1')" id="btn-tab1" class="tab-btn active px-4 py-2 rounded-lg bg-stealth-850 text-white font-semibold border border-mint/40 shadow-[0_0_12px_rgba(0,245,160,0.15)] shrink-0">
-          AI Macro Letter
-        </button>
-        <button onclick="switchTab('tab_agent')" id="btn-tab_agent" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
-          AI Agent
-        </button>
-        <button onclick="switchTab('tab2')" id="btn-tab2" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+        <button onclick="switchTab('tab2')" id="btn-tab2" class="tab-btn active px-4 py-2 rounded-lg bg-stealth-850 text-white font-semibold border border-mint/40 shadow-[0_0_12px_rgba(0,245,160,0.15)] shrink-0">
           Automated Trade Ideas
         </button>
-        <button onclick="switchTab('tab_ledger')" id="btn-tab_ledger" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0 flex items-center gap-1.5">
-          <span>Trade Ledger & Audit</span>
-          <span id="ledgerTabBadge" class="hidden text-[10px] bg-mint/20 text-mint font-bold px-1.5 py-0.5 rounded-full border border-mint/30">0</span>
+        <button onclick="switchTab('tab_gamma')" id="btn-tab_gamma" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          Dealer Gamma Desk
+        </button>
+        <button onclick="switchTab('tab_options')" id="btn-tab_options" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
+          Volatility Pricing
         </button>
         <button onclick="switchTab('tab3')" id="btn-tab3" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Bias Matrix
@@ -1196,159 +1166,14 @@ HTML_CONTENT = """<!DOCTYPE html>
         <button onclick="switchTab('tab7')" id="btn-tab7" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Single Ticker Explorer
         </button>
-        <button onclick="switchTab('tab_gamma')" id="btn-tab_gamma" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
-          Dealer Gamma Desk
-        </button>
-        <button onclick="switchTab('tab_options')" id="btn-tab_options" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
-          Volatility Pricing
+        <button onclick="switchTab('tab_ledger')" id="btn-tab_ledger" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0 flex items-center gap-1.5">
+          <span>Trade Ledger & Audit</span>
+          <span id="ledgerTabBadge" class="hidden text-[10px] bg-mint/20 text-mint font-bold px-1.5 py-0.5 rounded-full border border-mint/30">0</span>
         </button>
       </nav>
-<!-- Tab Agent: Interactive AI Quant Agent -->
-        <div id="tab_agent" class="tab-pane hidden">
-            <div class="lux-card p-5 mb-4">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-3 mb-4 border-b border-white/10 gap-3">
-                    <div>
-                        <h2 class="text-lg font-bold text-white flex items-center gap-2">Interactive Quant Analyst & Risk Officer</h2>
-                        <p class="text-xs text-slate-400">On-Demand AI Reasoning Across Live Regimes, Tickers, Confluences & Ratios</p>
-                    </div>
-                    <button onclick="clearAgentChat()" class="text-xs text-slate-400 hover:text-white px-3 py-1 rounded bg-white/5 border border-white/10 transition">Clear Chat</button>
-                </div>
-                
-                <!-- Quick Prompts -->
-                <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Quick Desk Inquiries:</div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 mb-4">
-                    <button onclick="sendQuickPrompt('Analyze todays Mag 7 divergence. Which tech leaders are showing institutional accumulation vs distribution, and what are the key invalidation levels?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
-                        <b>Mag 7 Divergence & Risks</b>
-                    </button>
-                    <button onclick="sendQuickPrompt('Based on the 5-day sector velocities, where is institutional smart money rotating right now? Which sector is leading?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
-                        <b>Sector Rotation Leaders</b>
-                    </button>
-                    <button onclick="sendQuickPrompt('What are the biggest distribution traps and high-risk names on the desk today? Where should retail traders avoid dip buying?')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
-                        <b>Top Distribution Warnings</b>
-                    </button>
-                    <button onclick="sendQuickPrompt('Give me the top 3 high-probability setups from todays confluence radar with exact entry rationale, targets, and stop-loss levels.')" class="p-2.5 text-left rounded-lg bg-white/[0.02] hover:bg-white/[0.06] border border-white/5 text-xs text-slate-300 transition">
-                        <b>Best High-Conviction Setups</b>
-                    </button>
-                    <button onclick="sendQuickPrompt('Audit all active trades currently in my ledger against live market metrics. Check their current prices, distances to stop-loss/targets, gamma regimes, and advise whether to hold, trail stop, take profits, or invalidate.')" class="p-2.5 text-left rounded-lg bg-mint/10 hover:bg-mint/20 border border-mint/30 text-xs text-mint transition flex flex-col justify-between">
-                        <b>Audit Active Ledger</b>
-                        <span class="text-[10px] text-mint/70 mt-1">Live position checks</span>
-                    </button>
-                </div>
-
-                <!-- Chat History Window -->
-                <div id="chatHistory" class="space-y-3 min-h-[320px] max-h-[620px] overflow-y-auto p-4 rounded-xl bg-[#090a0f] border border-white/5 mb-4">
-                    <!-- Messages dynamically rendered -->
-                </div>
-
-                <!-- Chat Input Bar -->
-                <form onsubmit="handleAgentSubmit(event)" class="flex gap-2">
-                    <input id="chatInput" type="text" placeholder="Ask the Quant AI Agent anything about today's market data, tickers, or setups..." class="flex-1 bg-[#161722] border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-mint">
-                    <button type="submit" id="chatSendBtn" class="bg-mint hover:bg-mint/80 text-black font-bold px-5 py-2.5 rounded-xl text-xs flex items-center gap-1.5 transition">
-                        <span>Send</span>
-                    </button>
-                </form>
-            </div>
-        </div>
-
-        <!-- Tab 1: AI Macro Letter -->
-        <div id="tab1" class="tab-pane">
-          <!-- ================= 4. MARKET REGIME & SECTOR VELOCITY BASKETS ================= -->
-          <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 mb-5">
-            
-            <!-- Left: MARKET REGIME SYNTHESIS (Col span 7) -->
-            <div class="lg:col-span-7 stealth-card p-6 space-y-3 relative overflow-hidden border border-stealth-border hover:border-slate-700">
-              <!-- Subtle Stealth Ambient Glow in Top Right Corner -->
-              <div class="absolute -top-16 -right-16 w-48 h-48 bg-mint/5 rounded-full blur-2xl pointer-events-none"></div>
-
-              <!-- Badges -->
-              <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-2">
-                  <span class="text-[11px] font-bold text-mint uppercase tracking-wider">Market Regime</span>
-                  <span id="briefingAiBadge" class="px-2 py-0.5 rounded bg-stealth-850 text-[10px] text-slate-300 font-semibold border border-stealth-border">
-                    AI Synthesized
-                  </span>
-                </div>
-                <span id="briefingRiskPill" class="text-xs text-slate-400 font-medium px-2.5 py-0.5 rounded-full bg-stealth-900 border border-stealth-border">
-                  Selective / Dispersion
-                </span>
-              </div>
-
-              <!-- Title -->
-              <h4 id="briefingTitle" class="text-xl font-bold text-white tracking-tight leading-snug">
-                Selective Cyclical Rotation With Mega-Cap Tech Rebound
-              </h4>
-
-              <!-- Paragraph -->
-              <p id="briefingDetail" class="text-xs text-slate-300 leading-relaxed font-normal">
-                Capital is aggressively rotating out of secular tech leadership like SMH and into mega-cap anchors (AAPL, MSFT, AMZN) and cyclicals, while defensives like XLU capture steady bids. Breadth ratios show severe mean-reversion in cap-weighted benchmarks relative to equal-weight baselines.
-              </p>
-            </div>
-
-            <!-- Right: 5-DAY SECTOR VELOCITY BASKETS (Col span 5) -->
-            <div class="lg:col-span-5 stealth-card p-6 flex flex-col justify-between space-y-4 border border-stealth-border">
-              
-              <div>
-                <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-4">
-                  5-Day Sector Velocity Baskets
-                </div>
-
-                <div id="basketsGrid" class="grid grid-cols-4 gap-2 text-center">
-                  <!-- Populated dynamically by renderBriefingBaskets() -->
-                </div>
-              </div>
-
-              <!-- Footer Footnote -->
-              <div class="pt-3 border-t border-stealth-border text-[11px] text-slate-500 leading-normal">
-                <span class="text-slate-400 font-medium">Capital Rotation:</span> Measures 5-day velocity across cyclical vs defensive balance sheets.
-              </div>
-
-            </div>
-
-          </div>
-
-          <!-- Executive Synthesis Card -->
-          <div id="synthesisCard" class="stealth-card p-6 border border-stealth-border space-y-4">
-            <div class="flex flex-wrap justify-between items-center gap-3 pb-3 border-b border-stealth-border">
-              <div class="flex items-center space-x-2.5">
-                <span class="w-2 h-2 rounded-full bg-mint"></span>
-                <div>
-                  <span class="text-xs font-bold text-mint uppercase tracking-wider block">Institutional Executive Synthesis</span>
-                  <span class="text-[11px] text-slate-400">Chief Quantitative Strategist & Portfolio Risk Intelligence</span>
-                </div>
-              </div>
-              <div class="flex items-center space-x-2">
-                <span id="aiBriefingTimestamp" class="text-[11px] font-mono text-slate-400 bg-stealth-850 px-2.5 py-1 rounded border border-stealth-border">Daily Session</span>
-                <span id="aiSourceBadge" class="badge-mint px-2.5 py-1 rounded text-[11px] font-bold">Quantitative Desk</span>
-              </div>
-            </div>
-
-            <!-- Navigation View Filter Pills & Regenerate Button -->
-            <div class="flex flex-wrap items-center justify-between gap-1.5 p-1.5 rounded-lg bg-stealth-950 border border-stealth-border">
-              <div class="flex flex-wrap items-center gap-1.5">
-                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">Focus Pillar:</span>
-                <button onclick="filterSynthesisSection('all')" id="synthPill-all" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-bold bg-mint text-stealth-950 shadow-sm transition">All 4 Pillars</button>
-                <button onclick="filterSynthesisSection('macro')" id="synthPill-macro" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">1. Macro Liquidity</button>
-                <button onclick="filterSynthesisSection('sectors')" id="synthPill-sectors" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">2. Sector Velocity</button>
-                <button onclick="filterSynthesisSection('setups')" id="synthPill-setups" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">3. Setups & Traps</button>
-                <button onclick="filterSynthesisSection('risk')" id="synthPill-risk" class="synth-nav-pill px-3 py-1 rounded-md text-xs font-semibold bg-stealth-850 hover:bg-stealth-800 text-slate-300 transition">4. Desk Game Plan</button>
-              </div>
-              <button onclick="loadAiBriefingAsync(true)" title="Force fresh AI synthesis bypassing cache" class="px-2.5 py-1 rounded-md text-xs font-bold bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 transition flex items-center gap-1.5 ml-auto">
-                <span>↻</span> <span>Regenerate Briefing</span>
-              </button>
-            </div>
-
-            <!-- Structured Synthesis Section Cards Container -->
-            <div id="synthesisText" class="space-y-4">
-              <div class="flex items-center space-x-2 text-slate-400 py-6 text-xs">
-                <span class="inline-block animate-spin text-mint font-mono">↻</span>
-                <span>Synthesizing multi-factor institutional market intelligence...</span>
-              </div>
-            </div>
-          </div>
-        </div>
 
         <!-- Tab 2: Automated Trade Ideas -->
-        <div id="tab2" class="tab-pane hidden">
+        <div id="tab2" class="tab-pane">
             <div class="bg-white/[0.03] border border-white/5 rounded-xl p-3 mb-4 text-xs text-slate-400">
                 <b class="text-mint font-semibold">Strict Confluence Rules:</b> Green conviction scores (+15 to +100) are reserved strictly for <b>Long Setups</b>. Red conviction scores (-15 to -100) are strictly flagged for <b>Distribution Fades or De-risking</b> to protect portfolio equity.
             </div>
@@ -1357,38 +1182,25 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
         </div>
 
-                <!-- Tab Ledger: Institutional Trade Ledger & AI Forward Performance Auditor -->
+        <!-- Tab Ledger: Institutional Trade Ledger & Risk Radar -->
         <div id="tab_ledger" class="tab-pane hidden">
             <!-- Header & Desk Controls -->
             <div class="lux-card p-4 sm:p-5 mb-4">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-3 mb-4 border-b border-white/10 gap-3">
                     <div>
                         <h2 class="text-lg font-bold text-white flex items-center gap-2">
-                            <span>Institutional Trade Ledger & AI Forward Auditor</span>
+                            <span>Institutional Trade Ledger</span>
                             <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-mint/15 text-mint border border-mint/20">Live Forward Radar</span>
                         </h2>
-                        <p class="text-xs text-slate-400">Live Mark-to-Market, Frozen Quantitative Baseline Snapshots, and On-Demand AI Risk Officer Audits</p>
+                        <p class="text-xs text-slate-400">Live Mark-to-Market, Frozen Quantitative Baseline Snapshots, and Position Risk Monitoring</p>
                     </div>
                     <div class="flex items-center gap-2 w-full sm:w-auto">
-                        <button onclick="runLedgerAudit()" id="btnRunLedgerAudit" class="flex-1 sm:flex-none px-3.5 py-2 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 border border-sky-500/30 text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-[0_0_12px_rgba(56,189,248,0.15)]">
-                            <span>Run AI Desk Audit</span>
-                        </button>
                         <button onclick="loadLedger()" class="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 text-xs font-semibold transition flex items-center justify-center gap-1">
                             <span>Refresh</span>
                         </button>
                     </div>
                 </div>
 
-                <!-- AI Audit Output Banner (Dynamically shown) -->
-                <div id="ledgerAuditResult" class="hidden mb-4 p-4 rounded-xl bg-stealth-900 border border-sky-500/30 text-xs text-slate-200">
-                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
-                        <b class="text-sky-400 font-bold text-sm flex items-center gap-1.5">
-                            <span>AI Quant Risk Officer Audit</span>
-                        </b>
-                        <button onclick="document.getElementById('ledgerAuditResult').classList.add('hidden')" class="text-slate-500 hover:text-white text-xs">Close</button>
-                    </div>
-                    <div id="ledgerAuditContent" class="space-y-2 leading-relaxed"></div>
-                </div>
 
                 <!-- Executive 5-KPI Stats Ribbon -->
                 <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
@@ -1426,7 +1238,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <span id="subBadgeActive" class="px-1.5 py-0.2 rounded-full text-[10px] bg-mint/20 text-mint">0</span>
                     </button>
                     <button onclick="switchLedgerSub('manual')" id="btnSubLedgerManual" class="px-3.5 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-white transition">
-                        <span>Manual / AI Prompt Logger</span>
+                        <span>Manual Trade Logger</span>
                     </button>
                     <button onclick="switchLedgerSub('closed')" id="btnSubLedgerClosed" class="px-3.5 py-1.5 border-b-2 border-transparent text-slate-400 hover:text-white transition flex items-center gap-1.5">
                         <span>Closed Trades History</span>
@@ -1441,11 +1253,11 @@ HTML_CONTENT = """<!DOCTYPE html>
                     </div>
                 </div>
 
-                <!-- Sub-Pane 2: Manual / AI Prompt Trade Logger -->
+                <!-- Sub-Pane 2: Manual Trade Logger -->
                 <div id="ledgerSubManual" class="hidden">
                     <div class="p-4 rounded-xl bg-[#0b0d13] border border-white/5 max-w-3xl">
-                        <h3 class="text-sm font-bold text-white mb-1">Log Custom Setup from AI Quant Agent Chat</h3>
-                        <p class="text-xs text-slate-400 mb-4">Paste trade parameters recommended during interactive chats, and auto-pull today's live confluence and 20-year backtest win rate.</p>
+                        <h3 class="text-sm font-bold text-white mb-1">Log Custom Trade Setup</h3>
+                        <p class="text-xs text-slate-400 mb-4">Enter trade parameters and auto-pull today's live confluence and backtest metrics.</p>
 
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
                             <div>
@@ -1520,8 +1332,8 @@ HTML_CONTENT = """<!DOCTYPE html>
                         </div>
 
                         <div class="mb-4">
-                            <label class="text-[10px] uppercase font-bold text-slate-400">AI Desk Thesis / Recommendation Notes</label>
-                            <textarea id="manThesis" rows="2" placeholder="Thesis given by Quant AI Agent..." class="w-full mt-1 bg-[#161722] border border-white/10 rounded-lg p-2.5 text-xs text-white"></textarea>
+                            <label class="text-[10px] uppercase font-bold text-slate-400">Strategy Thesis / Notes</label>
+                            <textarea id="manThesis" rows="2" placeholder="Strategy thesis or trade notes..." class="w-full mt-1 bg-[#161722] border border-white/10 rounded-lg p-2.5 text-xs text-white"></textarea>
                         </div>
 
                         <button onclick="submitManualLedgerTrade()" class="w-full py-2.5 rounded-xl bg-mint hover:bg-mint/80 text-black font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-[0_0_12px_rgba(0,245,160,0.2)]">
@@ -1545,7 +1357,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                                     <th class="p-2.5">Realized P&L</th>
                                     <th class="p-2.5">Return (%)</th>
                                     <th class="p-2.5">Outcome</th>
-                                    <th class="p-2.5">AI Backtest WR</th>
+                                    <th class="p-2.5">Confluence WR</th>
                                 </tr>
                             </thead>
                             <tbody id="ledgerClosedTbody" class="divide-y divide-white/5">
@@ -2124,68 +1936,10 @@ HTML_CONTENT = """<!DOCTYPE html>
         let USER_API_KEY = localStorage.getItem('rotato_gemini_key') || '';
 
 
-        function updateApiKeyUI() {
-            const statusEl = document.getElementById('aiGlobalStatusText');
-            const engineStatusEl = document.getElementById('sidebarEngineStatus');
-            const key = USER_API_KEY || '';
-            const topInput = document.getElementById('topApiKeyInput');
-            if (topInput && key) topInput.value = key;
-            const sideInput = document.getElementById('sidebarApiKey');
-            if (sideInput && key) sideInput.value = key;
-            if (statusEl) {
-                statusEl.innerText = key ? 'Gemini Key Active' : 'Gemini Key Active (Default)';
-            }
-            if (engineStatusEl) {
-                engineStatusEl.innerText = key ? 'Status: Gemini AI Active (Custom)' : 'Status: Gemini AI Active (Default)';
-            }
-        }
-
-        function saveTopApiKey() {
-            const input = document.getElementById('topApiKeyInput');
-            const key = input ? input.value.trim() : '';
-            if (key) {
-                USER_API_KEY = key;
-                localStorage.setItem('rotato_gemini_key', key);
-            } else {
-                USER_API_KEY = '';
-                localStorage.removeItem('rotato_gemini_key');
-            }
-            updateApiKeyUI();
-            init();
-        }
-
-        function saveSidebarApiKey() {
-            const input = document.getElementById('sidebarApiKey');
-            const key = input ? input.value.trim() : '';
-            if (key) {
-                USER_API_KEY = key;
-                localStorage.setItem('rotato_gemini_key', key);
-            } else {
-                USER_API_KEY = '';
-                localStorage.removeItem('rotato_gemini_key');
-            }
-            updateApiKeyUI();
-            const btnText = document.getElementById('saveKeyBtnText');
-            if (btnText) {
-                btnText.innerText = key ? 'Key Saved!' : 'Key Cleared!';
-                setTimeout(() => { btnText.innerText = 'Save Key for Session'; }, 1800);
-            }
-            loadAiBriefingAsync(true);
-        }
-
-        function promptApiKey() {
-            const key = prompt("Enter your Google Gemini API Key to enable AI Briefings & Agent Chat on Vercel:", USER_API_KEY);
-            if (key !== null) {
-                USER_API_KEY = key.trim();
-                if (USER_API_KEY) {
-                    localStorage.setItem('rotato_gemini_key', USER_API_KEY);
-                } else {
-                    localStorage.removeItem('rotato_gemini_key');
-                }
-                updateApiKeyUI();
-                loadAiBriefingAsync(true);
-            }
-        }
+        function updateApiKeyUI() {}
+        function saveTopApiKey() {}
+        function saveSidebarApiKey() {}
+        function promptApiKey() {}
 
         async function triggerDataSync() {
             const hBtn = document.getElementById('headerSyncBtn');
@@ -2307,21 +2061,19 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
         }
 
-        const LOADED_TABS = new Set(['tab1']);
+        const LOADED_TABS = new Set(['tab2']);
         let AI_DATA = null;
 
         const TAB_NAMES = {
-            'tab1': 'AI Macro Letter',
-            'tab_agent': 'AI Agent',
             'tab2': 'Automated Trade Ideas Desk',
-            'tab_ledger': 'Trade Ledger & Forward AI Auditor',
+            'tab_gamma': 'Dealer Gamma Desk',
+            'tab_options': 'Volatility Pricing',
             'tab3': 'Bias Matrix',
             'tab5': 'Indexes & Sector Flow',
             'tab4': 'Magnificant 7 Flow',
             'tab6': 'Synthetic Ratio Rotations',
             'tab7': 'Single Ticker Explorer',
-            'tab_gamma': 'Dealer Gamma Desk',
-            'tab_options': 'Volatility Pricing'
+            'tab_ledger': 'Trade Ledger & Audit'
         };
 
         function switchTab(tabId) {
@@ -2548,12 +2300,11 @@ async function init() {
                 renderBriefingBaskets();
                 renderRegime();
                 renderFilamentHeroCards();
-                initAgentChat();
                 populateTickersDropdown();
                 populateOptionsTickersDropdown();
                 populateGammaDeskTickersDropdown();
 
-                // 3. Asynchronously load AI briefing in background without blocking UI
+                // 3. Load quantitative trade setups and ledger
                 loadAiBriefingAsync();
                 loadLedger();
 
@@ -2562,89 +2313,10 @@ async function init() {
             }
         }
 
-        let AGENT_CHAT_HISTORY = [
-            {
-                role: 'assistant',
-                content: "Greetings Trader. I am your Quantitative Desk Analyst. I have indexed today's live metrics (20/50/200 EMAs, RSI, ATR stretches, RVOL, sector velocities, and confluence scores). Ask me about any ticker, setup, or rotation risk."
-            }
-        ];
-
-        function initAgentChat() {
-            renderChatHistory();
-        }
-
-        function renderChatHistory() {
-            const container = document.getElementById('chatHistory');
-            if (!container) return;
-            let html = '';
-            AGENT_CHAT_HISTORY.forEach(msg => {
-                const isUser = msg.role === 'user';
-                const bg = isUser ? 'bg-amber-500/10 border-amber-500/20 text-amber-100 ml-6' : 'bg-[#12141c] border-white/5 text-slate-200 mr-6';
-                const label = isUser ? '<b class="text-amber-400 text-[11px] block mb-1">YOU</b>' : '<b class="text-slate-400 text-[11px] block mb-1">QUANT AI AGENT</b>';
-                const parsedContent = window.marked ? marked.parse(msg.content) : msg.content;
-                html += `
-                    <div class="p-3 rounded-xl border ${bg}">
-                        ${label}
-                        <div class="text-xs leading-relaxed max-w-none overflow-x-auto">${parsedContent}</div>
-                    </div>
-                `;
-            });
-            container.innerHTML = html;
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function clearAgentChat() {
-            AGENT_CHAT_HISTORY = [
-                {
-                    role: 'assistant',
-                    content: 'Chat history cleared. What quantitative setups or market dynamics would you like to review?'
-                }
-            ];
-            renderChatHistory();
-        }
-
-        function sendQuickPrompt(promptText) {
-            document.getElementById('chatInput').value = promptText;
-            handleAgentSubmit(null);
-        }
-
-        async function handleAgentSubmit(e) {
-            if (e && e.preventDefault) e.preventDefault();
-            const input = document.getElementById('chatInput');
-            const query = input.value.trim();
-            if (!query) return;
-
-            AGENT_CHAT_HISTORY.push({ role: 'user', content: query });
-            input.value = '';
-            renderChatHistory();
-
-            const container = document.getElementById('chatHistory');
-            const loadingDiv = document.createElement('div');
-            loadingDiv.className = 'p-3 rounded-xl border bg-[#12141c] border-white/5 text-slate-400 mr-6 text-xs';
-            loadingDiv.innerHTML = '<b class="text-slate-500 text-[11px] block mb-1">QUANT AI AGENT</b><span class="animate-pulse">Analyzing quantitative data & generating desk response...</span>';
-            container.appendChild(loadingDiv);
-            container.scrollTop = container.scrollHeight;
-
-            try {
-                const res = await fetch('/api/agent-chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        query: query,
-                        api_key: USER_API_KEY,
-                        history: AGENT_CHAT_HISTORY
-                    })
-                });
-                const data = await res.json();
-                container.removeChild(loadingDiv);
-                AGENT_CHAT_HISTORY.push({ role: 'assistant', content: data.answer || 'No response.' });
-                renderChatHistory();
-            } catch (err) {
-                container.removeChild(loadingDiv);
-                AGENT_CHAT_HISTORY.push({ role: 'assistant', content: 'Error connecting to AI Agent: ' + err.message });
-                renderChatHistory();
-            }
-        }
+        function initAgentChat() {}
+        function clearAgentChat() {}
+        function sendQuickPrompt() {}
+        function handleAgentSubmit() {}
 
         function renderTickerTape() {
             const el = document.getElementById('tickerRibbon');
@@ -3403,7 +3075,7 @@ async function init() {
                                 <div id="cardLogger-${cards.indexOf(t)}" class="hidden p-3 rounded-xl bg-[#090b10] border border-mint/30 space-y-2.5 text-xs">
                                     <div class="flex items-center justify-between pb-1 border-b border-white/10">
                                         <span class="font-bold text-white">Execution Parameters</span>
-                                        <span class="text-[10px] text-slate-400">Locks in frozen AI snapshot</span>
+                                        <span class="text-[10px] text-slate-400">Locks in frozen entry snapshot</span>
                                     </div>
                                     <div class="grid grid-cols-2 gap-2">
                                         <div>
@@ -6025,7 +5697,7 @@ async function init() {
                             <!-- Frozen Baseline Dropdown -->
                             <details class="mb-3 p-2.5 rounded-lg bg-[#08090e] border border-white/5 text-[11px] text-slate-300 group">
                                 <summary class="cursor-pointer font-bold text-slate-400 hover:text-white flex items-center justify-between">
-                                    <span>Frozen AI Baseline at Entry (WR, Odds, GEX)</span>
+                                    <span>Frozen Position Baseline at Entry (WR, Odds, GEX)</span>
                                     <span class="text-xs text-slate-500">▾</span>
                                 </summary>
                                 <div class="mt-2 pt-2 border-t border-white/5 grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -6180,30 +5852,7 @@ async function init() {
             tbody.innerHTML = html;
         }
 
-        async function runLedgerAudit() {
-            const btn = document.getElementById('btnRunLedgerAudit');
-            const resBox = document.getElementById('ledgerAuditResult');
-            const resContent = document.getElementById('ledgerAuditContent');
-            if (btn) btn.innerHTML = '<span>Auditing...</span>';
-
-            try {
-                const res = await fetch('/api/ledger/audit', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({api_key: USER_API_KEY})
-                });
-                const data = await res.json();
-                if (btn) btn.innerHTML = '<span>Run AI Desk Audit</span>';
-                if (resBox && resContent) {
-                    resBox.classList.remove('hidden');
-                    const parsed = window.marked ? marked.parse(data.report || 'Audit complete.') : (data.report || '');
-                    resContent.innerHTML = parsed;
-                }
-            } catch (err) {
-                if (btn) btn.innerHTML = '<span>Run AI Desk Audit</span>';
-                alert('Audit request failed: ' + err.message);
-            }
-        }
+        async function runLedgerAudit() {}
 
         function toggleCardLogger(idx) {
             const el = document.getElementById('cardLogger-' + idx);
