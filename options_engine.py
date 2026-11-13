@@ -373,6 +373,44 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
     else:
         call_wall = max(sorted_strikes)
 
+    # 4. Institutional OTM Accumulation Target Base (Landing Pad Detection):
+    # Detects where smart money and dealers are building an emerging base with small yet increasing
+    # Open Interest further out-of-the-money (>= 1.2% OTM). When positive gamma / OI builds out here,
+    # dealers are bracing for impact, signaling a pre-positioned magnet / landing destination.
+    otm_target_cands = [k for k in sorted_strikes if k >= spot_price * 1.012]
+    target_base_strike = None
+    target_base_oi = 0
+    target_base_gex = 0.0
+    target_base_dist_pct = 0.0
+
+    if otm_target_cands:
+        accum_shifts = {}
+        try:
+            from gamma_tracker import load_gamma_history
+            h = load_gamma_history(ticker_up)
+            if h and len(h) >= 2:
+                prev_s = h[-2].get("strikes", {})
+                curr_s = h[-1].get("strikes", {})
+                for k_cand in otm_target_cands:
+                    c_oi = curr_s.get(str(k_cand), {}).get("call_oi", 0) or curr_s.get(k_cand, {}).get("call_oi", 0)
+                    p_oi = prev_s.get(str(k_cand), {}).get("call_oi", 0) or prev_s.get(k_cand, {}).get("call_oi", 0)
+                    accum_shifts[k_cand] = max(c_oi - p_oi, 0)
+        except Exception:
+            pass
+
+        def score_target_base(k):
+            raw_oi = strikes_gex[k]["call_oi"]
+            c_gex = max(strikes_gex[k]["call_gex"], 0.0)
+            dod_boost = accum_shifts.get(k, 0) * 5
+            return raw_oi + dod_boost + (c_gex * 10)
+
+        best_target_k = max(otm_target_cands, key=score_target_base)
+        if strikes_gex[best_target_k]["call_oi"] >= 3000:
+            target_base_strike = round(best_target_k, 2)
+            target_base_oi = int(strikes_gex[best_target_k]["call_oi"])
+            target_base_gex = round(strikes_gex[best_target_k]["call_gex"], 1)
+            target_base_dist_pct = round(((best_target_k / spot_price) - 1) * 100, 2)
+
     total_call_gex = sum(strikes_gex[k]["call_gex"] for k in sorted_strikes)
     total_put_gex = sum(strikes_gex[k]["put_gex"] for k in sorted_strikes)
     total_net_gex = total_call_gex - total_put_gex
@@ -538,6 +576,10 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         "zero_gamma_level": round(zero_gamma_level, 2),
         "closest_zero_gamma_strike": round(closest_zg_strike, 2),
         "zero_gamma_dist_pct": round(((zero_gamma_level / spot_price) - 1) * 100, 2),
+        "target_base_strike": target_base_strike,
+        "target_base_oi": target_base_oi,
+        "target_base_gex_m": target_base_gex,
+        "target_base_dist_pct": target_base_dist_pct,
         "total_net_gex_billions": round(total_net_gex / 1000.0, 3),
         "total_call_gex_billions": round(total_call_gex / 1000.0, 3),
         "total_put_gex_billions": round(total_put_gex / 1000.0, 3),
@@ -778,27 +820,26 @@ def plot_gamma_terrain_profile(gamma_data):
             line=dict(width=3, color=ball_border),
             symbol="circle"
         ),
-        hovertemplate=f"<b>⚪ PRICE BALL: ${spot:.2f}</b><br>Ground Elevation: {spot_gex:+.1f}M GEX<br>Status: {ball_state}<extra></extra>"
+        hovertemplate=f"<b>⚪ Price Ball: ${spot:.2f}</b><br>Ground Elevation: {spot_gex:+.1f}M GEX<extra></extra>"
     ))
 
-    # Ball Callout Annotation
-    ay_offset = -60 if spot_gex < -150 else (-55 if spot_gex >= 0 else 55)
-    fig.add_annotation(
-        x=spot, y=spot_gex,
-        text=f"⚪ <b>PRICE BALL: ${spot:.2f}</b><br><span style='font-size:9.5px;'>{ball_state}</span>",
-        showarrow=True,
-        arrowhead=2,
-        arrowsize=1.2,
-        arrowwidth=2,
-        arrowcolor=ball_color,
-        ax=0,
-        ay=ay_offset,
-        bgcolor="rgba(15, 23, 42, 0.94)",
-        bordercolor=ball_color,
-        borderwidth=1.5,
-        borderpad=6,
-        font=dict(color="#f8fafc", size=10, family="sans-serif")
-    )
+    # 5b. OTM Pre-Positioned Target Base (Institutional Landing Pad)
+    tb_k = gamma_data.get("target_base_strike")
+    tb_oi = gamma_data.get("target_base_oi", 0)
+    if tb_k and abs(tb_k - spot) / spot < 0.40:
+        fig.add_vline(
+            x=tb_k, line_width=1.5, line_dash="dash", line_color="#c084fc",
+            annotation_text=f"🎯 Target Base ${tb_k:.0f} (+{tb_oi/1000:.1f}k OI)", annotation_position="top right",
+            annotation_font=dict(color="#c084fc", size=9)
+        )
+        tb_gex = float(np.interp(tb_k, raw_k, raw_net))
+        fig.add_trace(go.Scatter(
+            x=[tb_k], y=[tb_gex],
+            mode="markers",
+            name=f"OTM Target Base (${tb_k:.0f})",
+            marker=dict(size=13, color="#c084fc", symbol="diamond", line=dict(width=2, color="#ffffff")),
+            hovertemplate=f"<b>🎯 OTM TARGET BASE: ${tb_k:.1f}</b><br>Accumulating Call OI: {tb_oi:,}<br>Dealers pre-positioning / landing pad<extra></extra>"
+        ))
 
     # 6. Directional Dealer Hedging Vectors (Whiteboard Analogy)
     pos_indices = np.where(dense_net > 0)[0]
@@ -2305,6 +2346,19 @@ def render_gamma_desk_page(available_tickers=None):
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+        tb_k = gex_data.get("target_base_strike")
+        if tb_k:
+            tb_oi = gex_data.get("target_base_oi", 0)
+            tb_dist = gex_data.get("target_base_dist_pct", 0.0)
+            st.markdown(f"""
+            <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.28); border-left: 4px solid #a855f7; padding: 12px 16px; border-radius: 8px; margin-top: -12px; margin-bottom: 24px;">
+                <b style="color: #c084fc; font-size: 0.95rem;">🎯 PRE-POSITIONED TARGET BASE DETECTED: ${tb_k:.1f} (+{tb_dist:+.1f}% OTM • {tb_oi:,} Call OI)</b><br>
+                <span style="color: #cbd5e1; font-size: 0.85rem; line-height: 1.4;">
+                    While spot is currently navigating near-term negative gamma volatility, dealers and smart money are quietly building a base in <b>OTM Call Open Interest at ${tb_k:.1f}</b>. An increasing positive gamma shelf further out signals that institutions are bracing for impact and pre-positioning inventory—creating a magnetic landing pad where price is anticipated to target.
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
 
     # 5. Detailed Strike Breakdown Table (Filtered to Relevant Strikes by default)
     strikes_list = gex_data.get("strikes", [])

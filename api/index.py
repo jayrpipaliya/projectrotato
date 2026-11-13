@@ -1731,7 +1731,14 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div class="p-2.5 mt-2 rounded-lg bg-slate-900/40 border border-white/5 flex flex-wrap gap-4 text-[11px] text-slate-300 items-center">
                     <div><span class="text-mint font-bold">● Positive Valley (+GEX):</span> Dealer shock absorbers active ("Push it back") ➔ <b>Mean-reversion pin action</b></div>
                     <div><span class="text-sky-400 font-bold">● Zero-Gamma Crest:</span> Tipping point inflection ➔ <b>Breakout / breakdown trigger boundary</b></div>
+                    <div><span class="text-purple-400 font-bold">● Target Base:</span> Pre-positioned OTM accumulation ➔ <b>Institutional landing pad</b></div>
                     <div><span class="text-rose-400 font-bold">● Negative Slope (-GEX):</span> Dealer momentum acceleration ("Push it") ➔ <b>Fast & abrupt cascading volatility</b></div>
+                </div>
+
+                <!-- Emerging OTM Target Base Intelligence Banner -->
+                <div id="gammaTargetBaseCard" class="p-3 mt-2.5 rounded-lg bg-purple-950/20 border border-purple-500/25 hidden items-start gap-2.5 text-xs text-slate-300">
+                    <div class="text-base shrink-0 mt-0.5">🎯</div>
+                    <div id="gammaTargetBaseText"></div>
                 </div>
             </div>
 
@@ -4717,7 +4724,7 @@ async function init() {
             const statusBadge = document.getElementById('gammaTerrainStatusBadge');
             if (statusBadge) {
                 const pillCol = isAtCrest ? 'text-sky-300' : (isInValley ? 'text-mint' : 'text-cherry');
-                statusBadge.innerHTML = `<span class="${pillCol}">⚪ Ball: $${spot.toFixed(2)} (${ballState})</span>`;
+                statusBadge.innerHTML = `<span class="${pillCol}">⚪ Spot: $${spot.toFixed(2)}</span>`;
             }
 
             const traceNeg = {
@@ -4757,12 +4764,12 @@ async function init() {
                 mode: 'markers',
                 name: `Price Ball ($${spot.toFixed(2)})`,
                 marker: {
-                    size: 18,
+                    size: 16,
                     color: ballColor,
                     line: { width: 3, color: '#ffffff' },
                     symbol: 'circle'
                 },
-                hovertemplate: `<b>⚪ PRICE BALL: $${spot.toFixed(2)}</b><br>Ground Elevation: ${spotGex >= 0 ? '+' : ''}${spotGex.toFixed(1)}M GEX<br>Status: ${ballState}<extra></extra>`
+                hovertemplate: `<b>⚪ Price Ball: $${spot.toFixed(2)}</b><br>Ground Elevation: ${spotGex >= 0 ? '+' : ''}${spotGex.toFixed(1)}M GEX<extra></extra>`
             };
 
             const shapes = [
@@ -4780,27 +4787,44 @@ async function init() {
                 }
             ];
 
-            // Ball Callout Annotation (smart ay offset so it never collides with Put Wall Floor or bottom axis)
-            const ayOffset = spotGex < -150 ? -60 : (spotGex >= 0 ? -55 : 55);
-            const annotations = [
-                {
-                    x: spot,
-                    y: spotGex,
-                    text: `⚪ <b>PRICE BALL: $${spot.toFixed(2)}</b><br><span style="font-size:9.5px;">${ballState}</span>`,
-                    showarrow: true,
-                    arrowhead: 2,
-                    arrowsize: 1.2,
-                    arrowwidth: 2,
-                    arrowcolor: ballColor,
-                    ax: 0,
-                    ay: ayOffset,
-                    bgcolor: 'rgba(15, 23, 42, 0.94)',
-                    bordercolor: ballColor,
-                    borderwidth: 1.5,
-                    borderpad: 6,
-                    font: { color: '#f8fafc', size: 10 }
-                }
-            ];
+            // No bulky description box over the ball - clean canvas
+            const annotations = [];
+
+            // OTM Target Base Landmark (Pre-Positioned Landing Pad where OI is building)
+            const traces = [traceNeg, tracePos, traceStrikes, traceBall];
+            if (g.target_base_strike && Math.abs(g.target_base_strike - spot) / spot < 0.40) {
+                const tbK = g.target_base_strike;
+                const tbOI = g.target_base_oi || 0;
+                const tbGex = interp(tbK, rawK, rawNet);
+
+                shapes.push({
+                    type: 'line',
+                    x0: tbK, x1: tbK,
+                    y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#c084fc', width: 1.5, dash: 'dash' }
+                });
+
+                annotations.push({
+                    x: tbK, y: 0.94, yref: 'paper',
+                    text: `🎯 Target Base $${tbK.toFixed(0)} (${(tbOI/1000).toFixed(1)}k OI)`,
+                    showarrow: false,
+                    font: { color: '#c084fc', size: 9 },
+                    xanchor: 'center',
+                    bgcolor: 'rgba(15, 23, 42, 0.90)',
+                    bordercolor: '#c084fc',
+                    borderwidth: 1,
+                    borderpad: 3
+                });
+
+                traces.push({
+                    x: [tbK],
+                    y: [tbGex],
+                    mode: 'markers',
+                    name: `OTM Target Base ($${tbK.toFixed(0)})`,
+                    marker: { size: 13, color: '#c084fc', symbol: 'diamond', line: { width: 2, color: '#ffffff' } },
+                    hovertemplate: `<b>🎯 OTM TARGET BASE: $${tbK.toFixed(1)}</b><br>Accumulating Call OI: ${tbOI.toLocaleString()}<br>Dealers bracing for impact / landing pad<extra></extra>`
+                });
+            }
 
             if (zg && Math.abs(zg - spot) / spot < 0.35) {
                 shapes.push({
@@ -4923,7 +4947,24 @@ async function init() {
                 layout.xaxis.range = [kMin - pad, kMax + pad];
             }
 
-            Plotly.newPlot('gammaTerrainChart', [traceNeg, tracePos, traceStrikes, traceBall], layout, { responsive: true, displayModeBar: false });
+            Plotly.newPlot('gammaTerrainChart', traces, layout, { responsive: true, displayModeBar: false });
+
+            // Populate Emerging OTM Target Base Banner
+            const tbCard = document.getElementById('gammaTargetBaseCard');
+            const tbText = document.getElementById('gammaTargetBaseText');
+            if (tbCard && tbText) {
+                if (g.target_base_strike) {
+                    tbCard.classList.remove('hidden');
+                    tbCard.classList.add('flex');
+                    tbText.innerHTML = `
+                        <b class="text-purple-400 font-bold">PRE-POSITIONED TARGET BASE DETECTED: $${g.target_base_strike} (+${g.target_base_dist_pct}% OTM • ${(g.target_base_oi || 0).toLocaleString()} Call OI)</b><br>
+                        <span class="text-slate-300">While spot is navigating near-term negative gamma volatility, dealers and smart money are quietly building a base in <b>OTM Call Open Interest at $${g.target_base_strike}</b>. An increasing positive gamma shelf further out signals that institutions are bracing for impact and pre-positioning inventory—creating a magnetic landing pad where price is anticipated to target.</span>
+                    `;
+                } else {
+                    tbCard.classList.add('hidden');
+                    tbCard.classList.remove('flex');
+                }
+            }
         }
 
         function renderWholeChainTable(ranked_chain, isBuy) {
