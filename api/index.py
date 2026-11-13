@@ -1520,14 +1520,9 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Top 6 KPI Strip (including IV Percentile) -->
-            <div id="gammaDeskKpiRow" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 mb-5">
-                <!-- Populated dynamically: Spot, Call Wall, Put Wall, Zero Gamma Flip, Total Net GEX, IV Percentile -->
-            </div>
-
-            <!-- Tactical Regime Directive Banner -->
-            <div id="gammaDeskDirective" class="mb-5">
-                <!-- Populated dynamically with regime intelligence & execution playbook -->
+            <!-- Top 5 KPI Strip -->
+            <div id="gammaDeskKpiRow" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-5">
+                <!-- Populated dynamically: Spot, Call Wall, Put Wall, Zero Gamma Flip, Net Dealer GEX -->
             </div>
 
             <!-- Interactive Plotly Strike GEX Bar Chart -->
@@ -1535,15 +1530,12 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
                     <div>
                         <h4 class="text-sm font-bold text-white flex items-center gap-2">
-                            <span>Per-Strike Dealer Gamma Exposure Profile ($M per 1% Move)</span>
-                            <span id="gammaDeskChartBadge" class="text-[10px] font-bold px-2 py-0.5 rounded bg-white/5 text-slate-300">Near-Term Expirations</span>
+                            <span>Gamma Exposure</span>
                         </h4>
-                        <p class="text-[11px] text-slate-400">Green = Positive Call Gamma (Dealers Long Calls / Hedging Resistance). Red = Negative Put Gamma (Dealers Short Puts / Hedging Floor).</p>
                     </div>
                     <div id="gammaTimestampBadge" class="text-right text-[11px] font-mono text-slate-400"></div>
                 </div>
                 <div id="gammaDeskChart" style="height: 420px;"></div>
-                <div id="gammaTimestampFooter" class="flex flex-col sm:flex-row justify-between items-center text-[10.5px] font-mono text-slate-500 mt-2 px-1 border-t border-white/5 pt-1.5"></div>
             </div>
 
             <!-- Gamma Terrain & Ball Rolling Physics Engine Chart -->
@@ -4351,7 +4343,6 @@ async function init() {
             const tickerSelect = document.getElementById('gammaDeskTickerSelect');
             const ticker = (tickerSelect && tickerSelect.value) ? tickerSelect.value : 'SPY';
             const kpiRow = document.getElementById('gammaDeskKpiRow');
-            const directiveDiv = document.getElementById('gammaDeskDirective');
             const chartDiv = document.getElementById('gammaDeskChart');
             const countSpan = document.getElementById('gammaDeskStrikesCount');
             const tbody = document.getElementById('gammaDeskStrikesTbody');
@@ -4359,7 +4350,6 @@ async function init() {
             if (kpiRow) {
                 kpiRow.innerHTML = `<div class="col-span-full py-4 text-center text-xs text-slate-400">Scanning real-time option chains & computing Black-Scholes Dealer Gamma Exposure (GEX) profile for <b>${ticker}</b>...</div>`;
             }
-            if (directiveDiv) directiveDiv.innerHTML = '';
             if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-slate-500 animate-pulse">Calculating net dealer hedging delta & strike distribution...</td></tr>`;
 
             try {
@@ -4377,70 +4367,31 @@ async function init() {
 
                 // 1. KPI Strip
                 if (kpiRow) {
+                    const flipVal = typeof g.zero_gamma_level === 'number' ? g.zero_gamma_level.toFixed(2) : g.zero_gamma_level;
                     kpiRow.innerHTML = `
                         <div class="lux-card p-3 border-l-2 border-slate-400">
                             <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Spot Price</div>
                             <div class="text-lg font-bold text-white mt-0.5">$${g.spot_price.toFixed(2)}</div>
-                            <div class="text-[10px] text-slate-400 mt-0.5">${g.ticker} Reference Underlying</div>
                         </div>
                         <div class="lux-card p-3 border-l-2 border-mint">
-                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Call Wall (Ceiling Pin)</div>
+                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Call Wall</div>
                             <div class="text-lg font-bold text-mint mt-0.5">$${g.call_wall} <span class="text-xs font-normal text-slate-300">(${g.call_wall_dist_pct >= 0 ? '+' : ''}${g.call_wall_dist_pct}%)</span></div>
-                            <div class="text-[10px] text-slate-400 mt-0.5">$${g.call_wall_gex_m}M GEX • Resistance Magnet</div>
                         </div>
                         <div class="lux-card p-3 border-l-2 border-cherry">
-                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Put Wall (Support Floor)</div>
+                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Put Wall</div>
                             <div class="text-lg font-bold text-cherry mt-0.5">$${g.put_wall} <span class="text-xs font-normal text-slate-300">(${g.put_wall_dist_pct >= 0 ? '+' : ''}${g.put_wall_dist_pct}%)</span></div>
-                            <div class="text-[10px] text-slate-400 mt-0.5">$${g.put_wall_gex_m}M GEX • Liquidity Cushion</div>
                         </div>
                         <div class="lux-card p-3 border-l-2 border-sky-400">
                             <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Zero Gamma Flip</div>
-                            <div class="text-lg font-bold text-sky-400 mt-0.5">$${g.zero_gamma_level} <span class="text-xs font-normal text-slate-300">(${g.zero_gamma_dist_pct >= 0 ? '+' : ''}${g.zero_gamma_dist_pct}%)</span></div>
-                            <div class="text-[10px] text-slate-400 mt-0.5">Vol Regime Transition Boundary</div>
+                            <div class="text-lg font-bold text-sky-400 mt-0.5">$${flipVal} <span class="text-xs font-normal text-slate-300">(${g.zero_gamma_dist_pct >= 0 ? '+' : ''}${g.zero_gamma_dist_pct}%)</span></div>
                         </div>
                         <div class="lux-card p-3 border-l-2 ${isLong ? 'border-mint' : 'border-rose-500'}">
-                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Total Net Dealer GEX</div>
+                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Net Dealer GEX</div>
                             <div class="text-lg font-bold ${isLong ? 'text-mint' : 'text-rose-400'} mt-0.5">${g.total_net_gex_billions >= 0 ? '+' : ''}${g.total_net_gex_billions.toFixed(2)}B</div>
-                            <div class="text-[10px] text-slate-400 mt-0.5">${g.regime_short} • ${isLong ? 'Suppresses Volatility' : 'Amplifies Trending Vol'}</div>
-                        </div>
-                        <div class="lux-card p-3 border-l-2 border-purple-400">
-                            <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">IV Percentile (1-Yr)</div>
-                            <div class="text-lg font-bold text-purple-300 mt-0.5">${(g.iv_percentile !== undefined && g.iv_percentile !== null) ? g.iv_percentile.toFixed(1) : '—'}% <span class="text-xs font-normal text-slate-300">(IVR: ${(g.iv_rank !== undefined && g.iv_rank !== null) ? g.iv_rank.toFixed(1) : '—'}%)</span></div>
-                            <div class="text-[10px] text-slate-400 mt-0.5">${g.current_iv ? g.current_iv.toFixed(1) + '% ATM IV • ' : ''}${g.vol_regime || '1-Yr Distribution'}</div>
                         </div>
                     `;
                 }
 
-                // 2. Tactical Directive Banner
-                if (directiveDiv) {
-                    if (isLong) {
-                        directiveDiv.innerHTML = `
-                            <div class="p-4 rounded-xl border border-mint/30 bg-mint/5 flex items-start gap-3">
-                                <div class="text-sm shrink-0 mt-0.5">🟢</div>
-                                <div>
-                                    <div class="text-xs font-bold text-mint uppercase tracking-wider">Tactical Desk Directive: Net Long Dealer Gamma Regime (+${g.total_net_gex_billions.toFixed(2)}B)</div>
-                                    <div class="text-xs text-slate-300 mt-1 leading-relaxed">
-                                        Market makers are net long options gamma. To maintain delta-neutral books, dealers must <b>buy weakness</b> and <b>sell strength</b>, acting as natural market shock-absorbers that suppress realized intraday volatility. Price action tends to pin between the <b>Put Wall ($${g.put_wall})</b> and <b>Call Wall ($${g.call_wall})</b>.
-                                        <br/><span class="text-mint font-semibold mt-1 inline-block">Institutional Playbook:</span> Favor mean-reversion entries, range-bound credit harvesting, iron condors, and fading breakout attempts at extreme strike walls.
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    } else {
-                        directiveDiv.innerHTML = `
-                            <div class="p-4 rounded-xl border border-rose-500/30 bg-rose-500/5 flex items-start gap-3">
-                                <div class="text-sm shrink-0 mt-0.5">🔴</div>
-                                <div>
-                                    <div class="text-xs font-bold text-rose-400 uppercase tracking-wider">Tactical Desk Directive: Net Short Dealer Gamma Regime (${g.total_net_gex_billions.toFixed(2)}B)</div>
-                                    <div class="text-xs text-slate-300 mt-1 leading-relaxed">
-                                        Market makers are net short options gamma. To hedge portfolio deltas, dealers must <b>sell into falling markets</b> and <b>buy into rising markets</b>. This pro-cyclical hedging creates negative feedback cascades and sharp expansions in realized volatility.
-                                        <br/><span class="text-rose-400 font-semibold mt-1 inline-block">Institutional Playbook:</span> Prepare for swift directional trend acceleration. Favor momentum debit spreads, long straddles/strangles, wider stop losses, and disciplined trend-following below the Zero-Gamma Flip line ($${g.zero_gamma_level}).
-                                    </div>
-                                </div>
-                            </div>
-                        `;
-                    }
-                }
 
                 // 3. Interactive Plotly Strike GEX Chart
                 if (typeof Plotly !== 'undefined' && g.strikes && g.strikes.length > 0) {
@@ -4534,25 +4485,17 @@ async function init() {
                     const sessionLabel = g.market_session_label || '';
                     const tsBadge = document.getElementById('gammaTimestampBadge');
                     if (tsBadge) {
-                        tsBadge.innerHTML = `<span class="text-slate-500">Exchange Print:</span> <b class="text-sky-300 font-bold">${marketStr}</b> ${sessionLabel ? `<span class="text-slate-400 font-normal ml-1">(${sessionLabel})</span>` : ''}`;
-                    }
-                    const tsFooter = document.getElementById('gammaTimestampFooter');
-                    if (tsFooter) {
-                        tsFooter.innerHTML = `
-                            <span><span class="text-slate-400 font-semibold">Exchange Trade Print:</span> <b class="text-sky-300">${marketStr}</b> <span class="text-slate-600">•</span> ${sessionLabel} <span class="text-slate-600">•</span> <span class="text-slate-400">OCC Open Interest:</span> Settled Overnight (${strikesCount} strikes)</span>
-                            <span><span class="text-slate-400 font-semibold">Feed Ingested:</span> <b class="text-slate-300">${loadedStr}</b> <span class="text-slate-600">|</span> <span class="text-slate-400">Latency: ${elapsed}s</span></span>
+                        tsBadge.innerHTML = `
+                            <div class="text-slate-300 font-mono"><span class="text-slate-500 font-sans">Exchange Print:</span> <b class="text-sky-300">${marketStr}</b>${sessionLabel ? ` <span class="text-slate-400 font-normal">(${sessionLabel})</span>` : ''}</div>
+                            <div class="text-[10.5px] text-slate-400 font-mono mt-0.5"><span class="text-slate-500 font-sans">Feed Ingested:</span> <span class="text-slate-300">${loadedStr}</span>${elapsed ? ` <span class="text-slate-500">(${elapsed}s)</span>` : ''}</div>
                         `;
                     }
 
                     const layout = {
-                        title: {
-                            text: `<b>${g.ticker} Dealer Gamma Exposure Profile by Strike</b> | Total Net GEX: $${g.total_net_gex_billions.toFixed(2)}B (${g.regime_short})<br><span style="font-size:10px; color:#94a3b8; font-weight:normal; font-family:monospace;">Exchange Print: ${marketStr} • Feed Ingested: ${loadedStr} (yfinance | ${elapsed}s)</span>`,
-                            font: { color: '#f1f5f9', size: 13 }
-                        },
                         barmode: 'relative',
                         paper_bgcolor: 'rgba(0,0,0,0)',
                         plot_bgcolor: 'rgba(0,0,0,0)',
-                        margin: { l: 45, r: 25, t: 35, b: 35 },
+                        margin: { l: 45, r: 25, t: 25, b: 35 },
                         xaxis: {
                             title: { text: 'Strike Price ($)', font: { color: '#94a3b8', size: 11 } },
                             gridcolor: 'rgba(255, 255, 255, 0.04)',
@@ -4568,7 +4511,7 @@ async function init() {
                         shapes: shapes,
                         annotations: annotations,
                         showlegend: true,
-                        legend: { orientation: 'h', x: 1, xanchor: 'right', y: 1.1, font: { color: '#94a3b8', size: 10 } }
+                        legend: { orientation: 'h', x: 1, xanchor: 'right', y: 1.12, font: { color: '#94a3b8', size: 10 } }
                     };
 
                     // Auto-focus default view on the relevant strikes window
