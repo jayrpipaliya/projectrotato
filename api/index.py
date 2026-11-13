@@ -1552,61 +1552,15 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </div>
             </div>
 
-            <!-- Multi-Day Strike Open Interest Migration Table (Historical Base Accumulation) -->
-            <div class="lux-card p-4 mb-5 border-t-2 border-emerald-500/40">
-                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-3">
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <h4 class="text-sm font-bold text-white flex items-center gap-2">
-                                <span>Multi-Day Strike Open Interest Migration Table</span>
-                                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Historical Base Accumulation &amp; ΔOI Matrix</span>
-                            </h4>
-                        </div>
-                        <p class="text-[11px] text-slate-400 mt-0.5">
-                            Track date-by-date Open Interest (OI) evolution across consecutive market sessions. Pinpoints where institutional market makers and smart money build pre-positioned OTM bases ("bracing for impact") or fortify put cushion floors.
-                        </p>
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2">
-                        <!-- Calls / Puts Toggle -->
-                        <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="oiHistorySideGroup">
-                            <button onclick="setOiHistorySide('calls')" id="btnOiCalls" class="px-2.5 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30">Calls (OTM Bases &amp; Pins)</button>
-                            <button onclick="setOiHistorySide('puts')" id="btnOiPuts" class="px-2.5 py-1 rounded font-bold transition text-slate-400">Puts (Floors &amp; Cushions)</button>
-                        </div>
-                        <!-- Relevant / All Filter -->
-                        <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="oiHistoryFilterGroup">
-                            <button onclick="setOiHistoryFilter(true)" id="btnOiRelevant" class="px-2.5 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30">Relevant Only (<span id="oiRelCount">0</span>)</button>
-                            <button onclick="setOiHistoryFilter(false)" id="btnOiAll" class="px-2.5 py-1 rounded font-bold transition text-slate-400">All Strikes (<span id="oiTotalCount">0</span>)</button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Top Accumulating Base Callout Strip -->
-                <div id="oiHistoryTopStrip" class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3.5">
-                    <!-- Populated dynamically with top Call Base & Put Floor accumulators -->
-                </div>
-
-                <!-- Multi-Day Table -->
-                <div class="overflow-x-auto rounded-lg border border-white/10 bg-[#0b0d12]">
-                    <table class="w-full text-left text-xs">
-                        <thead id="oiHistoryTableHead" class="bg-white/[0.03] text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/10">
-                            <!-- Populated dynamically with date headers -->
-                        </thead>
-                        <tbody id="oiHistoryTableBody">
-                            <tr><td colspan="10" class="text-center py-6 text-slate-500 animate-pulse">Loading multi-day historical Open Interest matrix...</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Comprehensive Per-Strike Table Breakdown -->
+            <!-- Detailed Strike Gamma & Open Interest Breakdown (Straddle Chain) -->
             <div class="lux-card p-4 mb-5">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                     <div>
                         <h4 class="text-sm font-bold text-white flex items-center gap-2">
-                            <span>Detailed Strike Gamma & Open Interest Breakdown</span>
+                            <span>Detailed Strike Gamma &amp; Open Interest Breakdown</span>
                             <span id="gammaFilterBadge" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/20">Relevant Strikes</span>
                         </h4>
-                        <p class="text-[11px] text-slate-400">Institutional structural walls (Call/Put Walls, Zero Flip, ATM) and top dealer open interest battlegrounds.</p>
+                        <p class="text-[11px] text-slate-400">Straddle layout: Calls on left, strike &amp; net dealer regime center, Puts on right.</p>
                     </div>
                     <div class="flex items-center gap-2">
                         <div class="flex bg-white/5 p-1 rounded-lg text-xs" id="gammaFilterGroup">
@@ -1616,17 +1570,22 @@ HTML_CONTENT = """<!DOCTYPE html>
                     </div>
                 </div>
                 <div class="overflow-x-auto rounded-lg border border-white/10 bg-[#0b0d12]">
-                    <table class="w-full text-left text-xs">
+                    <table class="w-full text-xs">
                         <thead class="bg-white/[0.03] text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/10">
-                            <tr>
-                                <th class="py-2.5 px-3">Strike Price</th>
-                                <th class="py-2.5 px-3">Dist vs Spot</th>
-                                <th class="py-2.5 px-3">Call GEX ($M)</th>
-                                <th class="py-2.5 px-3">Put GEX ($M)</th>
-                                <th class="py-2.5 px-3">Net GEX ($M)</th>
-                                <th class="py-2.5 px-3">Call OI</th>
-                                <th class="py-2.5 px-3">Put OI</th>
-                                <th class="py-2.5 px-3">Structural Role</th>
+                            <tr class="border-b border-white/5 text-[10px] font-bold">
+                                <th colspan="2" class="py-1.5 px-3 text-center text-mint bg-mint/5 border-r border-white/10 tracking-widest">CALLS</th>
+                                <th colspan="4" class="py-1.5 px-3 text-center text-white bg-white/5 border-r border-white/10 tracking-widest">STRIKE &amp; NET DEALER REGIME</th>
+                                <th colspan="2" class="py-1.5 px-3 text-center text-rose-400 bg-rose-500/5 tracking-widest">PUTS</th>
+                            </tr>
+                            <tr class="border-b border-white/10">
+                                <th class="py-2.5 px-3 text-right">Call OI</th>
+                                <th class="py-2.5 px-3 text-right border-r border-white/10">Call GEX ($M)</th>
+                                <th class="py-2.5 px-3 text-center font-bold text-white">Strike</th>
+                                <th class="py-2.5 px-3 text-center">Dist vs Spot</th>
+                                <th class="py-2.5 px-3 text-center font-bold">Net GEX ($M)</th>
+                                <th class="py-2.5 px-3 text-center border-r border-white/10">Structural Role</th>
+                                <th class="py-2.5 px-3 text-left">Put GEX ($M)</th>
+                                <th class="py-2.5 px-3 text-left">Put OI</th>
                             </tr>
                         </thead>
                         <tbody id="gammaDeskStrikesTbody">
@@ -3889,224 +3848,12 @@ async function init() {
                     kpiRow.innerHTML = `<div class="col-span-full p-3.5 text-center text-xs text-slate-400 bg-white/[0.02] rounded-lg border border-white/5">Baseline snapshot recorded for <b>${ticker}</b>. Additional market sessions will build multi-day wall rolls.</div>`;
                 }
 
-                // Fetch multi-day historical Open Interest migration matrix
-                try {
-                    const oiRes = await fetch(`/api/gamma/${encodeURIComponent(ticker)}/oi-history?days=5`);
-                    const oiData = await oiRes.json();
-                    if (oiData && oiData.has_data) {
-                        renderOiHistoryTable(oiData);
-                    } else {
-                        const oiBody = document.getElementById('oiHistoryTableBody');
-                        if (oiBody) {
-                            oiBody.innerHTML = `<tr><td colspan="12" class="text-center py-4 text-slate-500">Insufficient historical sessions to display multi-day Open Interest table for ${ticker}.</td></tr>`;
-                        }
-                    }
-                } catch (oiErr) {
-                    console.error("Historical OI table load error:", oiErr);
-                }
             } catch (e) {
                 console.error("Gamma shift load error:", e);
             }
         }
 
         function renderGammaHeatmapPlotly(data) {}
-
-        let CURRENT_OI_HISTORY_DATA = null;
-        let CURRENT_OI_HISTORY_SIDE = 'calls'; // 'calls' or 'puts'
-        let CURRENT_OI_HISTORY_RELEVANT = true;
-
-        function setOiHistorySide(side) {
-            CURRENT_OI_HISTORY_SIDE = side;
-            const btnCalls = document.getElementById('btnOiCalls');
-            const btnPuts = document.getElementById('btnOiPuts');
-            if (btnCalls && btnPuts) {
-                if (side === 'calls') {
-                    btnCalls.className = 'px-2.5 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30';
-                    btnPuts.className = 'px-2.5 py-1 rounded font-bold transition text-slate-400';
-                } else {
-                    btnPuts.className = 'px-2.5 py-1 rounded font-bold transition bg-rose-500/20 text-rose-400 border border-rose-500/30';
-                    btnCalls.className = 'px-2.5 py-1 rounded font-bold transition text-slate-400';
-                }
-            }
-            if (CURRENT_OI_HISTORY_DATA) {
-                renderOiHistoryTable(CURRENT_OI_HISTORY_DATA);
-            }
-        }
-
-        function setOiHistoryFilter(onlyRelevant) {
-            CURRENT_OI_HISTORY_RELEVANT = onlyRelevant;
-            const btnRel = document.getElementById('btnOiRelevant');
-            const btnAll = document.getElementById('btnOiAll');
-            if (btnRel && btnAll) {
-                if (onlyRelevant) {
-                    btnRel.className = 'px-2.5 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30';
-                    btnAll.className = 'px-2.5 py-1 rounded font-bold transition text-slate-400';
-                } else {
-                    btnAll.className = 'px-2.5 py-1 rounded font-bold transition bg-indigo-500/20 text-indigo-300 border border-indigo-500/30';
-                    btnRel.className = 'px-2.5 py-1 rounded font-bold transition text-slate-400';
-                }
-            }
-            if (CURRENT_OI_HISTORY_DATA) {
-                renderOiHistoryTable(CURRENT_OI_HISTORY_DATA);
-            }
-        }
-
-        function renderOiHistoryTable(data) {
-            if (!data || !data.has_data || !data.strikes) return;
-            CURRENT_OI_HISTORY_DATA = data;
-
-            const thead = document.getElementById('oiHistoryTableHead');
-            const tbody = document.getElementById('oiHistoryTableBody');
-            const topStrip = document.getElementById('oiHistoryTopStrip');
-            const relCount = document.getElementById('oiRelCount');
-            const totalCount = document.getElementById('oiTotalCount');
-
-            if (relCount) relCount.textContent = data.relevant_strikes || 0;
-            if (totalCount) totalCount.textContent = data.total_strikes || 0;
-
-            const isCalls = CURRENT_OI_HISTORY_SIDE === 'calls';
-            const dates = data.dates_labels || [];
-
-            // 1. Render Top Strip Highlights
-            if (topStrip) {
-                const topC = (data.top_calls_accum && data.top_calls_accum.length > 0) ? data.top_calls_accum[0] : null;
-                const topP = (data.top_puts_accum && data.top_puts_accum.length > 0) ? data.top_puts_accum[0] : null;
-
-                let cHtml = '';
-                if (topC) {
-                    const cTotSign = topC.call_tot >= 0 ? '+' : '';
-                    const c1dSign = topC.call_1d >= 0 ? '+' : '';
-                    cHtml = `
-                        <div class="lux-card p-3 border-l-2 border-mint bg-gradient-to-r from-mint/5 to-transparent">
-                            <div class="flex items-center justify-between">
-                                <span class="text-[10px] uppercase font-bold tracking-wider text-mint">Top Call Base Accumulation</span>
-                                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-mint/20 text-mint font-bold">${topC.call_pace}</span>
-                            </div>
-                            <div class="text-base font-bold text-white mt-1">
-                                Strike ${topC.strike_str} <span class="text-xs font-normal text-slate-300">(${topC.dist_pct >= 0 ? '+' : ''}${topC.dist_pct}%)</span>
-                            </div>
-                            <div class="text-[11px] text-slate-400 mt-0.5">
-                                Latest OI: <b class="text-white">${topC.call_latest.toLocaleString()}</b> • 1D Shift: <b class="text-mint">${c1dSign}${topC.call_1d.toLocaleString()}</b> • Multi-Day: <b class="text-mint">${cTotSign}${topC.call_tot.toLocaleString()} (+${topC.call_pct}%)</b>
-                            </div>
-                        </div>
-                    `;
-                }
-
-                let pHtml = '';
-                if (topP) {
-                    const pTotSign = topP.put_tot >= 0 ? '+' : '';
-                    const p1dSign = topP.put_1d >= 0 ? '+' : '';
-                    pHtml = `
-                        <div class="lux-card p-3 border-l-2 border-rose-500 bg-gradient-to-r from-rose-500/5 to-transparent">
-                            <div class="flex items-center justify-between">
-                                <span class="text-[10px] uppercase font-bold tracking-wider text-rose-400">Top Put Floor Fortification</span>
-                                <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 font-bold">${topP.put_pace}</span>
-                            </div>
-                            <div class="text-base font-bold text-white mt-1">
-                                Strike ${topP.strike_str} <span class="text-xs font-normal text-slate-300">(${topP.dist_pct >= 0 ? '+' : ''}${topP.dist_pct}%)</span>
-                            </div>
-                            <div class="text-[11px] text-slate-400 mt-0.5">
-                                Latest OI: <b class="text-white">${topP.put_latest.toLocaleString()}</b> • 1D Shift: <b class="text-rose-400">${p1dSign}${topP.put_1d.toLocaleString()}</b> • Multi-Day: <b class="text-rose-400">${pTotSign}${topP.put_tot.toLocaleString()} (+${topP.put_pct}%)</b>
-                            </div>
-                        </div>
-                    `;
-                }
-                topStrip.innerHTML = cHtml + pHtml;
-            }
-
-            // 2. Render Header Row
-            if (thead) {
-                let thHtml = `
-                    <tr>
-                        <th class="py-2.5 px-3">Strike</th>
-                        <th class="py-2.5 px-3">Dist</th>
-                        <th class="py-2.5 px-3">Role</th>
-                `;
-                dates.forEach((d, i) => {
-                    const isLatest = (i === dates.length - 1);
-                    const colLabel = isLatest ? `${d} (Today)` : d;
-                    const colClass = isLatest ? 'text-white font-bold bg-white/[0.04]' : '';
-                    thHtml += `<th class="py-2.5 px-3 text-right ${colClass}">${colLabel} ${isCalls ? 'Call OI' : 'Put OI'}</th>`;
-                });
-                thHtml += `
-                        <th class="py-2.5 px-3 text-right">1-Day &Delta;OI</th>
-                        <th class="py-2.5 px-3 text-right">Net &Delta;OI</th>
-                        <th class="py-2.5 px-3">Accumulation Pace</th>
-                    </tr>
-                `;
-                thead.innerHTML = thHtml;
-            }
-
-            // 3. Render Body Rows
-            if (tbody) {
-                const list = CURRENT_OI_HISTORY_RELEVANT
-                    ? data.strikes.filter(s => s.is_relevant)
-                    : data.strikes;
-
-                if (list.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="12" class="text-center py-6 text-slate-500">No strikes matching the selected filter.</td></tr>`;
-                    return;
-                }
-
-                tbody.innerHTML = list.map(s => {
-                    const series = isCalls ? s.call_series : s.put_series;
-                    const delta1d = isCalls ? s.call_1d : s.put_1d;
-                    const deltaTot = isCalls ? s.call_tot : s.put_tot;
-                    const pctTot = isCalls ? s.call_pct : s.put_pct;
-                    const pace = isCalls ? s.call_pace : s.put_pace;
-
-                    const d1dSign = delta1d >= 0 ? '+' : '';
-                    const dTotSign = deltaTot >= 0 ? '+' : '';
-
-                    const d1dClass = delta1d > 0 ? 'text-mint font-bold' : (delta1d < 0 ? 'text-rose-400 font-bold' : 'text-slate-500');
-                    const dTotClass = deltaTot > 0 ? 'text-mint font-bold' : (deltaTot < 0 ? 'text-rose-400 font-bold' : 'text-slate-500');
-
-                    let roleTag = '<span class="text-slate-500 text-[10.5px]">—</span>';
-                    if (s.role_type === 'target_base') {
-                        roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">🎯 TARGET BASE</span>';
-                    } else if (s.role_type === 'call_wall') {
-                        roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/20 text-mint border border-mint/30">CALL WALL (Pin)</span>';
-                    } else if (s.role_type === 'put_wall') {
-                        roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">PUT WALL (Floor)</span>';
-                    } else if (s.role_type === 'zero_flip') {
-                        roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30">ZERO FLIP</span>';
-                    } else if (s.role_type === 'atm') {
-                        roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/10 text-white">ATM SPOT</span>';
-                    }
-
-                    let paceTag = `<span class="text-[10px] text-slate-400 font-mono">${pace}</span>`;
-                    if (pace.includes('Heavy')) {
-                        paceTag = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/25">${pace}</span>`;
-                    } else if (pace.includes('Accumulation') || pace.includes('Hedging')) {
-                        paceTag = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/15 text-mint border border-mint/20">${pace}</span>`;
-                    } else if (pace.includes('Unwinding')) {
-                        paceTag = `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/20">${pace}</span>`;
-                    }
-
-                    // Series cells
-                    const seriesCells = series.map((val, idx) => {
-                        const isLatest = (idx === series.length - 1);
-                        if (val === null || val === undefined) {
-                            return `<td class="py-2.5 px-3 text-right font-mono text-slate-600" title="Outside tracked strike window on this date">—</td>`;
-                        }
-                        const cellClass = isLatest ? 'font-bold text-white bg-white/[0.02]' : 'text-slate-300';
-                        return `<td class="py-2.5 px-3 text-right font-mono ${cellClass}">${val.toLocaleString()}</td>`;
-                    }).join('');
-
-                    return `
-                        <tr class="border-b border-white/[0.04] hover:bg-white/[0.02] transition">
-                            <td class="py-2.5 px-3 font-bold text-white font-mono">${s.strike_str}</td>
-                            <td class="py-2.5 px-3 font-mono text-slate-400">${s.dist_pct >= 0 ? '+' : ''}${s.dist_pct}%</td>
-                            <td class="py-2.5 px-3">${roleTag}</td>
-                            ${seriesCells}
-                            <td class="py-2.5 px-3 text-right font-mono ${d1dClass}">${d1dSign}${delta1d.toLocaleString()}</td>
-                            <td class="py-2.5 px-3 text-right font-mono ${dTotClass}">${dTotSign}${deltaTot.toLocaleString()} <span class="text-[10px] font-normal text-slate-400">(${dTotSign}${pctTot}%)</span></td>
-                            <td class="py-2.5 px-3">${paceTag}</td>
-                        </tr>
-                    `;
-                }).join('');
-            }
-        }
 
         function renderGammaTableRows(g) {
             const tbody = document.getElementById('gammaDeskStrikesTbody');
@@ -4125,29 +3872,40 @@ async function init() {
                 const netClass = s.net_gex >= 0 ? 'text-mint font-semibold' : 'text-cherry font-semibold';
                 const netSign = s.net_gex >= 0 ? '+' : '';
 
-                let roleTag = '<span class="text-slate-500 text-[10px]">Normal Liquidity</span>';
+                let roleTag = '<span class="text-slate-500 text-[10px]">—</span>';
+                let rowBg = 'border-b border-white/[0.04] hover:bg-white/[0.02] transition';
+
                 if (Math.abs(s.strike - g.call_wall) < 0.01) {
                     roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/20 text-mint border border-mint/30">CALL WALL (Pin)</span>';
+                    rowBg += ' bg-mint/[0.03]';
                 } else if (Math.abs(s.strike - g.put_wall) < 0.01) {
                     roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">PUT WALL (Floor)</span>';
+                    rowBg += ' bg-rose-500/[0.03]';
                 } else if (Math.abs(s.strike - targetZgStrike) < 0.01) {
                     roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30">ZERO FLIP</span>';
+                    rowBg += ' bg-sky-500/[0.03]';
                 } else if (Math.abs(s.strike - spot) < (spot * 0.0075)) {
                     roleTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-white/10 text-white">ATM SPOT</span>';
+                    rowBg += ' bg-white/[0.02]';
                 } else if (s.structural_role && s.structural_role !== "Normal Liquidity") {
                     roleTag = `<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-white/5 text-slate-300 border border-white/10">${s.structural_role}</span>`;
                 }
 
                 return `
-                    <tr class="border-b border-white/[0.04] hover:bg-white/[0.02] transition">
-                        <td class="py-2.5 px-3 font-bold text-white font-mono">$${s.strike.toFixed(2)}</td>
-                        <td class="py-2.5 px-3 font-mono text-slate-400">${distStr}</td>
-                        <td class="py-2.5 px-3 font-mono text-mint">+$${s.call_gex.toFixed(1)}M</td>
-                        <td class="py-2.5 px-3 font-mono text-cherry">-$${s.put_gex.toFixed(1)}M</td>
-                        <td class="py-2.5 px-3 font-mono ${netClass}">${netSign}$${s.net_gex.toFixed(1)}M</td>
-                        <td class="py-2.5 px-3 font-mono text-slate-300">${(s.call_oi || 0).toLocaleString()}</td>
-                        <td class="py-2.5 px-3 font-mono text-slate-300">${(s.put_oi || 0).toLocaleString()}</td>
-                        <td class="py-2.5 px-3">${roleTag}</td>
+                    <tr class="${rowBg}">
+                        <!-- Calls (Left) -->
+                        <td class="py-2.5 px-3 font-mono text-right text-slate-300">${(s.call_oi || 0).toLocaleString()}</td>
+                        <td class="py-2.5 px-3 font-mono text-right text-mint border-r border-white/10">+$${s.call_gex.toFixed(1)}M</td>
+                        
+                        <!-- Center Strike & Regime -->
+                        <td class="py-2.5 px-3 font-mono font-bold text-center text-white">$${s.strike.toFixed(2)}</td>
+                        <td class="py-2.5 px-3 font-mono text-center text-slate-400">${distStr}</td>
+                        <td class="py-2.5 px-3 font-mono text-center ${netClass}">${netSign}$${s.net_gex.toFixed(1)}M</td>
+                        <td class="py-2.5 px-3 text-center border-r border-white/10">${roleTag}</td>
+                        
+                        <!-- Puts (Right) -->
+                        <td class="py-2.5 px-3 font-mono text-left text-cherry">-$${s.put_gex.toFixed(1)}M</td>
+                        <td class="py-2.5 px-3 font-mono text-left text-slate-300">${(s.put_oi || 0).toLocaleString()}</td>
                     </tr>
                 `;
             }).join('');
@@ -4353,7 +4111,7 @@ async function init() {
 
                 renderGammaTableRows(g);
 
-                // 5. Load and Render Rolling Walls & OI History
+                // 5. Load and Render Rolling Walls
                 loadGammaMigrationAndHeatmap(ticker);
 
             } catch (err) {
