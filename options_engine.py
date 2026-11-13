@@ -632,6 +632,231 @@ def plot_gamma_exposure_profile(gamma_data):
     fig.update_yaxes(gridcolor="rgba(255, 255, 255, 0.05)")
     return fig
 
+# ----------------- GAMMA TERRAIN & BALL PHYSICS ENGINE CHART -----------------
+def plot_gamma_terrain_profile(gamma_data):
+    """
+    Generates the 'Gamma = The Ground, Price = The Ball' Physics Engine Chart:
+    - Smooth continuous Net Gamma terrain curve across strike prices.
+    - Positive Gamma Valley (+GEX in Emerald Green): Market makers dampen volatility ('Push it back').
+    - Negative Gamma Slope (-GEX in Crimson Red): Market makers accelerate moves ('Push it').
+    - Price Ball: Placed dynamically at current Spot price on the terrain.
+    - Zero Gamma Crest: Inflection boundary where terrain tilts from valley into cliff.
+    - Call Wall & Put Wall: Structural pins representing valley rims and floors.
+    """
+    if not go or not gamma_data or "strikes" not in gamma_data:
+        return None
+
+    strikes_list = gamma_data.get("strikes", [])
+    if not strikes_list:
+        return None
+
+    spot = float(gamma_data["spot_price"])
+    cw = float(gamma_data.get("call_wall", spot))
+    pw = float(gamma_data.get("put_wall", spot))
+    zg = float(gamma_data.get("zero_gamma_level", spot))
+    ticker = gamma_data.get("ticker", "SPY")
+
+    # Sort strikes by price
+    sorted_s = sorted(strikes_list, key=lambda s: s["strike"])
+    raw_k = np.array([s["strike"] for s in sorted_s], dtype=float)
+    raw_net = np.array([s["net_gex"] for s in sorted_s], dtype=float)
+
+    if len(raw_k) < 3:
+        return None
+
+    # Focus around relevant strikes or +/- 15% of spot
+    relevant_k = [s["strike"] for s in gamma_data.get("relevant_strikes", [])]
+    if relevant_k:
+        k_min = min(relevant_k)
+        k_max = max(relevant_k)
+    else:
+        k_min = max(spot * 0.85, raw_k[0])
+        k_max = min(spot * 1.15, raw_k[-1])
+
+    # Smooth dense sampling grid
+    grid_min = max(raw_k[0], k_min - (spot * 0.04))
+    grid_max = min(raw_k[-1], k_max + (spot * 0.04))
+    dense_k = np.linspace(grid_min, grid_max, 300)
+    dense_net = np.interp(dense_k, raw_k, raw_net)
+
+    # Spot GEX interpolation (where the ball sits on the ground)
+    spot_gex = float(np.interp(spot, raw_k, raw_net))
+    zg_dist_pct = ((spot - zg) / spot) * 100 if zg > 0 else 0.0
+
+    # Physics regime state of the ball
+    is_at_crest = abs(spot - zg) / spot < 0.008 if zg > 0 else False
+    is_in_valley = spot_gex >= 0 and not is_at_crest
+
+    if is_at_crest:
+        ball_state = "PERCHED ON THE CREST (Zero-Gamma Tipping Point)"
+        ball_color = "#38bdf8"
+        ball_border = "#ffffff"
+    elif is_in_valley:
+        ball_state = "COILED IN +GAMMA VALLEY (Shock Absorber Active)"
+        ball_color = "#00F5A0"
+        ball_border = "#ffffff"
+    else:
+        ball_state = "ROLLING DOWNHILL IN -GAMMA CHASM (Momentum Accelerator)"
+        ball_color = "#FF2E55"
+        ball_border = "#ffffff"
+
+    # Split dense_net into positive (valley) and negative (slope) components for clean shading
+    pos_terrain = np.maximum(dense_net, 0.0)
+    neg_terrain = np.minimum(dense_net, 0.0)
+
+    fig = go.Figure()
+
+    # 1. Negative Gamma Slope (-GEX / Chasm)
+    fig.add_trace(go.Scatter(
+        x=dense_k, y=neg_terrain,
+        mode="lines",
+        name="Negative Gamma Chasm (Vol Accelerator)",
+        line=dict(color="#FF2E55", width=2.5, shape="spline"),
+        fill="tozeroy",
+        fillcolor="rgba(255, 46, 85, 0.20)",
+        hoverinfo="skip"
+    ))
+
+    # 2. Positive Gamma Valley (+GEX / Shock Absorber)
+    fig.add_trace(go.Scatter(
+        x=dense_k, y=pos_terrain,
+        mode="lines",
+        name="Positive Gamma Valley (Shock Absorber)",
+        line=dict(color="#00F5A0", width=2.5, shape="spline"),
+        fill="tozeroy",
+        fillcolor="rgba(0, 245, 160, 0.20)",
+        hoverinfo="skip"
+    ))
+
+    # 3. Ground Level Zero Line
+    fig.add_hline(
+        y=0, line_width=1.5, line_dash="solid", line_color="rgba(148, 163, 184, 0.4)",
+        annotation_text="Ground Zero: $0 Net GEX Boundary",
+        annotation_position="bottom right",
+        annotation_font=dict(color="#64748b", size=9)
+    )
+
+    # 4. Actual Strikes Data Points
+    fig.add_trace(go.Scatter(
+        x=raw_k, y=raw_net,
+        mode="markers",
+        name="Strike Open Interest Net GEX ($M)",
+        marker=dict(size=4.5, color="rgba(255, 255, 255, 0.35)", symbol="circle"),
+        hovertemplate="<b>Strike:</b> $%{x:.1f}<br><b>Net GEX:</b> $%{y:+.1f}M<extra></extra>"
+    ))
+
+    # 5. THE BALL (Current Spot Price on the Ground)
+    fig.add_trace(go.Scatter(
+        x=[spot], y=[spot_gex],
+        mode="markers",
+        name=f"Price Ball (${spot:.2f})",
+        marker=dict(
+            size=18,
+            color=ball_color,
+            line=dict(width=3, color=ball_border),
+            symbol="circle"
+        ),
+        hovertemplate=f"<b>⚪ PRICE BALL: ${spot:.2f}</b><br>Ground Elevation: {spot_gex:+.1f}M GEX<br>Status: {ball_state}<extra></extra>"
+    ))
+
+    # Ball Callout Annotation
+    ay_offset = -60 if spot_gex >= 0 else 60
+    fig.add_annotation(
+        x=spot, y=spot_gex,
+        text=f"⚪ <b>PRICE BALL: ${spot:.2f}</b><br><span style='font-size:9.5px;'>{ball_state}</span>",
+        showarrow=True,
+        arrowhead=2,
+        arrowsize=1.2,
+        arrowwidth=2,
+        arrowcolor=ball_color,
+        ax=0,
+        ay=ay_offset,
+        bgcolor="rgba(15, 23, 42, 0.94)",
+        bordercolor=ball_color,
+        borderwidth=1.5,
+        borderpad=6,
+        font=dict(color="#f8fafc", size=10, family="sans-serif")
+    )
+
+    # 6. Directional Dealer Hedging Vectors (Whiteboard Analogy)
+    pos_indices = np.where(dense_net > 0)[0]
+    if len(pos_indices) > 20:
+        mid_idx = pos_indices[len(pos_indices) // 2]
+        x_vec = dense_k[mid_idx]
+        y_vec = dense_net[mid_idx] * 0.5
+        fig.add_annotation(
+            x=x_vec, y=y_vec,
+            text="◀ <b>'PUSH IT BACK'</b> ▶<br><span style='font-size:8.5px;'>Dealers buy dips & sell rips<br>(Mean-reverting bowl)</span>",
+            showarrow=False,
+            bgcolor="rgba(0, 245, 160, 0.12)",
+            bordercolor="rgba(0, 245, 160, 0.4)",
+            borderwidth=1,
+            font=dict(color="#00F5A0", size=9)
+        )
+
+    neg_indices = np.where(dense_net < 0)[0]
+    if len(neg_indices) > 20:
+        mid_idx_neg = neg_indices[len(neg_indices) // 2]
+        x_vec_neg = dense_k[mid_idx_neg]
+        y_vec_neg = dense_net[mid_idx_neg] * 0.5
+        fig.add_annotation(
+            x=x_vec_neg, y=y_vec_neg,
+            text="▼ <b>'PUSH IT'</b> ▼<br><span style='font-size:8.5px;'>Dealers sell with momentum<br>(Fast & abrupt cascade)</span>",
+            showarrow=False,
+            bgcolor="rgba(255, 46, 85, 0.12)",
+            bordercolor="rgba(255, 46, 85, 0.4)",
+            borderwidth=1,
+            font=dict(color="#FF2E55", size=9)
+        )
+
+    # 7. Structural Landmarks (Walls and Zero Flip)
+    fig.add_vline(x=spot, line_width=1.5, line_dash="dash", line_color="#ffffff", opacity=0.6)
+
+    if zg and abs(zg - spot) / spot < 0.35:
+        fig.add_vline(
+            x=zg, line_width=2, line_dash="dashdot", line_color="#38bdf8",
+            annotation_text=f"⚡ Zero-Gamma Crest ${zg:.1f}", annotation_position="top left",
+            annotation_font=dict(color="#38bdf8", size=9)
+        )
+
+    if cw and abs(cw - spot) / spot < 0.35:
+        fig.add_vline(
+            x=cw, line_width=1.5, line_dash="dot", line_color="#00F5A0",
+            annotation_text=f"Call Wall Pin ${cw:.0f}", annotation_position="top right",
+            annotation_font=dict(color="#00F5A0", size=9)
+        )
+
+    if pw and abs(pw - spot) / spot < 0.35:
+        fig.add_vline(
+            x=pw, line_width=1.5, line_dash="dot", line_color="#FF2E55",
+            annotation_text=f"Put Wall Floor ${pw:.0f}", annotation_position="bottom left",
+            annotation_font=dict(color="#FF2E55", size=9)
+        )
+
+    fig.update_layout(
+        title=dict(
+            text=f"<b>{ticker} Gamma Terrain & Ball Rolling Physics Engine</b> | <i>'Gamma = The Ground, Price = The Ball'</i><br><span style='font-size:11px; color:#94a3b8; font-weight:normal;'>Ball Status: <b>{ball_state}</b> • Ground Elevation: <b>{spot_gex:+.1f}M GEX</b> • Distance to Crest: <b>{zg_dist_pct:+.2f}%</b></span>",
+            font=dict(size=13, color="#f8fafc")
+        ),
+        xaxis_title="Underlying Strike Price ($)",
+        yaxis_title="Ground Elevation: Net Dealer Gamma ($M / 1% move)",
+        template="plotly_dark",
+        paper_bgcolor="#0e1117",
+        plot_bgcolor="#0e1117",
+        margin=dict(l=40, r=40, t=75, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        height=410
+    )
+
+    if relevant_k:
+        span = k_max - k_min
+        pad = max(span * 0.08, spot * 0.015)
+        fig.update_xaxes(range=[k_min - pad, k_max + pad])
+
+    fig.update_xaxes(gridcolor="rgba(255, 255, 255, 0.05)")
+    fig.update_yaxes(gridcolor="rgba(255, 255, 255, 0.05)")
+    return fig
+
 # ----------------- REALIZED VOLATILITY CALCULATION (WITH DE-JUMPING) -----------------
 def compute_realized_volatilities(df_history=None, ticker_symbol=None):
     """
@@ -2043,6 +2268,21 @@ def render_gamma_desk_page(available_tickers=None):
             f'</div>',
             unsafe_allow_html=True
         )
+
+    # 4b. Gamma Terrain & Ball Rolling Physics Engine Chart ('Gamma = The Ground, Price = The Ball')
+    terrain_fig = plot_gamma_terrain_profile(gex_data)
+    if terrain_fig:
+        st.markdown("<div style='margin-top:16px;'></div>", unsafe_allow_html=True)
+        st.plotly_chart(terrain_fig, use_container_width=True)
+        st.markdown("""
+        <div style="background: rgba(30, 41, 59, 0.35); border: 1px solid rgba(148, 163, 184, 0.15); border-radius: 8px; padding: 10px 16px; margin-top: -12px; margin-bottom: 24px;">
+            <div style="display: flex; gap: 20px; flex-wrap: wrap; font-size: 11.5px; color: #cbd5e1; align-items: center;">
+                <div><span style="color: #00F5A0; font-weight: 600;">● Positive Valley (+GEX):</span> Dealer shock absorbers active ('Push it back') ➔ <b>Mean-reversion pin action</b></div>
+                <div><span style="color: #38bdf8; font-weight: 600;">● Zero-Gamma Crest:</span> Tipping point inflection ➔ <b>Breakout / breakdown trigger boundary</b></div>
+                <div><span style="color: #FF2E55; font-weight: 600;">● Negative Slope (-GEX):</span> Dealer momentum acceleration ('Push it') ➔ <b>Fast & abrupt cascading volatility</b></div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # 5. Detailed Strike Breakdown Table (Filtered to Relevant Strikes by default)
     strikes_list = gex_data.get("strikes", [])
