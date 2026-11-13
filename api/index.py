@@ -1495,7 +1495,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                     <div>
                         <h2 class="text-lg font-black text-white tracking-wide">Gamma Exposure Map</h2>
-                        <p class="text-xs text-slate-400 mt-0.5">15-min delayed data from yfinance</p>
+                        <p class="text-xs text-slate-400 mt-0.5">15 Minute Delayed Data from YFinance showing Gamma Exposure (GEX) of selected asset.</p>
                     </div>
 
                     <div class="flex flex-wrap items-center gap-3">
