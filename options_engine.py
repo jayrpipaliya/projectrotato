@@ -760,7 +760,7 @@ def plot_gamma_terrain_profile(gamma_data):
     ))
 
     # Ball Callout Annotation
-    ay_offset = -60 if spot_gex >= 0 else 60
+    ay_offset = -60 if spot_gex < -150 else (-55 if spot_gex >= 0 else 55)
     fig.add_annotation(
         x=spot, y=spot_gex,
         text=f"⚪ <b>PRICE BALL: ${spot:.2f}</b><br><span style='font-size:9.5px;'>{ball_state}</span>",
@@ -783,7 +783,7 @@ def plot_gamma_terrain_profile(gamma_data):
     if len(pos_indices) > 20:
         mid_idx = pos_indices[len(pos_indices) // 2]
         x_vec = dense_k[mid_idx]
-        y_vec = dense_net[mid_idx] * 0.5
+        y_vec = max(float(dense_net[mid_idx] * 0.5), 40.0)
         fig.add_annotation(
             x=x_vec, y=y_vec,
             text="◀ <b>'PUSH IT BACK'</b> ▶<br><span style='font-size:8.5px;'>Dealers buy dips & sell rips<br>(Mean-reverting bowl)</span>",
@@ -798,7 +798,7 @@ def plot_gamma_terrain_profile(gamma_data):
     if len(neg_indices) > 20:
         mid_idx_neg = neg_indices[len(neg_indices) // 2]
         x_vec_neg = dense_k[mid_idx_neg]
-        y_vec_neg = dense_net[mid_idx_neg] * 0.5
+        y_vec_neg = min(float(dense_net[mid_idx_neg] * 0.4), -120.0)
         fig.add_annotation(
             x=x_vec_neg, y=y_vec_neg,
             text="▼ <b>'PUSH IT'</b> ▼<br><span style='font-size:8.5px;'>Dealers sell with momentum<br>(Fast & abrupt cascade)</span>",
@@ -835,7 +835,7 @@ def plot_gamma_terrain_profile(gamma_data):
 
     fig.update_layout(
         title=dict(
-            text=f"<b>{ticker} Gamma Terrain & Ball Rolling Physics Engine</b> | <i>'Gamma = The Ground, Price = The Ball'</i><br><span style='font-size:11px; color:#94a3b8; font-weight:normal;'>Ball Status: <b>{ball_state}</b> • Ground Elevation: <b>{spot_gex:+.1f}M GEX</b> • Distance to Crest: <b>{zg_dist_pct:+.2f}%</b></span>",
+            text=f"<b>{ticker} Gamma Ground Elevation vs Strike</b> | <i>'Gamma = The Ground, Price = The Ball'</i>",
             font=dict(size=13, color="#f8fafc")
         ),
         xaxis_title="Underlying Strike Price ($)",
@@ -843,8 +843,8 @@ def plot_gamma_terrain_profile(gamma_data):
         template="plotly_dark",
         paper_bgcolor="#0e1117",
         plot_bgcolor="#0e1117",
-        margin=dict(l=40, r=40, t=75, b=40),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=40, r=40, t=55, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=1.04, xanchor="right", x=1),
         height=410
     )
 

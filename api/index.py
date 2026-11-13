@@ -4780,6 +4780,8 @@ async function init() {
                 }
             ];
 
+            // Ball Callout Annotation (smart ay offset so it never collides with Put Wall Floor or bottom axis)
+            const ayOffset = spotGex < -150 ? -60 : (spotGex >= 0 ? -55 : 55);
             const annotations = [
                 {
                     x: spot,
@@ -4791,7 +4793,7 @@ async function init() {
                     arrowwidth: 2,
                     arrowcolor: ballColor,
                     ax: 0,
-                    ay: spotGex >= 0 ? -55 : 55,
+                    ay: ayOffset,
                     bgcolor: 'rgba(15, 23, 42, 0.94)',
                     bordercolor: ballColor,
                     borderwidth: 1.5,
@@ -4808,11 +4810,15 @@ async function init() {
                     line: { color: '#38bdf8', width: 2, dash: 'dashdot' }
                 });
                 annotations.push({
-                    x: zg, y: 1, yref: 'paper',
-                    text: `⚡ Zero-Gamma Crest $${zg.toFixed(1)}`,
+                    x: zg, y: 0.94, yref: 'paper',
+                    text: `⚡ Zero Flip $${zg.toFixed(1)}`,
                     showarrow: false,
                     font: { color: '#38bdf8', size: 9 },
-                    xanchor: 'center', yanchor: 'bottom'
+                    xanchor: 'center',
+                    bgcolor: 'rgba(15, 23, 42, 0.90)',
+                    bordercolor: '#38bdf8',
+                    borderwidth: 1,
+                    borderpad: 3
                 });
             }
 
@@ -4824,11 +4830,15 @@ async function init() {
                     line: { color: '#00F5A0', width: 1.5, dash: 'dot' }
                 });
                 annotations.push({
-                    x: cw, y: 1, yref: 'paper',
-                    text: `Call Wall Pin $${cw.toFixed(0)}`,
+                    x: cw, y: 0.94, yref: 'paper',
+                    text: `Call Wall $${cw.toFixed(0)}`,
                     showarrow: false,
                     font: { color: '#00F5A0', size: 9 },
-                    xanchor: 'left', yanchor: 'bottom'
+                    xanchor: 'center',
+                    bgcolor: 'rgba(15, 23, 42, 0.90)',
+                    bordercolor: '#00F5A0',
+                    borderwidth: 1,
+                    borderpad: 3
                 });
             }
 
@@ -4840,21 +4850,26 @@ async function init() {
                     line: { color: '#FF2E55', width: 1.5, dash: 'dot' }
                 });
                 annotations.push({
-                    x: pw, y: 0, yref: 'paper',
-                    text: `Put Wall Floor $${pw.toFixed(0)}`,
+                    x: pw, y: 0.08, yref: 'paper',
+                    text: `Put Wall $${pw.toFixed(0)}`,
                     showarrow: false,
                     font: { color: '#FF2E55', size: 9 },
-                    xanchor: 'right', yanchor: 'top'
+                    xanchor: 'center',
+                    bgcolor: 'rgba(15, 23, 42, 0.90)',
+                    bordercolor: '#FF2E55',
+                    borderwidth: 1,
+                    borderpad: 3
                 });
             }
 
-            // Directional vectors
+            // Directional vectors (offset cleanly away from the 0 line)
             const posIndices = denseNet.map((v, idx) => v > 0 ? idx : -1).filter(idx => idx !== -1);
             if (posIndices.length > 20) {
                 const mid = posIndices[Math.floor(posIndices.length / 2)];
+                const yPos = Math.max(denseNet[mid] * 0.5, 40);
                 annotations.push({
                     x: denseK[mid],
-                    y: denseNet[mid] * 0.5,
+                    y: yPos,
                     text: "◀ <b>'PUSH IT BACK'</b> ▶<br><span style='font-size:8.5px;'>Dealers buy dips & sell rips<br>(Mean-reverting bowl)</span>",
                     showarrow: false,
                     bgcolor: "rgba(0, 245, 160, 0.12)",
@@ -4867,9 +4882,10 @@ async function init() {
             const negIndices = denseNet.map((v, idx) => v < 0 ? idx : -1).filter(idx => idx !== -1);
             if (negIndices.length > 20) {
                 const midNeg = negIndices[Math.floor(negIndices.length / 2)];
+                const yNeg = Math.min(denseNet[midNeg] * 0.4, -120);
                 annotations.push({
                     x: denseK[midNeg],
-                    y: denseNet[midNeg] * 0.5,
+                    y: yNeg,
                     text: "▼ <b>'PUSH IT'</b> ▼<br><span style='font-size:8.5px;'>Dealers sell with momentum<br>(Fast & abrupt cascade)</span>",
                     showarrow: false,
                     bgcolor: "rgba(255, 46, 85, 0.12)",
@@ -4880,13 +4896,9 @@ async function init() {
             }
 
             const layout = {
-                title: {
-                    text: `<b>${ticker} Gamma Terrain & Ball Rolling Physics Engine</b> | <i>'Gamma = The Ground, Price = The Ball'</i><br><span style="font-size:11px; color:#94a3b8; font-weight:normal;">Ball Status: <b>${ballState}</b> • Ground Elevation: <b>${spotGex >= 0 ? '+' : ''}${spotGex.toFixed(1)}M GEX</b> • Crest Distance: <b>${zgDistPct >= 0 ? '+' : ''}${zgDistPct.toFixed(2)}%</b></span>`,
-                    font: { color: '#f1f5f9', size: 13 }
-                },
                 paper_bgcolor: 'rgba(0,0,0,0)',
                 plot_bgcolor: 'rgba(0,0,0,0)',
-                margin: { l: 45, r: 25, t: 55, b: 35 },
+                margin: { l: 45, r: 25, t: 40, b: 35 },
                 xaxis: {
                     title: { text: 'Underlying Strike Price ($)', font: { color: '#94a3b8', size: 11 } },
                     gridcolor: 'rgba(255, 255, 255, 0.04)',
@@ -4902,7 +4914,7 @@ async function init() {
                 shapes: shapes,
                 annotations: annotations,
                 showlegend: true,
-                legend: { orientation: 'h', x: 1, xanchor: 'right', y: 1.1, font: { color: '#94a3b8', size: 10 } }
+                legend: { orientation: 'h', x: 0.5, xanchor: 'center', y: 1.14, font: { color: '#94a3b8', size: 10 } }
             };
 
             if (relStrikes.length > 0) {
