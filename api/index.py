@@ -1146,7 +1146,7 @@ HTML_CONTENT = """<!DOCTYPE html>
           Automated Trade Ideas
         </button>
         <button onclick="switchTab('tab_gamma')" id="btn-tab_gamma" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
-          Dealer Gamma Desk
+          Gamma Exposure Map
         </button>
         <button onclick="switchTab('tab_options')" id="btn-tab_options" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Volatility Pricing
@@ -1494,13 +1494,8 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="lux-card p-5 mb-5 border border-indigo-500/30 bg-gradient-to-r from-indigo-950/30 via-[#0d1117] to-slate-900/50">
                 <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
                     <div>
-                        <div class="flex items-center gap-2">
-                            <h2 class="text-lg font-black text-white tracking-wide">Institutional Dealer Gamma Exposure (GEX) Desk</h2>
-                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">Live Market Maker Hedging Map</span>
-                        </div>
-                        <p class="text-xs text-slate-400 mt-1 max-w-2xl">
-                            Inverts Black-Scholes gamma across open interest to quantify market maker hedging inventory: <b>Call Wall (Ceiling Pin)</b>, <b>Put Wall (Support Floor)</b>, <b>Zero-Gamma Flip</b>, and aggregate <b>Net Dealer GEX</b> regime.
-                        </p>
+                        <h2 class="text-lg font-black text-white tracking-wide">Gamma Exposure Map</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">15-min delayed data from yfinance</p>
                     </div>
 
                     <div class="flex flex-wrap items-center gap-3">
@@ -2058,7 +2053,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
         const TAB_NAMES = {
             'tab2': 'Automated Trade Ideas Desk',
-            'tab_gamma': 'Dealer Gamma Desk',
+            'tab_gamma': 'Gamma Exposure Map',
             'tab_options': 'Volatility Pricing',
             'tab3': 'Bias Matrix',
             'tab5': 'Indexes & Sector Flow',
