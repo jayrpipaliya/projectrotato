@@ -347,9 +347,31 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
         return {"error": f"No liquid gamma profile extracted for {ticker_up}"}
 
     sorted_strikes = sorted(strikes_gex.keys())
-    call_wall = max(sorted_strikes, key=lambda k: strikes_gex[k]["call_gex"])
-    put_wall = max(sorted_strikes, key=lambda k: strikes_gex[k]["put_gex"])
     abs_gamma_strike = max(sorted_strikes, key=lambda k: strikes_gex[k]["call_gex"] + strikes_gex[k]["put_gex"])
+
+    # Institutional Structural Wall Calibration:
+    # A true Put Wall must function as an Out-Of-The-Money (OTM) hedging support floor strictly below spot (K < Spot).
+    # A true Call Wall must function as an Out-Of-The-Money (OTM) hedging resistance ceiling strictly above spot (K > Spot).
+    # ATM strikes within 0.35% of spot (where Black-Scholes gamma spikes to infinity) represent the
+    # ATM Straddle Pin / Absolute Gamma Node, preventing artificial single-strike cannibalization (CW == PW == Spot).
+    atm_band_low = spot_price * 0.9965
+    atm_band_high = spot_price * 1.0035
+
+    otm_put_cands = [k for k in sorted_strikes if k < atm_band_low]
+    if not otm_put_cands:
+        otm_put_cands = [k for k in sorted_strikes if k < spot_price]
+    if otm_put_cands:
+        put_wall = max(otm_put_cands, key=lambda k: (strikes_gex[k]["put_gex"], strikes_gex[k]["put_oi"]))
+    else:
+        put_wall = min(sorted_strikes)
+
+    otm_call_cands = [k for k in sorted_strikes if k > atm_band_high]
+    if not otm_call_cands:
+        otm_call_cands = [k for k in sorted_strikes if k > spot_price]
+    if otm_call_cands:
+        call_wall = max(otm_call_cands, key=lambda k: (strikes_gex[k]["call_gex"], strikes_gex[k]["call_oi"]))
+    else:
+        call_wall = max(sorted_strikes)
 
     total_call_gex = sum(strikes_gex[k]["call_gex"] for k in sorted_strikes)
     total_put_gex = sum(strikes_gex[k]["put_gex"] for k in sorted_strikes)
