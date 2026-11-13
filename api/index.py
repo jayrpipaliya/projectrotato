@@ -16,7 +16,8 @@ if ROOT_DIR not in sys.path:
 
 from data_manager import (
     load_ticker_data, get_available_tickers,
-    MAG_7, INDEXES, SECTORS, MACRO_ASSETS, generate_synthetic_ratios
+    MAG_7, INDEXES, SECTORS, MACRO_ASSETS, generate_synthetic_ratios,
+    PROCESSED_DIR
 )
 from indicators import compute_all_metrics
 from narrative_engine import analyze_market_narrative, compute_ratio_analytics
@@ -114,6 +115,16 @@ def api_market_data():
 
 @app.get("/api/ai-briefing")
 def api_ai_briefing(api_key: Optional[str] = Query(None), force: bool = Query(False)):
+    briefing_file = os.path.join(PROCESSED_DIR, "ai_briefing.json")
+    if not force and os.path.exists(briefing_file):
+        try:
+            with open(briefing_file, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                if saved and (saved.get("llm_summary") or saved.get("trade_cards")):
+                    return clean_json(saved)
+        except Exception:
+            pass
+
     market_data = get_cached_analysis()
     ai_output = get_cached_ai(market_data, api_key=api_key, force=force)
     return clean_json(ai_output)
