@@ -1695,10 +1695,19 @@ HTML_CONTENT = """<!DOCTYPE html>
             <!-- Interactive Plotly Strike GEX Bar Chart -->
             <div class="lux-card p-4 mb-5">
                 <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-2.5">
-                    <div class="flex items-center gap-3">
+                    <div class="flex flex-wrap items-center gap-3">
                         <h4 class="text-sm font-bold text-white flex items-center gap-2">
                             <span>Gamma Exposure</span>
                         </h4>
+                        <!-- Profile Mode Toggle: Split Call/Put vs Net GEX -->
+                        <div class="flex items-center gap-1 bg-white/5 p-1 rounded-lg border border-white/10" id="gexProfileModeGroup">
+                            <button onclick="setGexProfileMode('split')" id="btnGexMode-split" class="px-2.5 py-1 rounded text-xs font-bold transition bg-mint/20 text-mint border border-mint/30 shadow-sm" title="Show separate Call GEX (green) and Put GEX (red) bars">
+                                Call / Put
+                            </button>
+                            <button onclick="setGexProfileMode('net')" id="btnGexMode-net" class="px-2.5 py-1 rounded text-xs font-bold transition text-slate-400 hover:text-white border border-transparent" title="Combine Calls & Puts into single Net GEX bars (Green = Net Call, Red = Net Put)">
+                                Net GEX
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Strike View: Centered Range Controls -->
@@ -4441,6 +4450,27 @@ async function init() {
         }
 
         let CURRENT_GEX_RANGE_MODE = 'focused';
+        let CURRENT_GEX_PROFILE_MODE = 'split'; // 'split' (Call/Put) or 'net' (Net GEX)
+
+        function updateGexProfileButtons(activeMode) {
+            const btnSplit = document.getElementById('btnGexMode-split');
+            const btnNet = document.getElementById('btnGexMode-net');
+            if (!btnSplit || !btnNet) return;
+            if (activeMode === 'net') {
+                btnNet.className = 'px-2.5 py-1 rounded text-xs font-bold transition bg-mint/20 text-mint border border-mint/30 shadow-sm';
+                btnSplit.className = 'px-2.5 py-1 rounded text-xs font-bold transition text-slate-400 hover:text-white border border-transparent';
+            } else {
+                btnSplit.className = 'px-2.5 py-1 rounded text-xs font-bold transition bg-mint/20 text-mint border border-mint/30 shadow-sm';
+                btnNet.className = 'px-2.5 py-1 rounded text-xs font-bold transition text-slate-400 hover:text-white border border-transparent';
+            }
+        }
+
+        function setGexProfileMode(mode) {
+            CURRENT_GEX_PROFILE_MODE = mode;
+            updateGexProfileButtons(mode);
+            if (!CURRENT_GAMMA_DATA) return;
+            renderGammaPlotlyChart(CURRENT_GAMMA_DATA);
+        }
 
         function computeGexXAxisRange(g, mode) {
             if (!g || !g.spot_price) return null;
@@ -4503,6 +4533,180 @@ async function init() {
                     'xaxis.autorange': (mode === 'all')
                 });
             }
+        }
+
+        function renderGammaPlotlyChart(g) {
+            if (typeof Plotly === 'undefined' || !g || !g.strikes || g.strikes.length === 0) return;
+
+            const strikes = g.strikes.map(s => s.strike);
+            let traces = [];
+
+            if (CURRENT_GEX_PROFILE_MODE === 'net') {
+                // Net GEX View: Calls & Puts combined into single Net bar per strike (Green = Net Call dominant, Red = Net Put dominant)
+                const netPos = g.strikes.map(s => (s.net_gex != null && s.net_gex >= 0) ? s.net_gex : null);
+                const netNeg = g.strikes.map(s => (s.net_gex != null && s.net_gex < 0) ? s.net_gex : null);
+                const posCustom = g.strikes.map(s => [s.call_gex, s.put_gex, s.call_oi, s.put_oi]);
+                const negCustom = g.strikes.map(s => [s.call_gex, s.put_gex, s.call_oi, s.put_oi, Math.abs(s.net_gex || 0)]);
+
+                traces = [
+                    {
+                        x: strikes,
+                        y: netPos,
+                        customdata: posCustom,
+                        name: '+Net Call GEX ($M)',
+                        type: 'bar',
+                        marker: { color: '#00F5A0', opacity: 0.85 },
+                        hovertemplate: '<b>Strike: $%{x}</b><br>Net GEX: +$%{y:.1f}M (Call Dominant)<br><span style="color:#94a3b8">Calls: +$%{customdata[0]:.1f}M (%{customdata[2]:,} OI)<br>Puts: -$%{customdata[1]:.1f}M (%{customdata[3]:,} OI)</span><extra></extra>'
+                    },
+                    {
+                        x: strikes,
+                        y: netNeg,
+                        customdata: negCustom,
+                        name: '-Net Put GEX ($M)',
+                        type: 'bar',
+                        marker: { color: '#FF2E55', opacity: 0.85 },
+                        hovertemplate: '<b>Strike: $%{x}</b><br>Net GEX: -$%{customdata[4]:.1f}M (Put Dominant)<br><span style="color:#94a3b8">Calls: +$%{customdata[0]:.1f}M (%{customdata[2]:,} OI)<br>Puts: -$%{customdata[1]:.1f}M (%{customdata[3]:,} OI)</span><extra></extra>'
+                    }
+                ];
+            } else {
+                // Split View: Separate Call GEX (green) and Put GEX (red) bars
+                const callGex = g.strikes.map(s => s.call_gex);
+                const putGex = g.strikes.map(s => -s.put_gex);
+                const callCustom = g.strikes.map(s => [s.net_gex, s.call_oi]);
+                const putCustom = g.strikes.map(s => [s.put_gex, s.net_gex, s.put_oi]);
+
+                traces = [
+                    {
+                        x: strikes,
+                        y: callGex,
+                        customdata: callCustom,
+                        name: 'Call GEX ($M)',
+                        type: 'bar',
+                        marker: { color: '#00F5A0', opacity: 0.85 },
+                        hovertemplate: '<b>Strike: $%{x}</b><br>Call GEX: +$%{y:.1f}M<br><span style="color:#94a3b8">Net GEX: %{customdata[0]:.1f}M | Call OI: %{customdata[1]:,}</span><extra></extra>'
+                    },
+                    {
+                        x: strikes,
+                        y: putGex,
+                        customdata: putCustom,
+                        name: 'Put GEX ($M)',
+                        type: 'bar',
+                        marker: { color: '#FF2E55', opacity: 0.85 },
+                        hovertemplate: '<b>Strike: $%{x}</b><br>Put GEX: -$%{customdata[0]:.1f}M<br><span style="color:#94a3b8">Net GEX: %{customdata[1]:.1f}M | Put OI: %{customdata[2]:,}</span><extra></extra>'
+                    }
+                ];
+            }
+
+            const shapes = [
+                {
+                    type: 'line',
+                    x0: g.spot_price, x1: g.spot_price,
+                    y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#ffffff', width: 2, dash: 'dash' }
+                },
+                {
+                    type: 'line',
+                    x0: g.call_wall, x1: g.call_wall,
+                    y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#00F5A0', width: 2, dash: 'dot' }
+                },
+                {
+                    type: 'line',
+                    x0: g.put_wall, x1: g.put_wall,
+                    y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#FF2E55', width: 2, dash: 'dot' }
+                }
+            ];
+
+            const annotations = [
+                {
+                    x: g.spot_price, y: 1, yref: 'paper',
+                    text: 'Spot $' + g.spot_price.toFixed(2),
+                    showarrow: false,
+                    font: { color: '#ffffff', size: 10 },
+                    xanchor: 'right', yanchor: 'bottom'
+                },
+                {
+                    x: g.call_wall, y: 1, yref: 'paper',
+                    text: 'Call Wall $' + g.call_wall,
+                    showarrow: false,
+                    font: { color: '#00F5A0', size: 10 },
+                    xanchor: 'left', yanchor: 'bottom'
+                },
+                {
+                    x: g.put_wall, y: 0, yref: 'paper',
+                    text: 'Put Wall $' + g.put_wall,
+                    showarrow: false,
+                    font: { color: '#FF2E55', size: 10 },
+                    xanchor: 'right', yanchor: 'top'
+                }
+            ];
+
+            if (g.zero_gamma_level && Math.abs(g.zero_gamma_level - g.spot_price) / g.spot_price < 0.35) {
+                shapes.push({
+                    type: 'line',
+                    x0: g.zero_gamma_level, x1: g.zero_gamma_level,
+                    y0: 0, y1: 1, yref: 'paper',
+                    line: { color: '#38bdf8', width: 1.5, dash: 'dashdot' }
+                });
+                annotations.push({
+                    x: g.zero_gamma_level, y: 0.5, yref: 'paper',
+                    text: 'Flip $' + (typeof g.zero_gamma_level === 'number' ? g.zero_gamma_level.toFixed(1) : g.zero_gamma_level),
+                    showarrow: false,
+                    font: { color: '#38bdf8', size: 9 },
+                    xanchor: 'center', yanchor: 'middle'
+                });
+            }
+
+            const yAxisTitle = (CURRENT_GEX_PROFILE_MODE === 'net')
+                ? 'Net Dollar GEX ($M / 1% move)'
+                : 'Dollar GEX ($M / 1% move)';
+
+            const layout = {
+                barmode: 'relative',
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { l: 45, r: 25, t: 25, b: 35 },
+                xaxis: {
+                    title: { text: 'Strike Price ($)', font: { color: '#94a3b8', size: 11 } },
+                    gridcolor: 'rgba(255, 255, 255, 0.04)',
+                    zerolinecolor: 'rgba(255, 255, 255, 0.1)',
+                    tickfont: { color: '#94a3b8', size: 10 }
+                },
+                yaxis: {
+                    title: { text: yAxisTitle, font: { color: '#94a3b8', size: 11 } },
+                    gridcolor: 'rgba(255, 255, 255, 0.04)',
+                    zerolinecolor: 'rgba(255, 255, 255, 0.15)',
+                    tickfont: { color: '#94a3b8', size: 10 }
+                },
+                shapes: shapes,
+                annotations: annotations,
+                showlegend: true,
+                legend: { orientation: 'h', x: 1, xanchor: 'right', y: 1.12, font: { color: '#94a3b8', size: 10 } }
+            };
+
+            const chartEl = document.getElementById('gammaDeskChart');
+            let preservedRange = null;
+            if (chartEl && chartEl.layout && chartEl.layout.xaxis && chartEl.layout.xaxis.range && chartEl.layout.xaxis.autorange === false) {
+                preservedRange = chartEl.layout.xaxis.range;
+            }
+
+            if (preservedRange && CURRENT_GEX_RANGE_MODE !== 'all') {
+                layout.xaxis.range = preservedRange;
+                layout.xaxis.autorange = false;
+            } else {
+                const initialRange = computeGexXAxisRange(g, CURRENT_GEX_RANGE_MODE);
+                if (initialRange && CURRENT_GEX_RANGE_MODE !== 'all') {
+                    layout.xaxis.range = initialRange;
+                    layout.xaxis.autorange = false;
+                } else if (CURRENT_GEX_RANGE_MODE === 'all') {
+                    layout.xaxis.autorange = true;
+                }
+            }
+
+            Plotly.newPlot('gammaDeskChart', traces, layout, { responsive: true, displayModeBar: false });
+            updateGexRangeButtons(CURRENT_GEX_RANGE_MODE);
+            updateGexProfileButtons(CURRENT_GEX_PROFILE_MODE);
         }
 
         async function loadGammaDesk(force = false) {
@@ -4615,139 +4819,20 @@ async function init() {
                 }
 
 
-                // 3. Interactive Plotly Strike GEX Chart
-                if (typeof Plotly !== 'undefined' && g.strikes && g.strikes.length > 0) {
-                    const strikes = g.strikes.map(s => s.strike);
-                    const callGex = g.strikes.map(s => s.call_gex);
-                    const putGex = g.strikes.map(s => -s.put_gex);
-
-                    const traceCalls = {
-                        x: strikes,
-                        y: callGex,
-                        name: 'Call GEX ($M)',
-                        type: 'bar',
-                        marker: { color: '#00F5A0', opacity: 0.85 }
-                    };
-
-                    const tracePuts = {
-                        x: strikes,
-                        y: putGex,
-                        name: 'Put GEX ($M)',
-                        type: 'bar',
-                        marker: { color: '#FF2E55', opacity: 0.85 }
-                    };
-
-                    const shapes = [
-                        {
-                            type: 'line',
-                            x0: g.spot_price, x1: g.spot_price,
-                            y0: 0, y1: 1, yref: 'paper',
-                            line: { color: '#ffffff', width: 2, dash: 'dash' }
-                        },
-                        {
-                            type: 'line',
-                            x0: g.call_wall, x1: g.call_wall,
-                            y0: 0, y1: 1, yref: 'paper',
-                            line: { color: '#00F5A0', width: 2, dash: 'dot' }
-                        },
-                        {
-                            type: 'line',
-                            x0: g.put_wall, x1: g.put_wall,
-                            y0: 0, y1: 1, yref: 'paper',
-                            line: { color: '#FF2E55', width: 2, dash: 'dot' }
-                        }
-                    ];
-
-                    const annotations = [
-                        {
-                            x: g.spot_price, y: 1, yref: 'paper',
-                            text: 'Spot $' + g.spot_price.toFixed(2),
-                            showarrow: false,
-                            font: { color: '#ffffff', size: 10 },
-                            xanchor: 'right', yanchor: 'bottom'
-                        },
-                        {
-                            x: g.call_wall, y: 1, yref: 'paper',
-                            text: 'Call Wall $' + g.call_wall,
-                            showarrow: false,
-                            font: { color: '#00F5A0', size: 10 },
-                            xanchor: 'left', yanchor: 'bottom'
-                        },
-                        {
-                            x: g.put_wall, y: 0, yref: 'paper',
-                            text: 'Put Wall $' + g.put_wall,
-                            showarrow: false,
-                            font: { color: '#FF2E55', size: 10 },
-                            xanchor: 'right', yanchor: 'top'
-                        }
-                    ];
-
-                    if (g.zero_gamma_level && Math.abs(g.zero_gamma_level - g.spot_price) / g.spot_price < 0.35) {
-                        shapes.push({
-                            type: 'line',
-                            x0: g.zero_gamma_level, x1: g.zero_gamma_level,
-                            y0: 0, y1: 1, yref: 'paper',
-                            line: { color: '#38bdf8', width: 1.5, dash: 'dashdot' }
-                        });
-                        annotations.push({
-                            x: g.zero_gamma_level, y: 0.5, yref: 'paper',
-                            text: 'Flip $' + (typeof g.zero_gamma_level === 'number' ? g.zero_gamma_level.toFixed(1) : g.zero_gamma_level),
-                            showarrow: false,
-                            font: { color: '#38bdf8', size: 9 },
-                            xanchor: 'center', yanchor: 'middle'
-                        });
-                    }
-
-                    const loadedStr = g.loaded_at_display || g.loaded_at_str || 'Live Snapshot';
-                    const marketStr = g.market_trade_time || 'Session Close';
-                    const elapsed = typeof g.elapsed_seconds === 'number' ? g.elapsed_seconds.toFixed(2) : (g.elapsed_seconds || 0);
-                    const strikesCount = g.strikes_count || (g.strikes ? g.strikes.length : 0);
-                    const expsCount = (g.expirations_scanned || []).length;
-
-                    const sessionLabel = g.market_session_label || '';
-                    const tsBadge = document.getElementById('gammaTimestampBadge');
-                    if (tsBadge) {
-                        tsBadge.innerHTML = `
-                            <div class="text-slate-300 font-mono"><span class="text-slate-500 font-sans">Exchange Print:</span> <b class="text-sky-300">${marketStr}</b>${sessionLabel ? ` <span class="text-slate-400 font-normal">(${sessionLabel})</span>` : ''}</div>
-                            <div class="text-[10.5px] text-slate-400 font-mono mt-0.5"><span class="text-slate-500 font-sans">Feed Ingested:</span> <span class="text-slate-300">${loadedStr}</span>${elapsed ? ` <span class="text-slate-500">(${elapsed}s)</span>` : ''}</div>
-                        `;
-                    }
-
-                    const layout = {
-                        barmode: 'relative',
-                        paper_bgcolor: 'rgba(0,0,0,0)',
-                        plot_bgcolor: 'rgba(0,0,0,0)',
-                        margin: { l: 45, r: 25, t: 25, b: 35 },
-                        xaxis: {
-                            title: { text: 'Strike Price ($)', font: { color: '#94a3b8', size: 11 } },
-                            gridcolor: 'rgba(255, 255, 255, 0.04)',
-                            zerolinecolor: 'rgba(255, 255, 255, 0.1)',
-                            tickfont: { color: '#94a3b8', size: 10 }
-                        },
-                        yaxis: {
-                            title: { text: 'Dollar GEX ($M / 1% move)', font: { color: '#94a3b8', size: 11 } },
-                            gridcolor: 'rgba(255, 255, 255, 0.04)',
-                            zerolinecolor: 'rgba(255, 255, 255, 0.15)',
-                            tickfont: { color: '#94a3b8', size: 10 }
-                        },
-                        shapes: shapes,
-                        annotations: annotations,
-                        showlegend: true,
-                        legend: { orientation: 'h', x: 1, xanchor: 'right', y: 1.12, font: { color: '#94a3b8', size: 10 } }
-                    };
-
-                    // Auto-focus default view: Center on Spot & Relevant Active Strikes
-                    const initialRange = computeGexXAxisRange(g, CURRENT_GEX_RANGE_MODE);
-                    if (initialRange && CURRENT_GEX_RANGE_MODE !== 'all') {
-                        layout.xaxis.range = initialRange;
-                        layout.xaxis.autorange = false;
-                    } else if (CURRENT_GEX_RANGE_MODE === 'all') {
-                        layout.xaxis.autorange = true;
-                    }
-
-                    Plotly.newPlot('gammaDeskChart', [traceCalls, tracePuts], layout, { responsive: true, displayModeBar: false });
-                    updateGexRangeButtons(CURRENT_GEX_RANGE_MODE);
+                // 3. Timestamp Badge & Interactive Plotly Strike GEX Chart
+                const loadedStr = g.loaded_at_display || g.loaded_at_str || 'Live Snapshot';
+                const marketStr = g.market_trade_time || 'Session Close';
+                const elapsed = typeof g.elapsed_seconds === 'number' ? g.elapsed_seconds.toFixed(2) : (g.elapsed_seconds || 0);
+                const sessionLabel = g.market_session_label || '';
+                const tsBadge = document.getElementById('gammaTimestampBadge');
+                if (tsBadge) {
+                    tsBadge.innerHTML = `
+                        <div class="text-slate-300 font-mono"><span class="text-slate-500 font-sans">Exchange Print:</span> <b class="text-sky-300">${marketStr}</b>${sessionLabel ? ` <span class="text-slate-400 font-normal">(${sessionLabel})</span>` : ''}</div>
+                        <div class="text-[10.5px] text-slate-400 font-mono mt-0.5"><span class="text-slate-500 font-sans">Feed Ingested:</span> <span class="text-slate-300">${loadedStr}</span>${elapsed ? ` <span class="text-slate-500">(${elapsed}s)</span>` : ''}</div>
+                    `;
                 }
+
+                renderGammaPlotlyChart(g);
 
                 // 4. Tabular Per-Strike Breakdown (Curated Relevant Strikes)
                 CURRENT_GAMMA_DATA = g;
