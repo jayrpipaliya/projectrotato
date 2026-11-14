@@ -1726,25 +1726,6 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div id="gammaDeskChart" style="height: 420px;"></div>
             </div>
 
-
-            <!-- Rolling Walls (Day-over-Day Put & Call Wall Migration) -->
-            <div class="lux-card p-4 mb-5 border-t-2 border-indigo-500/30">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                    <div>
-                        <h4 class="text-sm font-bold text-white flex items-center gap-2">
-                            <span>Rolling Walls</span>
-                            <span id="rollingWallsDateBadge" class="text-[10px] font-mono text-slate-400 px-2 py-0.5 rounded bg-white/5 border border-white/10">Day-over-Day</span>
-                        </h4>
-                        <p class="text-[11px] text-slate-400">Tracks session-over-session Put Wall and Call Wall rolls, zero gamma flip shift, and net dealer hedging velocity.</p>
-                    </div>
-                </div>
-
-                <!-- Migration 4 KPI Cards -->
-                <div id="gammaMigrationKpiRow" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <!-- Populated dynamically: Call Wall Shift, Put Wall Shift, Zero Flip Shift, Net GEX Velocity -->
-                </div>
-            </div>
-
             <!-- Detailed Strike Gamma & Open Interest Breakdown (Straddle Chain) -->
             <div class="lux-card p-4 mb-5">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
@@ -4539,8 +4520,17 @@ async function init() {
 
             try {
                 const url = `/api/gamma/${encodeURIComponent(ticker)}${force ? '?force=true' : ''}`;
-                const res = await fetch(url);
+                const shiftUrl = `/api/gamma/${encodeURIComponent(ticker)}/shift`;
+                
+                const [res, shiftRes] = await Promise.all([
+                    fetch(url),
+                    fetch(shiftUrl).catch(() => null)
+                ]);
                 const g = await res.json();
+                let shift = null;
+                if (shiftRes && shiftRes.ok) {
+                    try { shift = await shiftRes.json(); } catch(e) {}
+                }
 
                 if (g.error) {
                     if (kpiRow) kpiRow.innerHTML = `<div class="col-span-full text-xs text-amber-400 bg-amber-500/10 p-3 rounded-lg border border-amber-500/20">${g.error}</div>`;
@@ -4550,29 +4540,76 @@ async function init() {
 
                 const isLong = g.is_long_gamma;
 
-                // 1. KPI Strip
+                // 1. KPI Strip (Integrated with session-over-session migration anecdotes)
                 if (kpiRow) {
                     const flipVal = typeof g.zero_gamma_level === 'number' ? g.zero_gamma_level.toFixed(2) : g.zero_gamma_level;
+                    const hasHist = shift && shift.has_history;
+                    
+                    // Spot Shift
+                    const prevSpot = hasHist && shift.spot_previous ? `$${Number(shift.spot_previous).toFixed(2)}` : null;
+                    const spotChg = hasHist && shift.spot_change_pct != null ? `${Number(shift.spot_change_pct) >= 0 ? '+' : ''}${Number(shift.spot_change_pct).toFixed(2)}%` : null;
+                    const spotSub = (hasHist && prevSpot)
+                        ? `Prev ${prevSpot} <span class="${Number(shift.spot_change_pct) >= 0 ? 'text-mint' : 'text-cherry'} font-medium">(${spotChg})</span>`
+                        : 'Session Close / Live Mark';
+
+                    // Call Wall Shift
+                    const cwStatus = hasHist && shift.call_wall_status ? shift.call_wall_status.replace('_', ' ') : 'UNCHANGED';
+                    const cwPrev = hasHist && shift.call_wall_previous ? `$${Number(shift.call_wall_previous).toFixed(1)}` : null;
+                    const cwColor = cwStatus === 'ROLLED UP' ? 'text-mint' : (cwStatus === 'ROLLED DOWN' ? 'text-cherry' : 'text-slate-300');
+                    const cwSub = (hasHist && cwPrev)
+                        ? `<span class="${cwColor} font-semibold">${cwStatus}</span> • Prev ${cwPrev}`
+                        : 'Upper Pinning Ceiling';
+
+                    // Put Wall Shift
+                    const pwStatus = hasHist && shift.put_wall_status ? shift.put_wall_status.replace('_', ' ') : 'UNCHANGED';
+                    const pwPrev = hasHist && shift.put_wall_previous ? `$${Number(shift.put_wall_previous).toFixed(1)}` : null;
+                    const pwColor = pwStatus === 'ROLLED UP' ? 'text-mint' : (pwStatus === 'ROLLED DOWN' ? 'text-cherry' : 'text-slate-300');
+                    const pwSub = (hasHist && pwPrev)
+                        ? `<span class="${pwColor} font-semibold">${pwStatus}</span> • Prev ${pwPrev}`
+                        : 'Downside Cushion Floor';
+
+                    // Zero Gamma Flip Shift
+                    const zgPrev = hasHist && shift.zero_gamma_previous ? `$${Number(shift.zero_gamma_previous).toFixed(1)}` : null;
+                    const zgShiftVal = hasHist && shift.zero_gamma_shift != null ? Number(shift.zero_gamma_shift) : 0;
+                    const zgStatus = Math.abs(zgShiftVal) < 0.2 ? 'UNCHANGED' : (zgShiftVal > 0 ? 'SHIFTED UP' : 'SHIFTED DOWN');
+                    const zgColor = zgStatus === 'SHIFTED UP' ? 'text-mint' : (zgStatus === 'SHIFTED DOWN' ? 'text-cherry' : 'text-slate-300');
+                    const zgSub = (hasHist && zgPrev)
+                        ? `<span class="${zgColor} font-semibold">${zgStatus}</span> • Prev ${zgPrev}`
+                        : 'Vol Regime Inflection';
+
+                    // Net Dealer GEX Velocity
+                    const velLabel = hasHist && shift.velocity_label ? shift.velocity_label : (g.total_net_gex_billions >= 0 ? 'LONG DEALER GAMMA' : 'SHORT DEALER GAMMA');
+                    const velDelta = hasHist && shift.net_gex_velocity_b != null ? formatSignedMoney(shift.net_gex_velocity_b, 'B', 2) : null;
+                    const velColor = velLabel.includes('BLEEDING') ? 'text-cherry' : (velLabel.includes('ADDING') || velLabel.includes('BUILDING') ? 'text-mint' : 'text-slate-300');
+                    const velSub = (hasHist && velDelta)
+                        ? `<span class="${velColor} font-semibold">${velLabel}</span> • (${velDelta})`
+                        : (isLong ? 'Volatility Suppressing' : 'Volatility Amplifying');
+
                     kpiRow.innerHTML = `
                         <div class="lux-card p-3 border-l-2 border-slate-400">
                             <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Spot Price</div>
                             <div class="text-lg font-bold text-white mt-0.5">$${g.spot_price.toFixed(2)}</div>
+                            <div class="text-[10px] text-slate-400 mt-1 truncate">${spotSub}</div>
                         </div>
                         <div class="lux-card p-3 border-l-2 border-mint">
                             <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Call Wall</div>
                             <div class="text-lg font-bold text-mint mt-0.5">$${g.call_wall} <span class="text-xs font-normal text-slate-300">(${g.call_wall_dist_pct >= 0 ? '+' : ''}${g.call_wall_dist_pct}%)</span></div>
+                            <div class="text-[10px] text-slate-400 mt-1 truncate">${cwSub}</div>
                         </div>
                         <div class="lux-card p-3 border-l-2 border-cherry">
                             <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Put Wall</div>
                             <div class="text-lg font-bold text-cherry mt-0.5">$${g.put_wall} <span class="text-xs font-normal text-slate-300">(${g.put_wall_dist_pct >= 0 ? '+' : ''}${g.put_wall_dist_pct}%)</span></div>
+                            <div class="text-[10px] text-slate-400 mt-1 truncate">${pwSub}</div>
                         </div>
                         <div class="lux-card p-3 border-l-2 border-sky-400">
                             <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Zero Gamma Flip</div>
                             <div class="text-lg font-bold text-sky-400 mt-0.5">$${flipVal} <span class="text-xs font-normal text-slate-300">(${g.zero_gamma_dist_pct >= 0 ? '+' : ''}${g.zero_gamma_dist_pct}%)</span></div>
+                            <div class="text-[10px] text-slate-400 mt-1 truncate">${zgSub}</div>
                         </div>
                         <div class="lux-card p-3 border-l-2 ${isLong ? 'border-mint' : 'border-rose-500'}">
                             <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Net Dealer GEX</div>
                             <div class="text-lg font-bold ${isLong ? 'text-mint' : 'text-rose-400'} mt-0.5">${g.total_net_gex_billions >= 0 ? '+' : ''}${g.total_net_gex_billions.toFixed(2)}B</div>
+                            <div class="text-[10px] text-slate-400 mt-1 truncate">${velSub}</div>
                         </div>
                     `;
                 }
@@ -4723,10 +4760,6 @@ async function init() {
                 if (countSpan) countSpan.innerText = `${relCount} Relevant / ${totCount} Total Mapped`;
 
                 renderGammaTableRows(g);
-
-                // 5. Load and Render Rolling Walls
-                loadGammaMigrationAndHeatmap(ticker);
-
             } catch (err) {
                 console.error("Gamma desk fetch error:", err);
                 if (kpiRow) kpiRow.innerHTML = `<div class="col-span-full text-xs text-cherry bg-cherry/10 p-3 rounded-lg border border-cherry/20">Error loading gamma desk: ${err.message}</div>`;
