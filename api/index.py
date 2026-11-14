@@ -1976,32 +1976,31 @@ HTML_CONTENT = """<!DOCTYPE html>
             </div>
 
             <!-- SECTION 2B: Forward Volatility & Executable Edge Desk -->
-            <div class="lux-card p-4 mb-5 border border-mint/20 shadow-xl bg-gradient-to-br from-[#0c1017] via-[#0b0d12] to-[#0a1118]" id="optionsRvDeskCard">
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4 pb-3 border-b border-white/10">
+            <div class="lux-card p-4 mb-5 border border-white/10" id="optionsRvDeskCard">
+                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 mb-4 pb-3 border-b border-white/10">
                     <div>
                         <div class="flex items-center gap-2">
-                            <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-mint/20 text-mint border border-mint/30 shadow-sm">Relative Value Execution</span>
                             <h3 class="text-sm font-bold text-white flex items-center gap-1.5">
                                 Forward Volatility & Executable Edge Desk
                                 <span class="text-slate-500 hover:text-slate-300 cursor-pointer text-xs" title="Synthetic Forward Volatility Desk: Solves the forward variance between two maturities (Var2 - Var1). Identifies structural mispricings where forward volatility is deeply discounted vs 30D Clean Realized HV or 1-Year Normal Baseline HV. All metrics are computed on real Bid/Ask marks (Sell Front at Bid, Buy Back at Ask) to expose Bid/Ask spread drag.">ⓘ</span>
                             </h3>
                         </div>
                         <p class="text-xs text-slate-400 mt-1">
-                            Synthetically purchase forward volatility windows at structural discounts vs. <b class="text-amber-400">30D Clean Realized HV</b> and <b class="text-sky-400">1-Year Normal HV</b> using Time Spreads (Calendar / Diagonal).
+                            Synthetically purchase forward volatility windows at structural discounts vs. <b class="text-slate-300 font-medium">30D Clean Realized HV</b> and <b class="text-slate-300 font-medium">1-Year Normal HV</b> using Time Spreads (Calendar / Diagonal).
                         </p>
                     </div>
 
                     <!-- Expiration Pair Slicers -->
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <div class="flex items-center gap-1.5 bg-[#07090e] px-2.5 py-1.5 rounded-lg border border-cherry/30">
-                            <span class="text-[10px] font-bold text-cherry uppercase">Short Leg (Bid):</span>
+                    <div class="flex items-center gap-2 flex-nowrap shrink-0 overflow-x-auto max-w-full">
+                        <div class="flex items-center gap-1.5 bg-[#0D0F14] px-2.5 py-1.5 rounded-lg border border-white/10">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase">Short Leg (Bid):</span>
                             <select id="rvFrontSelect" onchange="onRvPairChange()" class="bg-transparent text-xs font-semibold text-white border-none focus:outline-none cursor-pointer">
                                 <!-- Populated dynamically -->
                             </select>
                         </div>
                         <span class="text-slate-500 text-xs font-bold">➔</span>
-                        <div class="flex items-center gap-1.5 bg-[#07090e] px-2.5 py-1.5 rounded-lg border border-mint/30">
-                            <span class="text-[10px] font-bold text-mint uppercase">Long Leg (Ask):</span>
+                        <div class="flex items-center gap-1.5 bg-[#0D0F14] px-2.5 py-1.5 rounded-lg border border-white/10">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase">Long Leg (Ask):</span>
                             <select id="rvBackSelect" onchange="onRvPairChange()" class="bg-transparent text-xs font-semibold text-white border-none focus:outline-none cursor-pointer">
                                 <!-- Populated dynamically -->
                             </select>
@@ -2026,12 +2025,12 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <!-- 2-Column Leg Execution Breakdown Cards -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-4">
                     <!-- Short Leg Card -->
-                    <div class="bg-black/40 rounded-xl p-3.5 border border-cherry/25 relative" id="rvShortLegCard">
+                    <div class="lux-card p-3.5 rounded-xl border border-white/10 relative" id="rvShortLegCard">
                         <!-- Populated dynamically -->
                     </div>
 
                     <!-- Long Leg Card -->
-                    <div class="bg-black/40 rounded-xl p-3.5 border border-mint/25 relative" id="rvLongLegCard">
+                    <div class="lux-card p-3.5 rounded-xl border border-white/10 relative" id="rvLongLegCard">
                         <!-- Populated dynamically -->
                     </div>
                 </div>
@@ -3918,12 +3917,12 @@ async function init() {
 
             // 1. Populate Dropdown Selectors
             const frontOpts = chains.slice(0, -1).map(r => `
-                <option value="${r.Expiration}" style="background-color: #0b0d12; color: #f8fafc;">
+                <option value="${r.Expiration}" style="background-color: #0D0F14; color: #f8fafc;">
                     ${r.Expiration} (${r.DTE}d) | IV: ${Number(r.ATM_IV).toFixed(1)}% | Bid: $${(Number(r.Call_Bid) || 0).toFixed(2)}
                 </option>
             `).join('');
             const backOpts = chains.slice(1).map(r => `
-                <option value="${r.Expiration}" style="background-color: #0b0d12; color: #f8fafc;">
+                <option value="${r.Expiration}" style="background-color: #0D0F14; color: #f8fafc;">
                     ${r.Expiration} (${r.DTE}d) | IV: ${Number(r.ATM_IV).toFixed(1)}% | Ask: $${(Number(r.Call_Ask) || 0).toFixed(2)}
                 </option>
             `).join('');
@@ -4089,15 +4088,15 @@ async function init() {
 
             const isFrontCheap = (iv1Mid < cleanHv - 0.5);
             const frontWarningBadge = isFrontCheap
-                ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold ml-1.5" title="Warning: You are selling an option with IV below 30D Clean Realized HV.">⚠️ Selling Below Clean HV</span>'
-                : '<span class="text-[9.5px] px-1.5 py-0.5 rounded bg-mint/20 text-mint border border-mint/30 font-bold ml-1.5">🟢 Selling Elevated Vol</span>';
+                ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/25 font-medium ml-1.5" title="Warning: You are selling an option with IV below 30D Clean Realized HV.">Below Clean HV</span>'
+                : '';
 
             // 1. Render Short Leg Card
             shortCard.innerHTML = `
                 <div class="flex items-center justify-between mb-2">
                     <div class="flex items-center">
-                        <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-cherry/20 text-cherry border border-cherry/30">
-                            SHORT LEG (Front Expiration)
+                        <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-white/5 text-slate-300 border border-white/10">
+                            Short Leg (Front Expiration)
                         </span>
                         ${frontWarningBadge}
                     </div>
@@ -4105,57 +4104,57 @@ async function init() {
                 </div>
                 <div class="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                        <div class="text-[10px] text-slate-400 uppercase">ATM Strike & Mid</div>
+                        <div class="text-[10px] text-slate-400 uppercase font-medium">ATM Strike & Mid</div>
                         <div class="font-bold text-white font-mono text-sm">$${Number(r1.ATM_Strike).toFixed(0)} <span class="text-xs font-normal text-slate-400">($${c1Mid.toFixed(2)})</span></div>
                     </div>
                     <div>
-                        <div class="text-[10px] text-cherry uppercase font-bold">Execution Mark (Sell Bid)</div>
-                        <div class="font-bold text-cherry font-mono text-sm">$${c1Bid.toFixed(2)} <span class="text-[10px] text-slate-400">(Spread: ${r1.Call_Spread_Pct || 0}%)</span></div>
+                        <div class="text-[10px] text-slate-400 uppercase font-medium">Execution Mark (Sell Bid)</div>
+                        <div class="font-bold text-white font-mono text-sm">$${c1Bid.toFixed(2)} <span class="text-[10px] text-slate-400 font-normal">(Spread: ${r1.Call_Spread_Pct || 0}%)</span></div>
                     </div>
                     <div>
-                        <div class="text-[10px] text-slate-400 uppercase">Headline ATM IV</div>
+                        <div class="text-[10px] text-slate-400 uppercase font-medium">Headline ATM IV</div>
                         <div class="font-bold text-white font-mono">${iv1Mid.toFixed(1)}% <span class="text-[10px] text-slate-400 font-normal">(Bid IV: ${iv1Bid.toFixed(1)}%)</span></div>
                     </div>
                     <div>
-                        <div class="text-[10px] text-mint uppercase font-semibold">Daily Theta Collected</div>
-                        <div class="font-bold text-mint font-mono">+$${th1.toFixed(2)} / contract / day</div>
+                        <div class="text-[10px] text-slate-400 uppercase font-medium">Daily Theta Collected</div>
+                        <div class="font-bold text-slate-200 font-mono">+$${th1.toFixed(2)} / contract / day</div>
                     </div>
                 </div>
                 <div class="mt-2.5 pt-2 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-400">
-                    <span>vs Clean HV: <b class="${spread1Clean > 0 ? 'text-cherry' : 'text-mint'}">${spread1Clean > 0 ? '+' : ''}${spread1Clean} pts</b></span>
-                    <span>vs 1Y Normal: <b class="${spread1_1y > 0 ? 'text-amber-400' : 'text-sky-400'}">${spread1_1y > 0 ? '+' : ''}${spread1_1y} pts</b></span>
+                    <span>vs Clean HV: <b class="text-slate-300 font-medium">${spread1Clean > 0 ? '+' : ''}${spread1Clean} pts</b></span>
+                    <span>vs 1Y Normal: <b class="text-slate-300 font-medium">${spread1_1y > 0 ? '+' : ''}${spread1_1y} pts</b></span>
                 </div>
             `;
 
             // 2. Render Long Leg Card
             longCard.innerHTML = `
                 <div class="flex items-center justify-between mb-2">
-                    <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-mint/20 text-mint border border-mint/30">
-                        LONG LEG (Back Expiration)
+                    <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-white/5 text-slate-300 border border-white/10">
+                        Long Leg (Back Expiration)
                     </span>
                     <span class="text-xs font-bold text-white font-mono">${r2.Expiration} (${r2.DTE}d DTE)</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                        <div class="text-[10px] text-slate-400 uppercase">ATM Strike & Mid</div>
+                        <div class="text-[10px] text-slate-400 uppercase font-medium">ATM Strike & Mid</div>
                         <div class="font-bold text-white font-mono text-sm">$${Number(r2.ATM_Strike).toFixed(0)} <span class="text-xs font-normal text-slate-400">($${c2Mid.toFixed(2)})</span></div>
                     </div>
                     <div>
-                        <div class="text-[10px] text-mint uppercase font-bold">Execution Mark (Buy Ask)</div>
-                        <div class="font-bold text-mint font-mono text-sm">$${c2Ask.toFixed(2)} <span class="text-[10px] text-slate-400">(Spread: ${r2.Call_Spread_Pct || 0}%)</span></div>
+                        <div class="text-[10px] text-slate-400 uppercase font-medium">Execution Mark (Buy Ask)</div>
+                        <div class="font-bold text-white font-mono text-sm">$${c2Ask.toFixed(2)} <span class="text-[10px] text-slate-400 font-normal">(Spread: ${r2.Call_Spread_Pct || 0}%)</span></div>
                     </div>
                     <div>
-                        <div class="text-[10px] text-slate-400 uppercase">Headline ATM IV</div>
+                        <div class="text-[10px] text-slate-400 uppercase font-medium">Headline ATM IV</div>
                         <div class="font-bold text-white font-mono">${iv2Mid.toFixed(1)}% <span class="text-[10px] text-slate-400 font-normal">(Ask IV: ${iv2Ask.toFixed(1)}%)</span></div>
                     </div>
                     <div>
-                        <div class="text-[10px] text-cherry uppercase font-semibold">Daily Theta Paid</div>
-                        <div class="font-bold text-cherry font-mono">-$${th2.toFixed(2)} / contract / day</div>
+                        <div class="text-[10px] text-slate-400 uppercase font-medium">Daily Theta Paid</div>
+                        <div class="font-bold text-slate-200 font-mono">-$${th2.toFixed(2)} / contract / day</div>
                     </div>
                 </div>
                 <div class="mt-2.5 pt-2 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-400">
-                    <span>vs Clean HV: <b class="${spread2Clean > 0 ? 'text-cherry' : 'text-mint'}">${spread2Clean > 0 ? '+' : ''}${spread2Clean} pts</b></span>
-                    <span>vs 1Y Normal: <b class="${spread2_1y > 0 ? 'text-amber-400' : 'text-sky-400'}">${spread2_1y > 0 ? '+' : ''}${spread2_1y} pts</b></span>
+                    <span>vs Clean HV: <b class="text-slate-300 font-medium">${spread2Clean > 0 ? '+' : ''}${spread2Clean} pts</b></span>
+                    <span>vs 1Y Normal: <b class="text-slate-300 font-medium">${spread2_1y > 0 ? '+' : ''}${spread2_1y} pts</b></span>
                 </div>
             `;
 
