@@ -1665,6 +1665,28 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </div>
             </div>
 
+            <!-- Institutional Desk Guide 3-Box Educational Strip -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5 mb-5">
+                <div class="lux-card p-3.5 rounded-xl border border-mint/50">
+                    <h5 class="text-xs font-bold text-mint uppercase tracking-wider mb-1.5">1. Call Wall & Dealer Pins</h5>
+                    <p class="text-[11px] text-slate-400 leading-relaxed">
+                        The strike with the largest open Call Gamma. Because dealers are typically net short these calls, they must sell futures/stock as spot rallies into the strike, creating a natural upside ceiling and pinning magnet into weekly OpEx.
+                    </p>
+                </div>
+                <div class="lux-card p-3.5 rounded-xl border border-cherry/50">
+                    <h5 class="text-xs font-bold text-cherry uppercase tracking-wider mb-1.5">2. Put Wall & Cushion Floors</h5>
+                    <p class="text-[11px] text-slate-400 leading-relaxed">
+                        The strike with the largest open Put Gamma. Dealers short these puts must buy stock when price drops into the strike, creating institutional liquidity, limiting sell-offs, and triggering violent rebound squeezes.
+                    </p>
+                </div>
+                <div class="lux-card p-3.5 rounded-xl border border-sky-400/50">
+                    <h5 class="text-xs font-bold text-sky-400 uppercase tracking-wider mb-1.5">3. Zero-Gamma Vol Flip</h5>
+                    <p class="text-[11px] text-slate-400 leading-relaxed">
+                        The inflection strike where cumulative dealer gamma crosses zero. Above it, market makers operate in Long Gamma (volatility suppressing). Below it, market makers flip to Short Gamma (selling drops, buying rallies), triggering fast trending expansions.
+                    </p>
+                </div>
+            </div>
+
             <!-- Top 5 KPI Strip -->
             <div id="gammaDeskKpiRow" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-5">
                 <!-- Populated dynamically: Spot, Call Wall, Put Wall, Zero Gamma Flip, Net Dealer GEX -->
@@ -1763,28 +1785,6 @@ HTML_CONTENT = """<!DOCTYPE html>
                             <!-- Populated dynamically -->
                         </tbody>
                     </table>
-                </div>
-            </div>
-
-            <!-- Institutional Desk Guide 3-Box Educational Strip -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div class="lux-card p-4 border-t-2 border-mint">
-                    <h5 class="text-xs font-bold text-mint uppercase tracking-wider mb-1.5">1. Call Wall & Dealer Pins</h5>
-                    <p class="text-[11.5px] text-slate-400 leading-relaxed">
-                        The strike with the largest open Call Gamma. Because dealers are typically net short these calls, they must sell futures/stock as spot rallies into the strike, creating a natural upside ceiling and pinning magnet into weekly OpEx.
-                    </p>
-                </div>
-                <div class="lux-card p-4 border-t-2 border-cherry">
-                    <h5 class="text-xs font-bold text-cherry uppercase tracking-wider mb-1.5">2. Put Wall & Cushion Floors</h5>
-                    <p class="text-[11.5px] text-slate-400 leading-relaxed">
-                        The strike with the largest open Put Gamma. Dealers short these puts must buy stock when price drops into the strike, creating institutional liquidity, limiting sell-offs, and triggering violent rebound squeezes.
-                    </p>
-                </div>
-                <div class="lux-card p-4 border-t-2 border-sky-400">
-                    <h5 class="text-xs font-bold text-sky-400 uppercase tracking-wider mb-1.5">3. Zero-Gamma Vol Flip</h5>
-                    <p class="text-[11.5px] text-slate-400 leading-relaxed">
-                        The inflection strike where cumulative dealer gamma crosses zero. Above it, market makers operate in Long Gamma (volatility suppressing). Below it, market makers flip to Short Gamma (selling drops, buying rallies), triggering fast trending expansions.
-                    </p>
                 </div>
             </div>
         </div>
