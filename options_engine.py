@@ -470,7 +470,10 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
     otm_put_cands = [k for k in sorted_strikes if k < atm_band_low]
     if not otm_put_cands:
         otm_put_cands = [k for k in sorted_strikes if k < spot_price]
-    if otm_put_cands:
+    net_put_cands = [k for k in otm_put_cands if strikes_gex[k]["put_gex"] > strikes_gex[k]["call_gex"]]
+    if net_put_cands:
+        put_wall = max(net_put_cands, key=lambda k: (strikes_gex[k]["put_gex"] - strikes_gex[k]["call_gex"], strikes_gex[k]["put_oi"]))
+    elif otm_put_cands:
         put_wall = max(otm_put_cands, key=lambda k: (strikes_gex[k]["put_gex"], strikes_gex[k]["put_oi"]))
     else:
         put_wall = min(sorted_strikes)
@@ -478,7 +481,10 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
     otm_call_cands = [k for k in sorted_strikes if k > atm_band_high]
     if not otm_call_cands:
         otm_call_cands = [k for k in sorted_strikes if k > spot_price]
-    if otm_call_cands:
+    net_call_cands = [k for k in otm_call_cands if strikes_gex[k]["call_gex"] > strikes_gex[k]["put_gex"]]
+    if net_call_cands:
+        call_wall = max(net_call_cands, key=lambda k: (strikes_gex[k]["call_gex"] - strikes_gex[k]["put_gex"], strikes_gex[k]["call_oi"]))
+    elif otm_call_cands:
         call_wall = max(otm_call_cands, key=lambda k: (strikes_gex[k]["call_gex"], strikes_gex[k]["call_oi"]))
     else:
         call_wall = max(sorted_strikes)
