@@ -1683,7 +1683,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <div class="flex flex-wrap items-center gap-1.5 bg-white/5 p-1 rounded-lg border border-white/10" id="gexRangeControlGroup">
                         <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 hidden sm:inline">Strike View:</span>
                         <button onclick="setGexChartRange('focused')" id="btnGexRange-focused" class="px-2.5 py-1 rounded text-xs font-bold transition bg-mint/20 text-mint border border-mint/30 shadow-sm" title="Center Spot & Key Gamma Walls (±5-7%)">
-                            🎯 Relevant (Centered)
+                            Relevant
                         </button>
                         <button onclick="setGexChartRange('tight')" id="btnGexRange-tight" class="px-2.5 py-1 rounded text-xs font-bold transition text-slate-400 hover:text-white border border-transparent" title="Tight ATM Strikes (±3%)">
                             ±3% ATM
