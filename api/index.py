@@ -3568,6 +3568,7 @@ async function init() {
                 const earns = data.next_earnings || "Macro Index / ETF";
                 const frontRow = termChains.length > 0 ? termChains[0] : {};
                 const frontAtmIv = frontRow.ATM_IV != null ? Number(frontRow.ATM_IV).toFixed(1) : (ivStats.current_iv || 20.0).toFixed(1);
+                const cleanHv = Number(h.HV_30_clean || h.HV_30 || 20.0);
 
                 CURRENT_OPTIONS_SPOT = spot;
                 CURRENT_OPTIONS_EXPIRATION = data.selected_expiration || (data.smile ? data.smile.expiration : '');
@@ -3580,8 +3581,6 @@ async function init() {
                 const ivr = ivStats.iv_rank != null ? Number(ivStats.iv_rank).toFixed(0) : '--';
                 const ivStyle = ivStats.style === 'cherry' ? 'text-cherry' : (ivStats.style === 'mint' ? 'text-mint' : (ivStats.style === 'sky' ? 'text-sky-400' : 'text-slate-300'));
                 const ivPillBg = ivStats.style === 'cherry' ? 'bg-cherry/15 text-cherry border-cherry/25' : (ivStats.style === 'mint' ? 'bg-mint/15 text-mint border-mint/25' : (ivStats.style === 'sky' ? 'bg-sky-500/15 text-sky-400 border-sky-500/25' : 'bg-slate-700/50 text-slate-300 border-slate-600/30'));
-
-                const cleanHv = Number(h.HV_30_clean || h.HV_30 || 20.0);
                 const ivHvRatio = (Number(frontAtmIv) / Math.max(cleanHv, 1)).toFixed(2);
                 const vrpSpread = (Number(frontAtmIv) - cleanHv).toFixed(1);
                 const vrpSpreadColor = Number(vrpSpread) >= 0 ? 'text-mint' : 'text-cherry';
