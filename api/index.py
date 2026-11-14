@@ -1255,9 +1255,6 @@ HTML_CONTENT = """<!DOCTYPE html>
           <span class="w-2 h-2 rounded-full bg-mint shadow-[0_0_6px_#00F5A0]"></span>
           <span>Market Overview</span>
         </button>
-        <button onclick="switchTab('tab2')" id="btn-tab2" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
-          Automated Trade Ideas
-        </button>
         <button onclick="switchTab('tab_gamma')" id="btn-tab_gamma" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Gamma Exposure Map
         </button>
@@ -1333,16 +1330,6 @@ HTML_CONTENT = """<!DOCTYPE html>
             <!-- Dynamically populated by renderMacroBarometers() -->
           </div>
         </section>
-      </div>
-
-      <!-- Tab 2: Automated Trade Ideas -->
-      <div id="tab2" class="tab-pane hidden">
-        <div class="bg-white/[0.03] border border-white/5 rounded-xl p-3 mb-4 text-xs text-slate-400">
-            <b class="text-mint font-semibold">Strict Confluence Rules:</b> Green conviction scores (+15 to +100) are reserved strictly for <b>Long Setups</b>. Red conviction scores (-15 to -100) are strictly flagged for <b>Distribution Fades or De-risking</b> to protect portfolio equity.
-        </div>
-        <div id="tradeCardsContainer" class="grid grid-cols-1 xl:grid-cols-2 gap-3">
-            <div class="text-xs text-slate-400">Loading high-probability trade setups...</div>
-        </div>
       </div>
 
         <!-- Tab Ledger: Institutional Trade Ledger & Risk Radar -->
@@ -2214,12 +2201,11 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
         }
 
-        const LOADED_TABS = new Set(['tab_overview', 'tab2']);
+        const LOADED_TABS = new Set(['tab_overview']);
         let AI_DATA = null;
 
         const TAB_NAMES = {
             'tab_overview': 'Market Overview',
-            'tab2': 'Automated Trade Ideas Desk',
             'tab_gamma': 'Gamma Exposure Map',
             'tab_options': 'Volatility Pricing',
             'tab3': 'Bias Matrix',
@@ -2253,9 +2239,6 @@ HTML_CONTENT = """<!DOCTYPE html>
             // Lazy load tabs on demand
             if (tabId === 'tab_ledger') {
                 loadLedger();
-            } else if (tabId === 'tab2') {
-                LOADED_TABS.add('tab2');
-                renderTradeCards();
             } else if (tabId === 'tab3') {
                 if (!LOADED_TABS.has('tab3')) {
                     LOADED_TABS.add('tab3');
@@ -2922,9 +2905,6 @@ async function init() {
                 }
                 AI_DATA = await res.json();
                 renderAiBriefingSynthesis();
-                if (LOADED_TABS.has('tab2')) {
-                    renderTradeCards();
-                }
             } catch (err) {
                 if (synthBox) {
                     synthBox.innerHTML = `
@@ -3118,312 +3098,6 @@ async function init() {
 
             synthBox.innerHTML = buildStructuredSynthesisCards(summary);
             filterSynthesisSection(CURRENT_SYNTH_FILTER);
-        }
-
-        function renderTradeCards() {
-            const container = document.getElementById('tradeCardsContainer');
-            if (!container) return;
-            const cards = (AI_DATA && AI_DATA.trade_cards) ? AI_DATA.trade_cards : [];
-            if (!AI_DATA) {
-                container.innerHTML = `
-                    <div class="flex items-center gap-2 text-slate-400 py-4 text-xs">
-                        <span class="inline-block animate-spin text-amber-400 font-mono">↻</span>
-                        <span>Filtering algorithmic high-probability trade setups...</span>
-                    </div>
-                `;
-                return;
-            }
-            if (cards.length === 0) {
-                container.innerHTML = '<div class="text-xs text-slate-400">No high-confluence setups detected in current market conditions.</div>';
-                return;
-            }
-            let html = '';
-            cards.forEach(t => {
-                    const dir = t.direction || "LONG";
-                    const isLong = dir.includes("LONG") || dir.includes("DIP");
-                    const borderCol = isLong ? '#00F5A0' : '#FF2E55';
-                    const pill = isLong ? 'badge-mint' : 'badge-cherry';
-                    const isCaution = /EXTENDED|TRAP|DO NOT|AWAIT|FADE|RISK/i.test(t.execution_state || '');
-                    const execPill = isCaution ? 'badge-cherry' : 'badge-mint';
-                    const extCol = (t.extension_metric && (t.extension_metric.includes('-') || isCaution)) ? 'text-cherry' : 'text-mint';
-                    const payoffPill = isLong ? 'badge-mint' : 'badge-cherry';
-                    const entryBg = isLong ? 'from-mint/10 to-transparent border-mint/25' : 'from-cherry/10 to-transparent border-cherry/25';
-                    const entryCol = isLong ? 'text-mint' : 'text-cherry';
-
-                    const benchGexHtml = (t.benchmark_symbol && t.benchmark_put_wall) ? `
-                        <div class="flex flex-wrap items-center justify-between gap-1.5 p-1 px-2 mb-2 rounded bg-sky-950/20 border border-sky-500/20 text-[10px]">
-                            <div class="flex items-center gap-1.5 flex-wrap">
-                                <span class="text-sky-400 font-bold">Benchmark Floor (${t.benchmark_symbol}):</span>
-                                <span class="text-slate-400">Put Wall:</span>
-                                <b class="text-cherry font-mono">${t.benchmark_put_wall}</b>
-                                ${t.benchmark_zero_gamma ? `<span class="text-slate-600">|</span><span class="text-slate-400">Zero Flip:</span><b class="text-sky-300 font-mono">${t.benchmark_zero_gamma}</b>` : ''}
-                            </div>
-                            <span class="text-slate-400 font-mono text-[9px]">${t.benchmark_regime || 'Macro Hedge'}</span>
-                        </div>
-                    ` : '';
-
-                    const gexHtml = (t.call_wall && t.put_wall) ? `
-                        <div class="flex flex-wrap items-center justify-between gap-1.5 p-1.5 px-2 mb-1.5 rounded-lg bg-indigo-950/20 border border-indigo-500/20 text-[10.5px]">
-                            <div class="flex items-center gap-1.5 flex-wrap">
-                                <span class="text-indigo-400 font-bold">Stock GEX:</span>
-                                <span class="text-slate-400">Call Wall:</span>
-                                <b class="text-mint font-mono">${t.call_wall}</b>
-                                <span class="text-slate-600">|</span>
-                                <span class="text-slate-400">Put Wall:</span>
-                                <b class="text-cherry font-mono">${t.put_wall}</b>
-                                ${t.zero_gamma ? `<span class="text-slate-600">|</span><span class="text-slate-400">Zero Flip:</span><b class="text-cyan-400 font-mono">${t.zero_gamma}</b>` : ''}
-                            </div>
-                            <div class="flex items-center gap-1">
-                                <span class="px-1.5 py-0.5 rounded text-[9.5px] font-bold ${t.gamma_regime === 'Long Gamma' ? 'bg-mint/15 text-mint' : 'bg-rose-500/15 text-rose-400'}">${t.gamma_regime || 'Dealer GEX'}</span>
-                                ${t.net_gex_b ? `<span class="text-slate-400 font-mono text-[9.5px]">(${t.net_gex_b})</span>` : ''}
-                            </div>
-                        </div>
-                    ` : '';
-
-                    html += `
-                        <div class="lux-card p-3 sm:p-3.5 border-l-4 flex flex-col justify-between h-full" style="border-left-color: ${borderCol}">
-                            <div>
-                                <div class="flex flex-wrap justify-between items-center gap-1.5 pb-2 mb-2 border-b border-white/5">
-                                    <div class="flex flex-wrap items-center gap-2">
-                                        <span class="text-lg font-black text-white">${t.ticker}</span>
-                                        <span class="${pill} px-2 py-0.5 rounded text-[10px] font-bold">${t.direction}</span>
-                                        <span class="text-[11px] font-semibold text-slate-400">${t.type_label}</span>
-                                        ${t.execution_state ? `<span class="${execPill} px-2 py-0.5 rounded text-[10px] font-bold tracking-wide">${t.execution_state}</span>` : ''}
-                                    </div>
-                                    <div class="flex items-center gap-1.5 text-[10px]">
-                                        <span class="text-slate-500 uppercase">Conviction:</span>
-                                        <span class="${pill} px-2 py-0.5 rounded font-bold text-[10.5px]">Score: ${t.score} (${t.bias_label})</span>
-                                    </div>
-                                </div>
-
-                                <!-- Market Price vs Optimized R:R Banner -->
-                                <div class="flex flex-wrap items-center justify-between gap-1.5 p-1.5 px-2 mb-2 rounded-lg bg-white/[0.02] border border-white/5 text-[11px]">
-                                    <div class="flex items-center gap-1.5 flex-wrap">
-                                        <span class="text-slate-400">Print:</span>
-                                        <span class="font-bold text-white">${t.current_price || t.entry}</span>
-                                        <span class="text-slate-600">|</span>
-                                        <span class="text-slate-400">20 EMA Ext:</span>
-                                        <span class="font-mono ${extCol}">${t.extension_metric || 'At Support'}</span>
-                                    </div>
-                                    <div class="flex items-center gap-1.5">
-                                        <span class="text-slate-500 uppercase text-[9.5px]">Payoff:</span>
-                                        <span class="${payoffPill} px-2 py-0.5 rounded text-[10.5px] font-extrabold tracking-wide">${t.risk_reward || '1 : 3.0 R:R'}</span>
-                                    </div>
-                                </div>
-
-                                ${gexHtml}
-
-                                <!-- 4-Box Execution Strategy 2x2 Grid -->
-                                <div class="grid grid-cols-2 gap-2 mb-2">
-                                    <div class="bg-gradient-to-b ${entryBg} p-2 rounded-lg border">
-                                        <div class="text-[9px] font-bold ${entryCol} uppercase tracking-wider">Optimal Limit Entry</div>
-                                        <div class="text-sm font-extrabold text-white mt-0.5">${t.optimal_entry_zone || t.entry}</div>
-                                        <div class="text-[9px] text-slate-400 mt-0.5">${t.optimal_entry_label || '20 EMA Support Zone'}</div>
-                                    </div>
-                                    <div class="bg-white/[0.02] p-2 rounded-lg border border-white/5">
-                                        <div class="text-[9px] font-bold text-slate-300 uppercase tracking-wider">Breakout Trigger</div>
-                                        <div class="text-xs font-bold text-white mt-0.5 leading-snug">${t.breakout_trigger || 'Above 5D Pivot'}</div>
-                                        <div class="text-[9px] text-slate-400 mt-0.5">Momentum Confirmation</div>
-                                    </div>
-                                    <div class="bg-gradient-to-b from-cherry/10 to-transparent p-2 rounded-lg border border-cherry/25">
-                                        <div class="text-[9px] font-bold text-cherry uppercase tracking-wider">Stop Invalidation</div>
-                                        <div class="text-sm font-extrabold text-cherry mt-0.5">${t.stop} <span class="text-[10px] font-normal text-rose-300">(${t.stop_pct})</span></div>
-                                        <div class="text-[9px] text-slate-400 mt-0.5">Below Structural Support</div>
-                                    </div>
-                                    <div class="bg-gradient-to-b from-mint/10 to-transparent p-2 rounded-lg border border-mint/25">
-                                        <div class="text-[9px] font-bold text-mint uppercase tracking-wider">Profit Targets</div>
-                                        <div class="text-sm font-extrabold text-mint mt-0.5">${t.target1} <span class="text-[10px] font-normal text-emerald-300">(${t.target1_pct})</span></div>
-                                        <div class="text-[9px] text-slate-400 mt-0.5">Runner: ${t.target2} (${t.target2_pct})</div>
-                                    </div>
-                                </div>
-
-                                <!-- Execution Rule Directive -->
-                                <div class="p-2 rounded-lg bg-black/40 border border-white/5 text-[10.5px] text-slate-300 mb-2 leading-snug">
-                                    <div><b class="${isLong ? 'text-mint' : 'text-cherry'}">Desk Directive:</b> ${t.execution_desc || 'Bidding the structural liquidity band rather than market buying at extended highs.'}</div>
-                                </div>
-                            </div>
-
-                            <div>
-                                <div class="bg-white/[0.02] p-1.5 px-2 rounded-lg border border-white/5 text-[10.5px] text-slate-400 flex flex-wrap justify-between gap-1">
-                                    <span>Win Rate: <b class="text-mint font-bold">${t.win_rate}</b> (N=${t.sample_size})</span>
-                                    <span>Alpha: <b class="${isLong ? 'text-mint' : 'text-cherry'} font-bold">${t.median_alpha}</b></span>
-                                    <span><b>Confirmations:</b> ${t.confirmations}</span>
-                                </div>
-                                <div class="text-[11px] text-slate-300 mt-1.5 leading-snug">
-                                    <b class="text-white">Desk Rationale:</b> ${t.thesis}
-                                </div>
-                            </div>
-
-                            <!-- Next-Day Institutional Defined-Risk Options Strategy (Zero Naked Risk) -->
-                            ${t.options_spread ? `
-                            <div class="mt-2.5 p-2.5 rounded-xl bg-purple-950/20 border border-purple-500/30 text-xs">
-                                <div class="flex flex-wrap items-center justify-between gap-1.5 pb-1.5 mb-1.5 border-b border-purple-500/20">
-                                    <div class="flex items-center gap-1.5 flex-wrap">
-                                        <span class="px-1.5 py-0.5 rounded text-[9.5px] font-extrabold bg-purple-500/20 text-purple-300 border border-purple-500/30 tracking-wide uppercase">⚡ NEXT-DAY DEALER OPTIONS PLAY</span>
-                                        <span class="text-white font-black text-[11px]">${t.options_spread.strategy_name}</span>
-                                        <span class="text-[9.5px] text-slate-400 font-mono">(${t.options_spread.dte} DTE • Exp ${t.options_spread.expiration})</span>
-                                    </div>
-                                    <span class="px-2 py-0.5 rounded text-[10.5px] font-extrabold bg-mint/15 text-mint border border-mint/30">+${t.options_spread.roc_pct}% ROC</span>
-                                </div>
-
-                                <!-- 2-Legs Specification (Strict Defined Risk) -->
-                                <div class="grid grid-cols-2 gap-2 mb-2">
-                                    <div class="p-1.5 rounded bg-black/40 border border-white/5">
-                                        <div class="text-[9px] uppercase font-bold text-rose-400">Sold Leg (Bid Edge)</div>
-                                        <div class="text-xs font-black text-white mt-0.5">${t.options_spread.short_leg}</div>
-                                        <div class="text-[9px] text-slate-400">Anchor @ ${isLong ? 'Put Wall Floor' : 'Call Wall Pin'}</div>
-                                    </div>
-                                    <div class="p-1.5 rounded bg-black/40 border border-white/5">
-                                        <div class="text-[9px] uppercase font-bold text-mint">Bought Wing (Tail Protection)</div>
-                                        <div class="text-xs font-black text-white mt-0.5">${t.options_spread.long_leg}</div>
-                                        <div class="text-[9px] text-slate-400">100% Defined Risk (No Naked Risk)</div>
-                                    </div>
-                                </div>
-
-                                <!-- Spread Financials -->
-                                <div class="grid grid-cols-4 gap-1.5 p-1.5 rounded bg-white/[0.02] border border-white/5 text-center mb-2">
-                                    <div>
-                                        <div class="text-[8.5px] uppercase text-slate-400 font-bold">Net Premium</div>
-                                        <div class="text-[11px] font-black text-mint mt-0.5">$${t.options_spread.net_premium.toFixed(2)}</div>
-                                    </div>
-                                    <div>
-                                        <div class="text-[8.5px] uppercase text-slate-400 font-bold">Collateral Locked</div>
-                                        <div class="text-[11px] font-black text-white mt-0.5">$${t.options_spread.max_risk.toFixed(0)}</div>
-                                    </div>
-                                    <div>
-                                        <div class="text-[8.5px] uppercase text-slate-400 font-bold">Max Profit</div>
-                                        <div class="text-[11px] font-black text-mint mt-0.5">$${t.options_spread.max_profit.toFixed(0)}</div>
-                                    </div>
-                                    <div>
-                                        <div class="text-[8.5px] uppercase text-slate-400 font-bold">Breakeven</div>
-                                        <div class="text-[11px] font-black text-cyan-300 mt-0.5">$${t.options_spread.breakeven.toFixed(2)}</div>
-                                    </div>
-                                </div>
-
-                                ${(t.options_spread.pinning_ratio || t.options_spread.net_gex_billions) ? `
-                                <div class="flex items-center gap-1.5 flex-wrap mb-1.5">
-                                    ${t.options_spread.net_gex_billions ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-mint/10 text-mint border border-mint/20">Net GEX: +$${t.options_spread.net_gex_billions.toFixed(2)}B</span>` : ''}
-                                    ${t.options_spread.net_gex_velocity ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/25">ΔGEX: ${t.options_spread.net_gex_velocity}</span>` : ''}
-                                    ${t.options_spread.pinning_ratio ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/15 text-blue-300 border border-blue-500/25">🎯 Pin Index: ${(t.options_spread.pinning_ratio * 100).toFixed(0)}%</span>` : ''}
-                                    ${t.options_spread.downside_air_pocket ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/10 text-amber-300 border border-amber-500/20">Void: $${t.options_spread.downside_air_pocket.toFixed(0)}</span>` : ''}
-                                </div>
-                                ` : ''}
-
-                                <div class="text-[10px] text-slate-300 leading-snug mb-1.5">
-                                    <b class="text-purple-300">Dealer Edge:</b> ${t.options_spread.dealer_thesis}
-                                </div>
-
-                                <button onclick="prefillAndOpenSpreadLogger(${cards.indexOf(t)})" class="w-full py-1.5 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-500/40 text-[10.5px] font-bold transition flex items-center justify-center gap-1 shadow-[0_0_10px_rgba(168,85,247,0.15)]">
-                                    <span>⚡ Pre-Fill ${t.options_spread.strategy_name} in Trade Logger</span>
-                                </button>
-                            </div>
-                            ` : ''}
-
-                            <!-- Trade Ledger Commit Button & Drawer -->
-                            <div class="mt-2.5 pt-2 border-t border-white/5 flex flex-col gap-2">
-                                <button onclick="toggleCardLogger(${cards.indexOf(t)})" class="w-full py-1.5 px-3 rounded-lg bg-mint/15 hover:bg-mint/25 text-mint border border-mint/30 text-xs font-bold transition flex items-center justify-center gap-1.5">
-                                    <span>Log ${t.ticker} Setup to Trade Ledger</span>
-                                </button>
-                                <div id="cardLogger-${cards.indexOf(t)}" class="hidden p-3 rounded-xl bg-[#090b10] border border-mint/30 space-y-2.5 text-xs">
-                                    <div class="flex items-center justify-between pb-1 border-b border-white/10">
-                                        <span class="font-bold text-white">Execution Parameters</span>
-                                        <span class="text-[10px] text-slate-400">Locks in frozen entry snapshot</span>
-                                    </div>
-                                    <div class="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label class="text-[9.5px] uppercase font-bold text-slate-400">Instrument</label>
-                                            <select id="cardInstType-${cards.indexOf(t)}" onchange="toggleCardLoggerFields(${cards.indexOf(t)})" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
-                                                <option value="STOCK">Stock / Equity</option>
-                                                <option value="OPTION">Single Options Contract</option>
-                                                <option value="SPREAD" ${t.options_spread ? 'selected' : ''}>Defined-Risk Vertical Spread</option>
-                                            </select>
-                                        </div>
-                                        <div id="cardEntryContainer-${cards.indexOf(t)}" class="${t.options_spread ? 'hidden' : ''}">
-                                            <label id="cardEntryLabel-${cards.indexOf(t)}" class="text-[9.5px] uppercase font-bold text-slate-400">Entry Fill ($)</label>
-                                            <input id="cardEntryPrice-${cards.indexOf(t)}" type="number" step="0.01" value="${parseFloat(String(t.optimal_entry_zone || t.current_price || t.entry || '100').replace(/[^0-9.]/g, '')) || 100}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
-                                        </div>
-                                    </div>
-
-                                    <!-- Defined-Risk Spread Specific Fields -->
-                                    <div id="cardSpreadFields-${cards.indexOf(t)}" class="${t.options_spread ? '' : 'hidden'} p-2.5 rounded-lg bg-purple-950/25 border border-purple-500/30 space-y-2">
-                                        <div class="grid grid-cols-2 gap-2">
-                                            <div>
-                                                <label class="text-[9px] uppercase font-bold text-purple-300">Spread Type</label>
-                                                <select id="cardSpreadType-${cards.indexOf(t)}" class="w-full mt-0.5 bg-[#161722] border border-purple-500/30 rounded px-2 py-1 text-white text-xs">
-                                                    <option value="BULL_PUT_CREDIT" ${isLong ? 'selected' : ''}>Bull Put Credit Spread</option>
-                                                    <option value="BEAR_CALL_CREDIT" ${!isLong ? 'selected' : ''}>Bear Call Credit Spread</option>
-                                                    <option value="BULL_CALL_DEBIT">Bull Call Debit Spread</option>
-                                                    <option value="BEAR_PUT_DEBIT">Bear Put Debit Spread</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label class="text-[9px] uppercase font-bold text-purple-300">Expiration</label>
-                                                <input id="cardSpreadExpiry-${cards.indexOf(t)}" type="text" value="${t.options_spread ? t.options_spread.expiration : getFutureDateStr(35)}" class="w-full mt-0.5 bg-[#161722] border border-purple-500/30 rounded px-2 py-1 text-white text-xs">
-                                            </div>
-                                        </div>
-                                        <div class="grid grid-cols-3 gap-2">
-                                            <div>
-                                                <label class="text-[9px] uppercase font-bold text-rose-400">Short Strike ($)</label>
-                                                <input id="cardShortStrike-${cards.indexOf(t)}" type="number" step="0.5" value="${t.options_spread ? t.options_spread.short_strike : Math.round(parseFloat(String(t.current_price || '100').replace(/[^0-9.]/g, '')) || 100)}" class="w-full mt-0.5 bg-[#161722] border border-rose-500/30 rounded px-2 py-1 text-white text-xs">
-                                            </div>
-                                            <div>
-                                                <label class="text-[9px] uppercase font-bold text-mint">Long Strike ($)</label>
-                                                <input id="cardLongStrike-${cards.indexOf(t)}" type="number" step="0.5" value="${t.options_spread ? t.options_spread.long_strike : (Math.round(parseFloat(String(t.current_price || '100').replace(/[^0-9.]/g, '')) || 100) - 5)}" class="w-full mt-0.5 bg-[#161722] border border-mint/30 rounded px-2 py-1 text-white text-xs">
-                                            </div>
-                                            <div>
-                                                <label class="text-[9px] uppercase font-bold text-mint">Net Premium ($)</label>
-                                                <input id="cardNetPrem-${cards.indexOf(t)}" type="number" step="0.05" value="${t.options_spread ? t.options_spread.net_premium : 1.35}" class="w-full mt-0.5 bg-[#161722] border border-mint/30 rounded px-2 py-1 text-mint text-xs">
-                                            </div>
-                                        </div>
-                                        <div class="flex items-center justify-between text-[10px] text-slate-300 pt-1 border-t border-purple-500/20 font-mono">
-                                            <span>Collateral: <b class="text-white">$${t.options_spread ? t.options_spread.max_risk : '365'}</b></span>
-                                            <span>Max Profit: <b class="text-mint">$${t.options_spread ? t.options_spread.max_profit : '135'}</b></span>
-                                            <span class="text-purple-300 font-bold">100% Defined Risk</span>
-                                        </div>
-                                    </div>
-
-                                    <!-- Single Option Specific Fields -->
-                                    <div id="cardOptFields-${cards.indexOf(t)}" class="hidden grid grid-cols-3 gap-2">
-                                        <div>
-                                            <label class="text-[9.5px] uppercase font-bold text-slate-400">Type</label>
-                                            <select id="cardOptType-${cards.indexOf(t)}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
-                                                <option value="CALL" ${isLong ? 'selected' : ''}>CALL</option>
-                                                <option value="PUT" ${!isLong ? 'selected' : ''}>PUT</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label class="text-[9.5px] uppercase font-bold text-slate-400">Strike ($)</label>
-                                            <input id="cardStrike-${cards.indexOf(t)}" type="number" step="0.5" value="${Math.round(parseFloat(String(t.current_price || t.entry || '100').replace(/[^0-9.]/g, '')) || 100)}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
-                                        </div>
-                                        <div>
-                                            <label class="text-[9.5px] uppercase font-bold text-slate-400">Expiration</label>
-                                            <input id="cardExpiry-${cards.indexOf(t)}" type="text" value="${getFutureDateStr(35)}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
-                                        </div>
-                                    </div>
-
-                                    <div class="grid grid-cols-3 gap-2">
-                                        <div>
-                                            <label id="cardSizeLabel-${cards.indexOf(t)}" class="text-[9.5px] uppercase font-bold text-slate-400">${t.options_spread ? 'Spreads' : 'Shares'}</label>
-                                            <input id="cardSize-${cards.indexOf(t)}" type="number" min="1" value="${t.options_spread ? 1 : 10}" class="w-full mt-0.5 bg-[#161722] border border-white/10 rounded px-2 py-1 text-white text-xs">
-                                        </div>
-                                        <div>
-                                            <label class="text-[9.5px] uppercase font-bold text-cherry">Stop ($)</label>
-                                            <input id="cardStop-${cards.indexOf(t)}" type="number" step="0.01" value="${parseFloat(String(t.stop || '0').replace(/[^0-9.]/g, '')) || 0}" class="w-full mt-0.5 bg-[#161722] border border-cherry/30 rounded px-2 py-1 text-cherry text-xs">
-                                        </div>
-                                        <div>
-                                            <label class="text-[9.5px] uppercase font-bold text-mint">Target ($)</label>
-                                            <input id="cardTp1-${cards.indexOf(t)}" type="number" step="0.01" value="${parseFloat(String(t.target1 || '0').replace(/[^0-9.]/g, '')) || 0}" class="w-full mt-0.5 bg-[#161722] border border-mint/30 rounded px-2 py-1 text-mint text-xs">
-                                        </div>
-                                    </div>
-                                    <button onclick="commitCardTrade(${cards.indexOf(t)})" id="btnCommitCard-${cards.indexOf(t)}" class="w-full py-2 rounded-lg bg-mint text-black font-extrabold text-xs hover:bg-mint/80 transition flex items-center justify-center gap-1 shadow-[0_0_12px_rgba(0,245,160,0.2)]">
-                                        <span>Confirm & Log to Ledger</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                });
-            document.getElementById('tradeCardsContainer').innerHTML = html;
         }
 
         function getStateColor(state) {
@@ -5533,8 +5207,7 @@ async function init() {
                 container.innerHTML = `
                     <div class="col-span-full p-8 text-center text-slate-400 bg-white/[0.01] rounded-xl border border-white/5 text-xs">
                         <div class="text-slate-300 font-bold mb-1">No Active Positions Tracked</div>
-                        <p class="text-[11px] text-slate-500 mb-3">Commit an algorithmic trade idea from the <b>'Automated Trade Ideas'</b> tab, or use the <b>'Manual / AI Prompt Logger'</b> above.</p>
-                        <button onclick="switchTab('tab2')" class="px-3.5 py-1.5 rounded-lg bg-mint/15 text-mint border border-mint/30 font-bold text-xs hover:bg-mint/25 transition">Explore Trade Setups</button>
+                        <p class="text-[11px] text-slate-500">Use the <b>'Manual / AI Prompt Logger'</b> above to log your first trade execution.</p>
                     </div>
                 `;
                 return;
@@ -5812,185 +5485,6 @@ async function init() {
         }
 
         async function runLedgerAudit() {}
-
-        function toggleCardLogger(idx) {
-            const el = document.getElementById('cardLogger-' + idx);
-            if (el) el.classList.toggle('hidden');
-        }
-
-        function toggleCardLoggerFields(idx) {
-            const type = document.getElementById('cardInstType-' + idx).value;
-            const optRow = document.getElementById('cardOptFields-' + idx);
-            const spreadRow = document.getElementById('cardSpreadFields-' + idx);
-            const sizeLabel = document.getElementById('cardSizeLabel-' + idx);
-            const entryLabel = document.getElementById('cardEntryLabel-' + idx);
-            const entryContainer = document.getElementById('cardEntryContainer-' + idx);
-
-            if (type === 'SPREAD') {
-                if (optRow) optRow.classList.add('hidden');
-                if (spreadRow) spreadRow.classList.remove('hidden');
-                if (entryContainer) entryContainer.classList.add('hidden');
-                if (sizeLabel) sizeLabel.innerText = 'Spreads';
-            } else if (type === 'OPTION') {
-                if (optRow) optRow.classList.remove('hidden');
-                if (spreadRow) spreadRow.classList.add('hidden');
-                if (entryContainer) entryContainer.classList.remove('hidden');
-                if (sizeLabel) sizeLabel.innerText = 'Contracts';
-                if (entryLabel) entryLabel.innerText = 'Premium ($)';
-            } else {
-                if (optRow) optRow.classList.add('hidden');
-                if (spreadRow) spreadRow.classList.add('hidden');
-                if (entryContainer) entryContainer.classList.remove('hidden');
-                if (sizeLabel) sizeLabel.innerText = 'Shares';
-                if (entryLabel) entryLabel.innerText = 'Entry Fill ($)';
-            }
-        }
-
-        function prefillAndOpenSpreadLogger(idx) {
-            const drawer = document.getElementById('cardLogger-' + idx);
-            if (drawer && drawer.classList.contains('hidden')) {
-                drawer.classList.remove('hidden');
-            }
-            const instSelect = document.getElementById('cardInstType-' + idx);
-            if (instSelect) {
-                instSelect.value = 'SPREAD';
-                toggleCardLoggerFields(idx);
-            }
-            if (AI_DATA && AI_DATA.trade_cards && AI_DATA.trade_cards[idx]) {
-                const t = AI_DATA.trade_cards[idx];
-                const sp = t.options_spread;
-                if (sp) {
-                    const stEl = document.getElementById('cardSpreadType-' + idx);
-                    if (stEl) stEl.value = sp.spread_type;
-                    const skEl = document.getElementById('cardShortStrike-' + idx);
-                    if (skEl) skEl.value = sp.short_strike;
-                    const lkEl = document.getElementById('cardLongStrike-' + idx);
-                    if (lkEl) lkEl.value = sp.long_strike;
-                    const npEl = document.getElementById('cardNetPrem-' + idx);
-                    if (npEl) npEl.value = sp.net_premium;
-                    const expEl = document.getElementById('cardSpreadExpiry-' + idx);
-                    if (expEl) expEl.value = sp.expiration;
-                    const szEl = document.getElementById('cardSize-' + idx);
-                    if (szEl) szEl.value = 1;
-                }
-            }
-            drawer?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-
-        async function commitCardTrade(idx) {
-            if (!AI_DATA || !AI_DATA.trade_cards || !AI_DATA.trade_cards[idx]) return;
-            const t = AI_DATA.trade_cards[idx];
-            const btn = document.getElementById('btnCommitCard-' + idx);
-            if (btn) btn.innerText = 'Committing...';
-
-            const assetType = document.getElementById('cardInstType-' + idx).value;
-            const size = parseFloat(document.getElementById('cardSize-' + idx).value) || 1;
-            const stop = parseFloat(document.getElementById('cardStop-' + idx).value) || 0;
-            const tp1 = parseFloat(document.getElementById('cardTp1-' + idx).value) || 0;
-            const currSpot = parseFloat(String(t.current_price || t.entry || '100').replace(/[^0-9.]/g, '')) || 100;
-
-            let entryPx = parseFloat(document.getElementById('cardEntryPrice-' + idx)?.value) || 0;
-            let cType = null;
-            let strike = null;
-            let expiry = null;
-            let spreadType = null;
-            let shortK = null;
-            let longK = null;
-            let netPrem = null;
-            let spreadWidth = null;
-            let maxRisk = null;
-            let maxProfit = null;
-
-            if (assetType === 'SPREAD') {
-                spreadType = document.getElementById('cardSpreadType-' + idx)?.value || 'BULL_PUT_CREDIT';
-                shortK = parseFloat(document.getElementById('cardShortStrike-' + idx)?.value) || 0;
-                longK = parseFloat(document.getElementById('cardLongStrike-' + idx)?.value) || 0;
-                netPrem = parseFloat(document.getElementById('cardNetPrem-' + idx)?.value) || 1.35;
-                expiry = document.getElementById('cardSpreadExpiry-' + idx)?.value || null;
-                entryPx = netPrem;
-                spreadWidth = Math.abs(shortK - longK) || 5.0;
-                const isCredit = spreadType.includes('CREDIT');
-                if (isCredit) {
-                    maxRisk = Math.max(0.01, spreadWidth - netPrem) * 100 * size;
-                    maxProfit = netPrem * 100 * size;
-                } else {
-                    maxRisk = netPrem * 100 * size;
-                    maxProfit = Math.max(0.01, spreadWidth - netPrem) * 100 * size;
-                }
-            } else if (assetType === 'OPTION') {
-                cType = document.getElementById('cardOptType-' + idx)?.value || 'CALL';
-                strike = parseFloat(document.getElementById('cardStrike-' + idx)?.value) || null;
-                expiry = document.getElementById('cardExpiry-' + idx)?.value || null;
-            }
-
-            const payload = {
-                ticker: t.ticker,
-                direction: t.direction,
-                asset_type: assetType,
-                entry_price: entryPx,
-                size: size,
-                stop_loss: stop,
-                target_1: tp1,
-                target_2: parseFloat(String(t.target2 || '0').replace(/[^0-9.]/g, '')) || 0,
-                contract_type: cType,
-                strike: strike,
-                expiration: expiry,
-                underlying_entry_spot: currSpot,
-                spread_type: spreadType,
-                short_strike: shortK,
-                long_strike: longK,
-                short_expiry: expiry,
-                long_expiry: expiry,
-                net_premium: netPrem,
-                spread_width: spreadWidth,
-                max_risk: maxRisk,
-                max_profit: maxProfit,
-                notes: (assetType === 'SPREAD' ? `Defined-Risk Spread (${spreadType}: Short $${shortK} / Long $${longK}). ` : 'Automated Setup. ') + (t.thesis || ''),
-                ai_snapshot: {
-                    win_rate: t.win_rate,
-                    sample_size: t.sample_size,
-                    median_alpha: t.median_alpha,
-                    confluence_score: t.score,
-                    bias_label: t.bias_label,
-                    confirmations: t.confirmations,
-                    thesis: t.thesis,
-                    entry_price_spot: currSpot,
-                    call_wall: t.call_wall,
-                    put_wall: t.put_wall,
-                    zero_gamma: t.zero_gamma,
-                    net_gex_b: t.net_gex_b,
-                    gamma_regime: t.gamma_regime,
-                    benchmark_symbol: t.benchmark_symbol,
-                    benchmark_put_wall: t.benchmark_put_wall,
-                    benchmark_zero_gamma: t.benchmark_zero_gamma,
-                    risk_reward: t.risk_reward
-                }
-            };
-
-            try {
-                const res = await fetch('/api/ledger/add', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
-                });
-                const data = await res.json();
-                if (data.status === 'success') {
-                    upsertLocalTrade(data.trade);
-                    if (btn) btn.innerText = 'Committed to Ledger!';
-                    setTimeout(() => {
-                        toggleCardLogger(idx);
-                        if (btn) btn.innerText = 'Confirm & Log to Ledger';
-                    }, 1200);
-                    loadLedger();
-                } else {
-                    alert('Error adding trade: ' + (data.message || 'unknown error'));
-                    if (btn) btn.innerText = 'Confirm & Log to Ledger';
-                }
-            } catch (err) {
-                alert('Failed to commit trade: ' + err.message);
-                if (btn) btn.innerText = 'Confirm & Log to Ledger';
-            }
-        }
 
         function toggleManualInstrumentFields() {
             const val = document.getElementById('manAssetType').value;

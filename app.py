@@ -858,10 +858,9 @@ def render_trade_logging_widget(t, key_suffix):
             st.rerun()
 
 # ----------------- MODERN TABS (Institutional Options Desk v3.0 Full Suite) -----------------
-tab1, tab_agent, tab2, tab_ledger, tab3, tab5, tab4, tab6, tab7, tab_gamma, tab_options = st.tabs([
+tab1, tab_agent, tab_ledger, tab3, tab5, tab4, tab6, tab7, tab_gamma, tab_options = st.tabs([
     "AI Macro Letter",
     "AI Agent",
-    "Automated Trade Ideas",
     "Trade Ledger & Audit",
     "Bias Matrix",
     "Indexes & Sector Flow",
@@ -1049,191 +1048,6 @@ with tab_agent:
                 st.markdown(response_text)
                 st.session_state["agent_chat"].append({"role": "assistant", "content": response_text})
 
-# ================= TAB 2: AUTOMATED TRADE IDEAS =================
-with tab2:
-    st.subheader("Algorithmic High-Probability Trade Setups")
-    st.caption("Filtered by 7-Layer Confluence and 20-Year Historical Backtest Odds")
-
-    st.markdown(
-        '<div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:10px 14px; margin-bottom:18px; font-size:12.5px; color:#94a3b8;">'
-        '<b style="color:#00F5A0;">Strict Confluence Rules:</b> '
-        'Green conviction scores (+15 to +100) are reserved strictly for <b>Long Setups</b>. '
-        'Red conviction scores (-15 to -100) are strictly flagged for <b>Distribution Fades or De-risking</b> to protect portfolio equity. '
-        'Orderly dip buys require low relative volume and intact moving average support.'
-        '</div>',
-        unsafe_allow_html=True
-    )
-
-    trade_cards = ai_output.get("trade_cards", [])
-    if not trade_cards:
-        st.info("No high-confluence setups detected in current market conditions.")
-    else:
-        def render_compact_trade_card_html(t):
-            direction = t.get("direction", "LONG")
-            is_long = "LONG" in direction or "DIP" in direction
-            border_col = "#00F5A0" if is_long else "#FF2E55"
-            pill_type = "green" if is_long else "red"
-            
-            exec_state = t.get("execution_state", "")
-            is_caution = any(k in exec_state.upper() for k in ["EXTENDED", "TRAP", "DO NOT", "AWAIT", "FADE", "RISK"])
-            exec_pill_type = "red" if is_caution else "green"
-            
-            curr_px = t.get("current_price", t.get("entry"))
-            ext_metric = t.get("extension_metric", "At Support")
-            ext_col = "#FF2E55" if any(k in ext_metric for k in ["-", "EXTENDED"]) else "#00F5A0"
-            
-            rr = t.get("risk_reward", "1 : 3.0 R:R")
-            payoff_pill = "green" if is_long else "red"
-            
-            limit_zone = t.get("optimal_entry_zone", t.get("entry"))
-            opt_label = t.get("optimal_entry_label", "20 EMA Support Zone")
-            trigger = t.get("breakout_trigger", "Above 5D Pivot")
-            exec_desc = t.get("execution_desc", "Bidding structural support band rather than market buying.")
-
-            entry_bg = "rgba(0, 245, 160, 0.06)" if is_long else "rgba(255, 46, 85, 0.06)"
-            entry_border = "rgba(0, 245, 160, 0.25)" if is_long else "rgba(255, 46, 85, 0.25)"
-            entry_col = "#00F5A0" if is_long else "#FF2E55"
-
-            cw = t.get("call_wall")
-            pw = t.get("put_wall")
-            zg = t.get("zero_gamma")
-            g_reg = t.get("gamma_regime")
-            net_gex = t.get("net_gex_b")
-            gex_html = ""
-            bench_sym = t.get("benchmark_symbol")
-            bench_pw = t.get("benchmark_put_wall")
-            bench_zg = t.get("benchmark_zero_gamma")
-            bench_reg = t.get("benchmark_regime")
-            bench_gex_html = ""
-            if bench_sym and bench_pw:
-                bench_zg_part = f'<span style="color:#475569; margin:0 2px;">|</span><span style="color:#94a3b8;">Zero Flip:</span> <b style="color:#38bdf8; font-family:monospace;">{bench_zg}</b>' if bench_zg else ""
-                bench_gex_html = (
-                    f'<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(56, 189, 248, 0.05); border:1px solid rgba(56, 189, 248, 0.2); border-radius:6px; padding:3px 8px; margin-bottom:8px; font-size:10px; flex-wrap:wrap; gap:4px;">'
-                    f'<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">'
-                    f'<span style="color:#38bdf8; font-weight:700;">Benchmark Floor ({bench_sym}):</span>'
-                    f'<span style="color:#94a3b8;">Put Wall:</span> <b style="color:#FF2E55; font-family:monospace;">{bench_pw}</b>'
-                    f'{bench_zg_part}'
-                    f'</div>'
-                    f'<span style="color:#94a3b8; font-size:9.5px; font-family:monospace;">{bench_reg or "Macro Floor"}</span>'
-                    f'</div>'
-                )
-
-            if cw and pw:
-                g_pill = "green" if g_reg == "Long Gamma" else "red"
-                zg_part = f'<span style="color:#475569; margin:0 2px;">|</span><span style="color:#94a3b8;">Zero Flip:</span> <b style="color:#38bdf8; font-family:monospace;">{zg}</b>' if zg else ""
-                net_part = f'<span style="color:#94a3b8; font-family:monospace; font-size:9.5px; margin-left:3px;">({net_gex})</span>' if net_gex else ""
-                gex_html = (
-                    f'<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(99, 102, 241, 0.08); border:1px solid rgba(99, 102, 241, 0.2); border-radius:6px; padding:4px 8px; margin-bottom:6px; font-size:10.5px; flex-wrap:wrap; gap:4px;">'
-                    f'<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">'
-                    f'<span style="color:#a5b4fc; font-weight:700;">Stock GEX:</span>'
-                    f'<span style="color:#94a3b8;">Call Wall:</span> <b style="color:#00F5A0; font-family:monospace;">{cw}</b>'
-                    f'<span style="color:#475569; margin:0 2px;">|</span>'
-                    f'<span style="color:#94a3b8;">Put Wall:</span> <b style="color:#FF2E55; font-family:monospace;">{pw}</b>'
-                    f'{zg_part}'
-                    f'</div>'
-                    f'<div style="display:flex; align-items:center;">'
-                    f'<span class="pill-{g_pill}" style="font-size:9.5px; font-weight:700; padding:1px 5px;">{g_reg or "Dealer GEX"}</span>'
-                    f'{net_part}'
-                    f'</div>'
-                    f'</div>'
-                )
-
-            return (
-                f'<div class="metric-card-lux" style="border-left:4px solid {border_col}; padding:10px 12px; margin-bottom:12px; display:flex; flex-direction:column; justify-content:space-between; height:100%; box-sizing:border-box;">'
-                f'<div>'
-                f'<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:6px; margin-bottom:8px; gap:6px; flex-wrap:wrap;">'
-                f'<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">'
-                f'<span style="font-size:18px; font-weight:800; color:#ffffff; letter-spacing:-0.4px;">{t["ticker"]}</span>'
-                f'<span class="pill-{pill_type}" style="font-size:10px; padding:1px 6px; font-weight:700;">{t["direction"]}</span>'
-                f'<span style="font-size:11px; color:#94a3b8; font-weight:600;">{t["type_label"]}</span>'
-                f'{(f"<span class=\"pill-{exec_pill_type}\" style=\"font-size:10px; padding:1px 6px; font-weight:700;\">{exec_state}</span>") if exec_state else ""}'
-                f'</div>'
-                f'<div style="display:flex; align-items:center; gap:4px; font-size:10px;">'
-                f'<span style="color:#64748b; text-transform:uppercase;">Conviction:</span>'
-                f'<span class="pill-{pill_type}" style="font-size:10.5px; font-weight:700; padding:1px 6px;">Score: {t["score"]} ({t["bias_label"]})</span>'
-                f'</div>'
-                f'</div>'
-                # Market Price vs Optimized R:R Banner
-                f'<div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:4px 8px; margin-bottom:8px; font-size:11px;">'
-                f'<div style="display:flex; align-items:center; gap:4px; flex-wrap:wrap;">'
-                f'<span style="color:#94a3b8;">Print:</span> <b style="color:#ffffff;">{curr_px}</b>'
-                f'<span style="color:#475569; margin:0 2px;">|</span>'
-                f'<span style="color:#94a3b8;">20 EMA Ext:</span> <b style="color:{ext_col};">{ext_metric}</b>'
-                f'</div>'
-                f'<div style="display:flex; align-items:center; gap:4px;">'
-                f'<span style="font-size:9.5px; color:#64748b; text-transform:uppercase;">Payoff:</span>'
-                f'<span class="pill-{payoff_pill}" style="font-size:10.5px; font-weight:800; padding:1px 5px;">{rr}</span>'
-                f'</div>'
-                f'</div>'
-                f'{gex_html}'
-                # 4-Box Execution Strategy 2x2 Grid
-                f'<div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:6px; margin-bottom:8px;">'
-                f'<div style="background:{entry_bg}; padding:6px 8px; border-radius:6px; border:1px solid {entry_border};">'
-                f'<div style="font-size:9px; font-weight:700; color:{entry_col}; text-transform:uppercase; letter-spacing:0.3px;">Optimal Limit Entry</div>'
-                f'<div style="font-size:13.5px; font-weight:800; color:#ffffff; margin-top:1px;">{limit_zone}</div>'
-                f'<div style="font-size:9px; color:#94a3b8; margin-top:1px;">{opt_label}</div>'
-                f'</div>'
-                f'<div style="background:rgba(255,255,255,0.02); padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);">'
-                f'<div style="font-size:9px; font-weight:700; color:#cbd5e1; text-transform:uppercase; letter-spacing:0.3px;">Breakout Trigger</div>'
-                f'<div style="font-size:12.5px; font-weight:700; color:#ffffff; margin-top:1px;">{trigger}</div>'
-                f'<div style="font-size:9px; color:#94a3b8; margin-top:1px;">Momentum Confirmation</div>'
-                f'</div>'
-                f'<div style="background:rgba(255, 46, 85, 0.06); padding:6px 8px; border-radius:6px; border:1px solid rgba(255, 46, 85, 0.25);">'
-                f'<div style="font-size:9px; font-weight:700; color:#FF2E55; text-transform:uppercase; letter-spacing:0.3px;">Stop Invalidation</div>'
-                f'<div style="font-size:13.5px; font-weight:800; color:#FF2E55; margin-top:1px;">{t["stop"]} <span style="font-size:10px; font-weight:normal; color:#fda4af;">({t["stop_pct"]})</span></div>'
-                f'<div style="font-size:9px; color:#fda4af; margin-top:1px;">Below Structural Support</div>'
-                f'</div>'
-                f'<div style="background:rgba(0, 245, 160, 0.06); padding:6px 8px; border-radius:6px; border:1px solid rgba(0, 245, 160, 0.25);">'
-                f'<div style="font-size:9px; font-weight:700; color:#00F5A0; text-transform:uppercase; letter-spacing:0.3px;">Profit Targets</div>'
-                f'<div style="font-size:13.5px; font-weight:800; color:#00F5A0; margin-top:1px;">{t["target1"]} <span style="font-size:10px; font-weight:normal; color:#6ee7b7;">({t.get("target1_pct", "")})</span></div>'
-                f'<div style="font-size:9px; color:#6ee7b7; margin-top:1px;">Runner: {t["target2"]} ({t["target2_pct"]})</div>'
-                f'</div>'
-                f'</div>'
-                # Directive tip
-                f'<div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:5px 8px; font-size:10.5px; color:#cbd5e1; margin-bottom:8px; line-height:1.35;">'
-                f'<b style="color:{border_col};">Desk Directive:</b> {exec_desc}'
-                f'</div>'
-                f'</div>'
-                # Stats Bar and Rationale
-                f'<div>'
-                f'<div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:5px 8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px; font-size:10.5px;">'
-                f'<span style="color:#94a3b8;">Win Rate: <b style="color:#00F5A0;">{t["win_rate"]}</b> <span style="color:#64748b;">(N={t["sample_size"]})</span></span>'
-                f'<span style="color:#94a3b8;">Alpha: <b style="color:{"#00F5A0" if is_long else "#FF2E55"};">{t["median_alpha"]}</b></span>'
-                f'<span style="color:#cbd5e1;"><b>Confirmations:</b> {t["confirmations"]}</span>'
-                f'</div>'
-                f'<div style="font-size:11px; color:#cbd5e1; margin-top:6px; line-height:1.35;">'
-                f'<b style="color:#ffffff;">Desk Rationale:</b> {t["thesis"]}'
-                f'</div>'
-                f'</div>'
-                f'</div>'
-            )
-
-        # Render trade cards side by side in pairs of 2 with logging widgets
-        for i in range(0, len(trade_cards), 2):
-            cols = st.columns(2)
-            with cols[0]:
-                st.markdown(render_compact_trade_card_html(trade_cards[i]), unsafe_allow_html=True)
-                render_trade_logging_widget(trade_cards[i], f"tc_{i}")
-            if i + 1 < len(trade_cards):
-                with cols[1]:
-                    st.markdown(render_compact_trade_card_html(trade_cards[i + 1]), unsafe_allow_html=True)
-                    render_trade_logging_widget(trade_cards[i + 1], f"tc_{i+1}")
-
-    with st.expander("Quantitative Desk Rules: How We Evaluate 'Buy the Dip' Opportunities on Red Days"):
-        st.markdown(
-            '<div style="font-size:13px; color:#cbd5e1; line-height:1.6;">'
-            '<p>A stock being down on the day does <b>not</b> automatically disqualify it from being an institutional buy opportunity. However, it must meet 4 strict mathematical criteria to prevent buying into a structural breakdown (like META):</p>'
-            '<ol>'
-            '<li><b style="color:#ffffff;">Secular Trend Intact:</b> Price must remain above the 50-day or 200-day moving average. Downward action must be an orderly retracement, not a trend reversal.</li>'
-            '<li><b style="color:#ffffff;">Volume Exhaustion (RVOL < 1.05x):</b> Selling volume must be low and diminishing. Elevated volume (like META\'s 1.7x RVOL) indicates aggressive institutional liquidation and invalidates dip buying.</li>'
-            '<li><b style="color:#ffffff;">Statistical Rubber-Band Stretch:</b> The asset must be stretched by > 1.8 ATR from its 20 EMA, or RSI must be approaching oversold territory (< 38).</li>'
-            '<li><b style="color:#ffffff;">20-Year Historical Odds:</b> The asset\'s exact volatility and moving average configuration must have produced a 20-year backtested win rate > 65%.</li>'
-            '</ol>'
-            '</div>',
-            unsafe_allow_html=True
-        )
-
-
 # ================= TAB: TRADE LEDGER & FORWARD AI AUDITOR =================
 with tab_ledger:
     col_l1, col_l2, col_l3 = st.columns([2.8, 1.1, 1.1])
@@ -1324,7 +1138,7 @@ with tab_ledger:
     # ---------------- SUB-TAB 1: ACTIVE POSITIONS ----------------
     with sub_l1:
         if not active_trades:
-            st.info("No active trades currently open in the ledger. Go to **'Automated Trade Ideas'** to log an algorithmic setup, or use the **'Manual / AI Prompt Trade Logger'** sub-tab.")
+            st.info("No active trades currently open in the ledger. Use the **'Manual / AI Prompt Trade Logger'** sub-tab to log a trade.")
         else:
             for idx, trd in enumerate(active_trades):
                 mtm = compute_mark_to_market(trd)
