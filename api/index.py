@@ -1417,9 +1417,9 @@ HTML_CONTENT = """<!DOCTYPE html>
                             <div>
                                 <label class="text-[10px] uppercase font-bold text-slate-400">Direction</label>
                                 <select id="manDirection" class="w-full mt-1 bg-[#161722] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-mint">
-                                    <option value="LONG">🟢 LONG</option>
-                                    <option value="SHORT / FADE">🔴 SHORT / FADE</option>
-                                    <option value="DIP BUY">🔵 DIP BUY</option>
+                                    <option value="LONG">LONG</option>
+                                    <option value="SHORT / FADE">SHORT / FADE</option>
+                                    <option value="DIP BUY">DIP BUY</option>
                                 </select>
                             </div>
                             <div>
@@ -2026,7 +2026,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div class="mb-4">
                     <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
                         <span class="flex items-center gap-1.5">
-                            <span>🔥 Detected Prime Relative Value Pairs</span>
+                            <span>Detected Prime Relative Value Pairs</span>
                             <span class="text-[9.5px] text-slate-500 font-normal">(Click pill to load into desk)</span>
                         </span>
                         <span class="text-[9.5px] text-slate-500 font-mono" id="rvScanCount"></span>
@@ -2055,7 +2055,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 </div>
 
                 <!-- Net Daily Theta Carry & Strategy Verdict Banner -->
-                <div id="rvVerdictBanner" class="p-3.5 rounded-lg border text-xs bg-slate-900/60 border-white/10 text-slate-300">
+                <div id="rvVerdictBanner" class="lux-card p-3.5 text-xs text-slate-300">
                     <!-- Populated dynamically -->
                 </div>
             </div>
@@ -3711,7 +3711,7 @@ async function init() {
 
             const hoverTexts = chains.map(r => {
                 const slopeSign = r.Slope_Front >= 0 ? '+' : '';
-                const earnTag = r.Spans_Earnings ? '⚠️ Spans Earnings Event' : 'Inter-Earnings';
+                const earnTag = r.Spans_Earnings ? 'Spans Earnings Event' : 'Inter-Earnings';
                 const tenorTag = r.Benchmark_Tenor ? `[${r.Benchmark_Tenor}] ` : '';
                 const oiTag = r.Total_OI ? `<br>Total Open Interest: <b>${r.Total_OI.toLocaleString()} contracts</b>` : '';
                 const cleanSpread = (r.ATM_IV - cleanHv).toFixed(1);
@@ -3843,7 +3843,7 @@ async function init() {
                 // Spread vs 30D Clean HV
                 const spreadClean = Number((r.ATM_IV - c_hv).toFixed(1));
                 const spreadCleanColor = spreadClean < -1.5 ? 'text-mint font-bold' : (spreadClean > 1.5 ? 'text-cherry font-semibold' : 'text-slate-300');
-                const spreadCleanTag = spreadClean < -1.5 ? '🟢 Cheap' : (spreadClean > 1.5 ? '🔴 Rich' : '⚪ Neutral');
+                const spreadCleanTag = spreadClean < -1.5 ? 'Cheap' : (spreadClean > 1.5 ? 'Rich' : 'Neutral');
 
                 // Spread vs 1-Yr Normal HV
                 const spread1Y = Number((r.ATM_IV - y_hv).toFixed(1));
@@ -3886,8 +3886,8 @@ async function init() {
                                 <button onclick="setRvLeg('long', '${r.Expiration}')" class="px-1.5 py-0.5 rounded bg-mint/15 hover:bg-mint/30 text-mint text-[10px] font-bold border border-mint/30 transition" title="Set as Long Leg (Bought at Ask)">
                                     + Long
                                 </button>
-                                <button onclick="inspectSmileForExpiration('${r.Expiration}')" class="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-slate-300 text-[10px] font-semibold border border-white/10 transition" title="Inspect Smile & Skew">
-                                    🔍
+                                <button onclick="inspectSmileForExpiration('${r.Expiration}')" class="px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-slate-300 text-[10px] font-semibold border border-white/10 transition" title="Inspect Smile & Skew">
+                                    Inspect
                                 </button>
                             </div>
                         </td>
@@ -4148,13 +4148,13 @@ async function init() {
 
             // 3. Render 4 KPI Tiles
             const edgeCleanBadge = edgeClean <= -2.0 
-                ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-mint/20 text-mint border border-mint/30">🟢 Underpriced Window</span>' 
-                : (edgeClean >= 2.0 ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-cherry/20 text-cherry border border-cherry/30">🔴 Overpriced Window</span>' : '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-slate-700/50 text-slate-300">⚪ Neutral Pricing</span>');
+                ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-mint/20 text-mint border border-mint/30">Underpriced Window</span>' 
+                : (edgeClean >= 2.0 ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-cherry/20 text-cherry border border-cherry/30">Overpriced Window</span>' : '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-slate-700/50 text-slate-300">Neutral Pricing</span>');
             const edgeCleanColor = edgeClean <= -2.0 ? 'text-mint' : (edgeClean >= 2.0 ? 'text-cherry' : 'text-slate-200');
 
             const edge1yBadge = edge1y <= -2.0 
-                ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30">🟢 Below 1Y Normal</span>' 
-                : (edge1y >= 2.0 ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">🔴 Above 1Y Normal</span>' : '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-slate-700/50 text-slate-300">⚪ Near Baseline</span>');
+                ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30">Below 1Y Normal</span>' 
+                : (edge1y >= 2.0 ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">Above 1Y Normal</span>' : '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-slate-700/50 text-slate-300">Near Baseline</span>');
             const edge1yColor = edge1y <= -2.0 ? 'text-sky-400' : (edge1y >= 2.0 ? 'text-amber-400' : 'text-slate-200');
 
             kpiStrip.innerHTML = `
@@ -4189,48 +4189,39 @@ async function init() {
             if (edgeClean < -1.5) {
                 const discountPct = Math.round((1.0 - ratioClean) * 100);
                 analysisHtml = `
-                    <div class="flex items-start gap-2.5">
-                        <span class="text-base">🎯</span>
-                        <div class="space-y-1">
-                            <div class="font-bold text-white flex items-center gap-2">
-                                <span>Institutional Structural Cheapness Detected (${discountPct}% Discount Window)</span>
-                                <span class="text-[10px] px-2 py-0.2 rounded bg-mint/20 text-mint font-mono font-bold">Executable Edge: ${edgeClean.toFixed(1)} pts</span>
-                            </div>
-                            <p class="text-slate-300 leading-relaxed">
-                                Market makers are pricing the <b>${windowDays}-day forward gap</b> between <b>${r1.Expiration}</b> and <b>${r2.Expiration}</b> at an implied volatility of <b>${fwdExec.toFixed(1)}%</b>, which is <b>${Math.abs(edgeClean).toFixed(1)} vol points below</b> recent clean realized price movement (<b class="text-amber-400">${cleanHv.toFixed(1)}% Clean HV</b>).
-                            </p>
-                            <p class="text-slate-400 leading-relaxed">
-                                <b>Trade Mechanics:</b> By selling the decaying front leg (${r1.Expiration}) at Bid and purchasing the back leg (${r2.Expiration}) at Ask, you synthetically acquire that ${windowDays}-day forward period at <b>${fwdExec.toFixed(1)}% IV</b> for a net debit of <b>$${netDebitExec.toFixed(2)}</b>. You collect <b>${thetaTag}</b> in positive carry. If the stock breaks out or volatility mean-reverts, the long back contract expands significantly faster than the short leg.
-                            </p>
+                    <div class="space-y-1">
+                        <div class="font-bold text-white flex items-center gap-2">
+                            <span>Institutional Structural Cheapness Detected (${discountPct}% Discount Window)</span>
+                            <span class="text-[10px] px-2 py-0.2 rounded bg-mint/20 text-mint font-mono font-bold">Executable Edge: ${edgeClean.toFixed(1)} pts</span>
                         </div>
+                        <p class="text-slate-300 leading-relaxed">
+                            Market makers are pricing the <b>${windowDays}-day forward gap</b> between <b>${r1.Expiration}</b> and <b>${r2.Expiration}</b> at an implied volatility of <b>${fwdExec.toFixed(1)}%</b>, which is <b>${Math.abs(edgeClean).toFixed(1)} vol points below</b> recent clean realized price movement (<b class="text-amber-400">${cleanHv.toFixed(1)}% Clean HV</b>).
+                        </p>
+                        <p class="text-slate-400 leading-relaxed">
+                            <b>Trade Mechanics:</b> By selling the decaying front leg (${r1.Expiration}) at Bid and purchasing the back leg (${r2.Expiration}) at Ask, you synthetically acquire that ${windowDays}-day forward period at <b>${fwdExec.toFixed(1)}% IV</b> for a net debit of <b>$${netDebitExec.toFixed(2)}</b>. You collect <b>${thetaTag}</b> in positive carry. If the stock breaks out or volatility mean-reverts, the long back contract expands significantly faster than the short leg.
+                        </p>
                     </div>
                 `;
             } else if (edgeClean > 1.5) {
                 analysisHtml = `
-                    <div class="flex items-start gap-2.5">
-                        <span class="text-base">⚠️</span>
-                        <div class="space-y-1">
-                            <div class="font-bold text-amber-300 flex items-center gap-2">
-                                <span>Elevated Forward Volatility Window (+${edgeClean.toFixed(1)} pts Premium)</span>
-                            </div>
-                            <p class="text-slate-300 leading-relaxed">
-                                Forward volatility between <b>${r1.Expiration}</b> and <b>${r2.Expiration}</b> is priced at <b>${fwdExec.toFixed(1)}%</b>, trading at a <b>+${edgeClean.toFixed(1)} pt premium</b> to 30D Clean Realized HV. Market makers are anticipating substantial movement, catalyst events, or elevated variance during this window. Time spread buyers pay a premium here; time spread sellers collect high implied variance.
-                            </p>
+                    <div class="space-y-1">
+                        <div class="font-bold text-amber-300 flex items-center gap-2">
+                            <span>Elevated Forward Volatility Window (+${edgeClean.toFixed(1)} pts Premium)</span>
                         </div>
+                        <p class="text-slate-300 leading-relaxed">
+                            Forward volatility between <b>${r1.Expiration}</b> and <b>${r2.Expiration}</b> is priced at <b>${fwdExec.toFixed(1)}%</b>, trading at a <b>+${edgeClean.toFixed(1)} pt premium</b> to 30D Clean Realized HV. Market makers are anticipating substantial movement, catalyst events, or elevated variance during this window. Time spread buyers pay a premium here; time spread sellers collect high implied variance.
+                        </p>
                     </div>
                 `;
             } else {
                 analysisHtml = `
-                    <div class="flex items-start gap-2.5">
-                        <span class="text-base">⚖️</span>
-                        <div class="space-y-1">
-                            <div class="font-bold text-slate-200">
-                                <span>Neutral Forward Pricing (${fwdExec.toFixed(1)}% Forward Volatility)</span>
-                            </div>
-                            <p class="text-slate-400 leading-relaxed">
-                                Forward volatility between <b>${r1.Expiration}</b> and <b>${r2.Expiration}</b> is roughly in line with underlying price movement (${ratioClean.toFixed(2)}x Clean HV). Net theta carry is ${thetaTag}.
-                            </p>
+                    <div class="space-y-1">
+                        <div class="font-bold text-slate-200">
+                            <span>Neutral Forward Pricing (${fwdExec.toFixed(1)}% Forward Volatility)</span>
                         </div>
+                        <p class="text-slate-400 leading-relaxed">
+                            Forward volatility between <b>${r1.Expiration}</b> and <b>${r2.Expiration}</b> is roughly in line with underlying price movement (${ratioClean.toFixed(2)}x Clean HV). Net theta carry is ${thetaTag}.
+                        </p>
                     </div>
                 `;
             }
