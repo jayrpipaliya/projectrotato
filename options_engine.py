@@ -1070,16 +1070,19 @@ def compute_realized_volatilities(df_history=None, ticker_symbol=None):
     ret = df['Close'].pct_change().dropna()
     
     hv_10 = float(ret.tail(10).std() * np.sqrt(252) * 100) if len(ret) >= 10 else 20.0
-    hv_20 = float(ret.tail(20).std() * np.sqrt(252) * 100) if len(ret) >= 20 else 20.0
-    hv_30 = float(ret.tail(30).std() * np.sqrt(252) * 100) if len(ret) >= 30 else 20.0
-    hv_60 = float(ret.tail(60).std() * np.sqrt(252) * 100) if len(ret) >= 60 else 20.0
+    hv_20 = float(ret.tail(20).std() * np.sqrt(252) * 100) if len(ret) >= 20 else hv_10
+    hv_30 = float(ret.tail(30).std() * np.sqrt(252) * 100) if len(ret) >= 20 else hv_20
+    hv_60 = float(ret.tail(60).std() * np.sqrt(252) * 100) if len(ret) >= 40 else hv_30
     hv_252 = float(ret.tail(252).std() * np.sqrt(252) * 100) if len(ret) >= 150 else hv_60
     
-    # De-Jumped HV: Winsorize outliers beyond 3 standard deviations (removes 1-day earnings gap spike)
+    # De-Jumped HV: Robust Winsorization using Median Absolute Deviation (MAD)
+    # Prevents massive single-day earnings shocks from distorting true noise volatility
     tail_30 = ret.tail(30).copy()
-    med_std = tail_30.std()
-    clean_tail_30 = tail_30.clip(lower=-3.0 * med_std, upper=3.0 * med_std)
-    hv_30_clean = float(clean_tail_30.std() * np.sqrt(252) * 100)
+    median_val = float(tail_30.median())
+    mad = float(np.median(np.abs(tail_30 - median_val)))
+    robust_std = 1.4826 * mad if mad > 0 else float(tail_30.std())
+    clean_tail_30 = tail_30.clip(lower=median_val - 3.0 * robust_std, upper=median_val + 3.0 * robust_std)
+    hv_30_clean = float(clean_tail_30.std() * np.sqrt(252) * 100) if len(clean_tail_30) >= 10 else hv_30
     
     if 'High' in df.columns and 'Low' in df.columns:
         hl_ratio = np.log(df['High'] / df['Low'])
@@ -1258,12 +1261,17 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
                     
                 call_b = float(atm_call.bid) if pd.notnull(atm_call.bid) and atm_call.bid > 0 else 0.0
                 call_a = float(atm_call.ask) if pd.notnull(atm_call.ask) and atm_call.ask > 0 else 0.0
+                # Sanitize crossed after-hours quotes from yfinance (where stale bid > ask)
+                if call_a > 0 and call_b > call_a:
+                    call_b, call_a = call_a, call_b
                 call_mid = round((call_b + call_a) / 2.0, 2)
                 call_spread_pct = round(((call_a - call_b) / max(call_mid, 0.05)) * 100.0, 1) if call_a >= call_b else 0.0
                 
                 q_div = get_dividend_yield(ticker_symbol)
                 call_bid_iv = round(implied_vol_solver(call_b, spot_price, atm_call.strike, t_years, q=q_div, is_call=True) * 100.0, 2) if call_b > 0 else raw_atm_iv
                 call_ask_iv = round(implied_vol_solver(call_a, spot_price, atm_call.strike, t_years, q=q_div, is_call=True) * 100.0, 2) if call_a > 0 else raw_atm_iv
+                if call_bid_iv > call_ask_iv:
+                    call_bid_iv, call_ask_iv = call_ask_iv, call_bid_iv
                 call_theta = round(black_scholes_theta(spot_price, atm_call.strike, t_years, raw_atm_iv / 100.0, q=q_div, is_call=True), 2)
 
                 return {
