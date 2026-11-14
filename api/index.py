@@ -470,7 +470,9 @@ def api_options(ticker: str, direction: str = Query(None), side: str = Query(Non
         from options_engine import compute_realized_volatilities, fetch_term_structure, compute_iv_rank_and_percentile, analyze_smile_and_skew
         df_hist = load_ticker_data(t_up)
         hvs = compute_realized_volatilities(df_hist, ticker_symbol=t_up)
-        term_df, spot_price, next_earnings = fetch_term_structure(t_up, hvs_dict=hvs)
+        clean_hv = float(hvs.get('HV_30_clean', hvs.get('HV_30', 20.0)))
+        hv_1y = float(hvs.get('HV_252', hvs.get('HV_1Y', 20.0)))
+        term_df, spot_price, next_earnings = fetch_term_structure(t_up, hvs_dict=hvs, hv_benchmark=clean_hv)
         if term_df.empty or spot_price is None:
             return {"error": f"Live options data not available for {t_up}"}
             
@@ -483,6 +485,10 @@ def api_options(ticker: str, direction: str = Query(None), side: str = Query(Non
         for idx, row in term_df.iterrows():
             atm_iv = float(row['ATM_IV'])
             slope_front = round(atm_iv - front_atm_iv, 2)
+            spread_clean = round(atm_iv - clean_hv, 2)
+            spread_1y = round(atm_iv - hv_1y, 2)
+            ratio_clean = round(atm_iv / max(clean_hv, 0.1), 2)
+            ratio_1y = round(atm_iv / max(hv_1y, 0.1), 2)
             if idx == 0:
                 slope_prev = 0.0
                 struct_label = "Front Baseline"
@@ -500,6 +506,10 @@ def api_options(ticker: str, direction: str = Query(None), side: str = Query(Non
             r_dict['Expiration'] = str(row['Expiration'])
             r_dict['Slope_Front'] = slope_front
             r_dict['Slope_Prev'] = slope_prev
+            r_dict['Spread_HV_Clean'] = spread_clean
+            r_dict['Spread_HV_1Y'] = spread_1y
+            r_dict['Ratio_HV_Clean'] = ratio_clean
+            r_dict['Ratio_HV_1Y'] = ratio_1y
             r_dict['Structure'] = struct_label
             r_dict['Total_OI'] = int(row.get('Total_OI', 0))
             enriched_chains.append(r_dict)
@@ -614,17 +624,104 @@ def api_options(ticker: str, direction: str = Query(None), side: str = Query(Non
             for row in enriched_chains
         ]
 
+        # Relative Value & Forward Volatility Opportunity Scanner
+        rv_opportunities = []
+        n_chains = len(enriched_chains)
+        import numpy as np
+        for i in range(n_chains):
+            # Evaluate forward spreads up to 5 maturity cycles ahead
+            for j in range(i + 1, min(i + 6, n_chains)):
+                r1 = enriched_chains[i]
+                r2 = enriched_chains[j]
+                dte1 = int(r1.get('DTE', 0))
+                dte2 = int(r2.get('DTE', 0))
+                if dte2 <= dte1 or (dte2 - dte1) < 4:
+                    continue
+                
+                t1 = dte1 / 365.25
+                t2 = dte2 / 365.25
+                dt = t2 - t1
+                
+                iv1_mid = float(r1.get('ATM_IV', 20.0))
+                iv2_mid = float(r2.get('ATM_IV', 20.0))
+                
+                # Theoretical Mid Forward Vol
+                var1_mid = (iv1_mid / 100.0)**2 * t1
+                var2_mid = (iv2_mid / 100.0)**2 * t2
+                dvar_mid = var2_mid - var1_mid
+                fwd_mid = float(np.sqrt(dvar_mid / dt) * 100.0) if dvar_mid > 0 and dt > 0 else 0.0
+                
+                # Executable Forward Vol (Sell Front at Bid, Buy Back at Ask)
+                iv1_bid = float(r1.get('Call_Bid_IV', iv1_mid))
+                iv2_ask = float(r2.get('Call_Ask_IV', iv2_mid))
+                
+                var1_bid = (iv1_bid / 100.0)**2 * t1
+                var2_ask = (iv2_ask / 100.0)**2 * t2
+                dvar_exec = var2_ask - var1_bid
+                fwd_exec = float(np.sqrt(dvar_exec / dt) * 100.0) if dvar_exec > 0 and dt > 0 else fwd_mid
+                
+                drag = round(fwd_exec - fwd_mid, 1)
+                spread_clean = round(fwd_exec - clean_hv, 1)
+                spread_1y = round(fwd_exec - hv_1y, 1)
+                ratio_clean = round(fwd_exec / max(clean_hv, 0.1), 2)
+                ratio_1y = round(fwd_exec / max(hv_1y, 0.1), 2)
+                
+                c1_b = float(r1.get('Call_Bid', 0))
+                c1_a = float(r1.get('Call_Ask', 0))
+                c2_b = float(r2.get('Call_Bid', 0))
+                c2_a = float(r2.get('Call_Ask', 0))
+                
+                net_debit_exec = round(c2_a - c1_b, 2)
+                net_debit_mid = round(((c2_b + c2_a)/2.0) - ((c1_b + c1_a)/2.0), 2)
+                slippage_cost = round(net_debit_exec - net_debit_mid, 2)
+                
+                th1 = abs(float(r1.get('Call_Theta', 0)))
+                th2 = abs(float(r2.get('Call_Theta', 0)))
+                net_theta = round(th1 - th2, 2)
+                
+                is_prime = bool((spread_clean <= -1.5 or spread_1y <= -1.5) and net_debit_exec > 0)
+                
+                rv_opportunities.append({
+                    'front_exp': str(r1['Expiration']),
+                    'back_exp': str(r2['Expiration']),
+                    'dte1': dte1,
+                    'dte2': dte2,
+                    'window_days': dte2 - dte1,
+                    'fwd_mid': round(fwd_mid, 1),
+                    'fwd_exec': round(fwd_exec, 1),
+                    'drag': drag,
+                    'spread_clean': spread_clean,
+                    'spread_1y': spread_1y,
+                    'ratio_clean': ratio_clean,
+                    'ratio_1y': ratio_1y,
+                    'net_debit_exec': net_debit_exec,
+                    'net_debit_mid': net_debit_mid,
+                    'slippage_cost': slippage_cost,
+                    'net_theta': net_theta,
+                    'is_prime': is_prime,
+                    'strike_front': float(r1.get('ATM_Strike', 0)),
+                    'strike_back': float(r2.get('ATM_Strike', 0)),
+                    'front_tenor': r1.get('Benchmark_Tenor'),
+                    'back_tenor': r2.get('Benchmark_Tenor')
+                })
+        
+        # Sort so prime discounted windows come first
+        rv_opportunities = sorted(rv_opportunities, key=lambda x: (not x['is_prime'], x['spread_clean']))
+
         return clean_json({
             "ticker": t_up,
             "spot_price": round(spot_price, 2),
             "next_earnings": next_earnings.strftime("%b %d, %Y") if next_earnings else None,
+            "clean_hv": round(clean_hv, 2),
+            "hv_1y": round(hv_1y, 2),
             "hvs": hvs,
             "iv_stats": iv_stats,
             "term_regime": term_regime,
             "term_chains": enriched_chains,
             "expirations": expirations_list,
             "selected_expiration": chosen_exp,
-            "smile": smile_payload
+            "smile": smile_payload,
+            "rv_opportunities": rv_opportunities
         })
     except Exception as e:
         return {"error": str(e)}
@@ -1770,7 +1867,8 @@ HTML_CONTENT = """<!DOCTYPE html>
                     </div>
                     <div class="text-xs text-slate-400 flex items-center gap-3">
                         <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 bg-mint inline-block"></span> ATM IV Curve</span>
-                        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 border-t border-dashed border-slate-400 inline-block"></span> 30D Realized HV</span>
+                        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 border-t border-dashed border-amber-400 inline-block"></span> 30D Clean Realized HV</span>
+                        <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 border-t border-dotted border-sky-400 inline-block"></span> 1-Yr Normal HV Baseline</span>
                     </div>
                 </div>
                 <div id="optionsTermStructureChart" style="height: 330px;"></div>
@@ -1784,7 +1882,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                             <span>Multi-Expiry Contract Comparison Matrix</span>
                             <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-mint/15 text-mint border border-mint/20">Cycle Comparison</span>
                         </h3>
-                        <p class="text-xs text-slate-400 mt-0.5">Compare contract horizons across months (Dec, Jan, Mar, Jun) to evaluate relative cheapness, term slope steps (ΔIV), and open interest liquidity.</p>
+                        <p class="text-xs text-slate-400 mt-0.5">Compare contract horizons across months to benchmark ATM IV against 30D Clean Realized HV and 1-Year Normal Baseline HV.</p>
                     </div>
                     <!-- Open Interest Benchmark Slicer Toggle -->
                     <div class="flex items-center gap-2 bg-[#0b0d12] p-1 rounded-lg border border-white/10 shrink-0">
@@ -1804,23 +1902,95 @@ HTML_CONTENT = """<!DOCTYPE html>
                             <tr>
                                 <th class="py-2.5 px-3">Expiration Date</th>
                                 <th class="py-2.5 px-3">Horizon / Tenor</th>
-                                <th class="py-2.5 px-3">Open Interest (OI)</th>
                                 <th class="py-2.5 px-3">DTE</th>
                                 <th class="py-2.5 px-3">ATM Strike</th>
                                 <th class="py-2.5 px-3">ATM IV</th>
-                                <th class="py-2.5 px-3">Term Slope vs Front</th>
-                                <th class="py-2.5 px-3">Slope vs Prev</th>
-                                <th class="py-2.5 px-3">Structure</th>
+                                <th class="py-2.5 px-3">Term Slope</th>
+                                <th class="py-2.5 px-3">vs Clean HV</th>
+                                <th class="py-2.5 px-3">vs 1Y Normal</th>
+                                <th class="py-2.5 px-3">Call Bid / Ask</th>
+                                <th class="py-2.5 px-3">Open Interest</th>
                                 <th class="py-2.5 px-3">Expected Move (1σ)</th>
-                                <th class="py-2.5 px-3">Expected Range</th>
                                 <th class="py-2.5 px-3">Catalysts</th>
-                                <th class="py-2.5 px-3 text-right">Inspect</th>
+                                <th class="py-2.5 px-3 text-right">RV Pair / Inspect</th>
                             </tr>
                         </thead>
                         <tbody id="optionsTermComparisonTbody" class="divide-y divide-white/5">
                             <tr><td colspan="13" class="text-center py-4 text-slate-500">Loading term structure cycles...</td></tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+
+            <!-- SECTION 2B: Forward Volatility & Executable Edge Desk -->
+            <div class="lux-card p-4 mb-5 border border-mint/20 shadow-xl bg-gradient-to-br from-[#0c1017] via-[#0b0d12] to-[#0a1118]" id="optionsRvDeskCard">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-4 pb-3 border-b border-white/10">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-mint/20 text-mint border border-mint/30 shadow-sm">Relative Value Execution</span>
+                            <h3 class="text-sm font-bold text-white flex items-center gap-1.5">
+                                Forward Volatility & Executable Edge Desk
+                                <span class="text-slate-500 hover:text-slate-300 cursor-pointer text-xs" title="Synthetic Forward Volatility Desk: Solves the forward variance between two maturities (Var2 - Var1). Identifies structural mispricings where forward volatility is deeply discounted vs 30D Clean Realized HV or 1-Year Normal Baseline HV. All metrics are computed on real Bid/Ask marks (Sell Front at Bid, Buy Back at Ask) to expose Bid/Ask spread drag.">ⓘ</span>
+                            </h3>
+                        </div>
+                        <p class="text-xs text-slate-400 mt-1">
+                            Synthetically purchase forward volatility windows at structural discounts vs. <b class="text-amber-400">30D Clean Realized HV</b> and <b class="text-sky-400">1-Year Normal HV</b> using Time Spreads (Calendar / Diagonal).
+                        </p>
+                    </div>
+
+                    <!-- Expiration Pair Slicers -->
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <div class="flex items-center gap-1.5 bg-[#07090e] px-2.5 py-1.5 rounded-lg border border-cherry/30">
+                            <span class="text-[10px] font-bold text-cherry uppercase">Short Leg (Bid):</span>
+                            <select id="rvFrontSelect" onchange="onRvPairChange()" class="bg-transparent text-xs font-semibold text-white border-none focus:outline-none cursor-pointer">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                        <span class="text-slate-500 text-xs font-bold">➔</span>
+                        <div class="flex items-center gap-1.5 bg-[#07090e] px-2.5 py-1.5 rounded-lg border border-mint/30">
+                            <span class="text-[10px] font-bold text-mint uppercase">Long Leg (Ask):</span>
+                            <select id="rvBackSelect" onchange="onRvPairChange()" class="bg-transparent text-xs font-semibold text-white border-none focus:outline-none cursor-pointer">
+                                <!-- Populated dynamically -->
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Detected Prime RV Opportunities (Quick-Pick Pills) -->
+                <div class="mb-4">
+                    <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
+                        <span class="flex items-center gap-1.5">
+                            <span>🔥 Detected Prime Relative Value Pairs</span>
+                            <span class="text-[9.5px] text-slate-500 font-normal">(Click pill to load into desk)</span>
+                        </span>
+                        <span class="text-[9.5px] text-slate-500 font-mono" id="rvScanCount"></span>
+                    </div>
+                    <div id="rvQuickPills" class="flex items-center gap-2 flex-wrap min-h-[32px]">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- 2-Column Leg Execution Breakdown Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-4">
+                    <!-- Short Leg Card -->
+                    <div class="bg-black/40 rounded-xl p-3.5 border border-cherry/25 relative" id="rvShortLegCard">
+                        <!-- Populated dynamically -->
+                    </div>
+
+                    <!-- Long Leg Card -->
+                    <div class="bg-black/40 rounded-xl p-3.5 border border-mint/25 relative" id="rvLongLegCard">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- 4 Net Execution & Volatility Edge KPI Tiles -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-3.5" id="rvKpiStrip">
+                    <!-- Populated dynamically: Net Debit, True Exec Forward Vol, Edge vs Clean HV, Edge vs 1Y Normal HV -->
+                </div>
+
+                <!-- Net Daily Theta Carry & Strategy Verdict Banner -->
+                <div id="rvVerdictBanner" class="p-3.5 rounded-lg border text-xs bg-slate-900/60 border-white/10 text-slate-300">
+                    <!-- Populated dynamically -->
                 </div>
             </div>
 
@@ -3540,12 +3710,18 @@ async function init() {
         let CURRENT_OPTIONS_CHAINS = [];
         let CURRENT_OPTIONS_FILTER_BENCHMARK = true;
         let CURRENT_OPTIONS_CLEAN_HV = 0;
+        let CURRENT_OPTIONS_HV1Y = 0;
         let CURRENT_OPTIONS_FRONT_IV = 0;
+        let CURRENT_OPTIONS_RV_OPPORTUNITIES = [];
+        let CURRENT_RV_FRONT_EXP = "";
+        let CURRENT_RV_BACK_EXP = "";
 
         async function loadOptionsDesk(force = false) {
             const ticker = document.getElementById('optionsTickerSelect').value || 'QQQ';
             if (CURRENT_OPTIONS_TICKER !== ticker) {
                 CURRENT_OPTIONS_EXPIRATION = "";
+                CURRENT_RV_FRONT_EXP = "";
+                CURRENT_RV_BACK_EXP = "";
             }
             const kpiRow = document.getElementById('optionsKpiRow');
             const termTbody = document.getElementById('optionsTermComparisonTbody');
@@ -3574,13 +3750,16 @@ async function init() {
                 const earns = data.next_earnings || "Macro Index / ETF";
                 const frontRow = termChains.length > 0 ? termChains[0] : {};
                 const frontAtmIv = frontRow.ATM_IV != null ? Number(frontRow.ATM_IV).toFixed(1) : (ivStats.current_iv || 20.0).toFixed(1);
-                const cleanHv = Number(h.HV_30_clean || h.HV_30 || 20.0);
+                const cleanHv = Number(data.clean_hv || h.HV_30_clean || h.HV_30 || 20.0);
+                const hv1y = Number(data.hv_1y || h.HV_252 || h.HV_1Y || 20.0);
 
                 CURRENT_OPTIONS_SPOT = spot;
                 CURRENT_OPTIONS_EXPIRATION = data.selected_expiration || (data.smile ? data.smile.expiration : '');
                 CURRENT_OPTIONS_CHAINS = termChains || [];
                 CURRENT_OPTIONS_CLEAN_HV = cleanHv || 0;
+                CURRENT_OPTIONS_HV1Y = hv1y || 0;
                 CURRENT_OPTIONS_FRONT_IV = frontAtmIv || 0;
+                CURRENT_OPTIONS_RV_OPPORTUNITIES = data.rv_opportunities || [];
 
                 // 1. Render Top 5 Macro Volatility KPI Cards
                 const ivp = ivStats.iv_percentile != null ? Number(ivStats.iv_percentile).toFixed(0) : '--';
@@ -3629,11 +3808,14 @@ async function init() {
                     ? CURRENT_OPTIONS_CHAINS.filter(r => r.Is_Benchmark)
                     : CURRENT_OPTIONS_CHAINS;
 
-                // 2. Render Volatility Term Structure Curve (Plotly Chart)
-                renderTermStructureChart(displayChains, cleanHv, frontAtmIv);
+                // 2. Render Volatility Term Structure Curve (Plotly Chart) with 3 Benchmark Lines
+                renderTermStructureChart(displayChains, cleanHv, frontAtmIv, hv1y);
 
                 // 3. Render Multi-Expiry Contract Comparison Matrix Table
-                renderTermComparisonTable(displayChains, CURRENT_OPTIONS_EXPIRATION);
+                renderTermComparisonTable(displayChains, CURRENT_OPTIONS_EXPIRATION, cleanHv, hv1y);
+
+                // 3B. Render Forward Volatility & Executable Edge Desk
+                renderRelativeValueDesk(CURRENT_OPTIONS_RV_OPPORTUNITIES, CURRENT_OPTIONS_CHAINS, spot, cleanHv, hv1y);
 
                 // 4. Populate Expiration Dropdown Selector
                 const expSelect = document.getElementById('optionsExpSelect');
@@ -3673,11 +3855,11 @@ async function init() {
             const displayChains = (CURRENT_OPTIONS_FILTER_BENCHMARK && CURRENT_OPTIONS_CHAINS.some(r => r.Is_Benchmark))
                 ? CURRENT_OPTIONS_CHAINS.filter(r => r.Is_Benchmark)
                 : CURRENT_OPTIONS_CHAINS;
-            renderTermStructureChart(displayChains, CURRENT_OPTIONS_CLEAN_HV, CURRENT_OPTIONS_FRONT_IV);
-            renderTermComparisonTable(displayChains, CURRENT_OPTIONS_EXPIRATION);
+            renderTermStructureChart(displayChains, CURRENT_OPTIONS_CLEAN_HV, CURRENT_OPTIONS_FRONT_IV, CURRENT_OPTIONS_HV1Y);
+            renderTermComparisonTable(displayChains, CURRENT_OPTIONS_EXPIRATION, CURRENT_OPTIONS_CLEAN_HV, CURRENT_OPTIONS_HV1Y);
         }
 
-        function renderTermStructureChart(chains, cleanHv, frontAtmIv) {
+        function renderTermStructureChart(chains, cleanHv, frontAtmIv, hv1y) {
             if (!chains || chains.length === 0) return;
             const xLabels = chains.map(r => `${r.Expiration}<br><b>${r.DTE}d</b>`);
             const yIvs = chains.map(r => r.ATM_IV);
@@ -3687,13 +3869,21 @@ async function init() {
                 const earnTag = r.Spans_Earnings ? '⚠️ Spans Earnings Event' : 'Inter-Earnings';
                 const tenorTag = r.Benchmark_Tenor ? `[${r.Benchmark_Tenor}] ` : '';
                 const oiTag = r.Total_OI ? `<br>Total Open Interest: <b>${r.Total_OI.toLocaleString()} contracts</b>` : '';
+                const cleanSpread = (r.ATM_IV - cleanHv).toFixed(1);
+                const cleanSpreadText = cleanSpread >= 0 ? `+${cleanSpread} pts (Rich)` : `${cleanSpread} pts (Cheap)`;
+                const hv1ySpread = (r.ATM_IV - (hv1y || 20.0)).toFixed(1);
+                const hv1ySpreadText = hv1ySpread >= 0 ? `+${hv1ySpread} pts` : `${hv1ySpread} pts`;
+                const callBidAsk = (r.Call_Bid && r.Call_Ask) ? `<br>Call Bid/Ask: <b>$${Number(r.Call_Bid).toFixed(2)} / $${Number(r.Call_Ask).toFixed(2)}</b> (Spread: ${r.Call_Spread_Pct || 0}%)` : '';
+                const thetaText = r.Call_Theta ? `<br>Call Daily Theta: <b>-$${Math.abs(Number(r.Call_Theta)).toFixed(2)}/day</b>` : '';
+
                 return `<b>${tenorTag}${r.Expiration} (${r.DTE} DTE)</b><br>` +
-                       `ATM Strike: <b>$${r.ATM_Strike}</b><br>` +
-                       `ATM IV: <b>${r.ATM_IV.toFixed(2)}%</b><br>` +
-                       `Term Slope vs Front: <b>${slopeSign}${r.Slope_Front.toFixed(2)} pts</b> (${r.Structure})<br>` +
-                       `Slope vs Prev: <b>${r.Slope_Prev >= 0 ? '+' : ''}${r.Slope_Prev.toFixed(2)} pts</b><br>` +
-                       `1σ Expected Move: <b>±$${r.Expected_Move.toFixed(2)} (±${r.Expected_Move_Pct.toFixed(1)}%)</b><br>` +
-                       `Expected Range: <b>${r.Expected_Range}</b>${oiTag}<br>` +
+                       `ATM Strike: <b>$${Number(r.ATM_Strike).toFixed(0)}</b><br>` +
+                       `ATM IV: <b>${Number(r.ATM_IV).toFixed(2)}%</b><br>` +
+                       `Term Slope vs Front: <b>${slopeSign}${Number(r.Slope_Front).toFixed(2)} pts</b> (${r.Structure})<br>` +
+                       `Spread vs 30D Clean HV: <b>${cleanSpreadText}</b><br>` +
+                       `Spread vs 1-Yr Normal HV: <b>${hv1ySpreadText}</b><br>` +
+                       `1σ Expected Move: <b>±$${Number(r.Expected_Move).toFixed(2)} (±${Number(r.Expected_Move_Pct).toFixed(1)}%)</b><br>` +
+                       `Expected Range: <b>${r.Expected_Range}</b>${callBidAsk}${thetaText}${oiTag}<br>` +
                        `${earnTag}<extra></extra>`;
             });
 
@@ -3704,7 +3894,7 @@ async function init() {
                 {
                     x: xLabels,
                     y: yIvs,
-                    name: 'ATM Implied Volatility',
+                    name: 'ATM Implied Volatility Curve',
                     type: 'scatter',
                     mode: 'lines+markers',
                     line: { color: '#00F5A0', width: 2.5, shape: 'spline' },
@@ -3716,23 +3906,39 @@ async function init() {
             const shapes = [];
             const annotations = [];
 
-            // 30D Realized HV Benchmark Line
+            // 1. 30D Clean Realized HV Benchmark Line (Amber Dashed)
             if (cleanHv && cleanHv > 0) {
                 shapes.push({
                     type: 'line', x0: 0, x1: 1, xref: 'paper', y0: cleanHv, y1: cleanHv,
-                    line: { color: '#94a3b8', width: 1.5, dash: 'dash' }
+                    line: { color: '#F59E0B', width: 1.5, dash: 'dash' }
                 });
                 annotations.push({
                     x: 1.0, xref: 'paper', y: cleanHv,
-                    text: `30D Realized HV: ${cleanHv.toFixed(1)}%`,
+                    text: `30D Clean HV: ${cleanHv.toFixed(1)}%`,
                     showarrow: false,
                     xanchor: 'right',
                     yanchor: 'bottom',
-                    font: { color: '#94a3b8', size: 10, family: 'Plus Jakarta Sans, sans-serif' }
+                    font: { color: '#F59E0B', size: 10, family: 'Plus Jakarta Sans, sans-serif' }
                 });
             }
 
-            const yVals = [...yIvs, cleanHv].filter(v => v > 0);
+            // 2. 1-Year Baseline Normal HV Benchmark Line (Sky Blue Dotted)
+            if (hv1y && hv1y > 0) {
+                shapes.push({
+                    type: 'line', x0: 0, x1: 1, xref: 'paper', y0: hv1y, y1: hv1y,
+                    line: { color: '#38BDF8', width: 1.5, dash: 'dot' }
+                });
+                annotations.push({
+                    x: 1.0, xref: 'paper', y: hv1y,
+                    text: `1-Yr Normal HV: ${hv1y.toFixed(1)}%`,
+                    showarrow: false,
+                    xanchor: 'right',
+                    yanchor: cleanHv > hv1y ? 'top' : 'bottom',
+                    font: { color: '#38BDF8', size: 10, family: 'Plus Jakarta Sans, sans-serif' }
+                });
+            }
+
+            const yVals = [...yIvs, cleanHv, hv1y].filter(v => v > 0);
             const minY = Math.max(0, Math.floor(Math.min(...yVals) - 2));
             const maxY = Math.ceil(Math.max(...yVals) + 3);
 
@@ -3751,7 +3957,7 @@ async function init() {
             Plotly.newPlot('optionsTermStructureChart', traces, layout, {responsive: true});
         }
 
-        function renderTermComparisonTable(chains, activeExp) {
+        function renderTermComparisonTable(chains, activeExp, cleanHv, hv1y) {
             const tbody = document.getElementById('optionsTermComparisonTbody');
             if (!tbody) return;
             if (!chains || chains.length === 0) {
@@ -3759,11 +3965,22 @@ async function init() {
                 return;
             }
 
+            const c_hv = cleanHv || CURRENT_OPTIONS_CLEAN_HV || 20.0;
+            const y_hv = hv1y || CURRENT_OPTIONS_HV1Y || 20.0;
+
             tbody.innerHTML = chains.map((r, idx) => {
                 const isActive = (r.Expiration === activeExp);
-                const rowClass = isActive 
-                    ? 'bg-mint/10 border-l-2 border-mint transition' 
-                    : 'hover:bg-white/[0.02] transition border-b border-white/5 last:border-0';
+                const isShortLeg = (r.Expiration === CURRENT_RV_FRONT_EXP);
+                const isLongLeg = (r.Expiration === CURRENT_RV_BACK_EXP);
+                
+                let rowHighlight = 'hover:bg-white/[0.02] transition border-b border-white/5 last:border-0';
+                if (isShortLeg) {
+                    rowHighlight = 'bg-cherry/10 border-l-2 border-cherry transition';
+                } else if (isLongLeg) {
+                    rowHighlight = 'bg-mint/10 border-l-2 border-mint transition';
+                } else if (isActive) {
+                    rowHighlight = 'bg-sky-500/10 border-l-2 border-sky-400 transition';
+                }
                 
                 const tenorBadge = r.Benchmark_Tenor 
                     ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/15 text-mint border border-mint/25 whitespace-nowrap">${r.Benchmark_Tenor}</span>`
@@ -3777,49 +3994,394 @@ async function init() {
 
                 const slopeFrontSign = r.Slope_Front >= 0 ? '+' : '';
                 const slopeFrontColor = r.Slope_Front > 0.5 ? 'text-mint font-bold' : (r.Slope_Front < -0.5 ? 'text-cherry font-bold' : 'text-slate-300 font-medium');
-                
-                const slopePrevSign = r.Slope_Prev >= 0 ? '+' : '';
-                const slopePrevColor = idx === 0 ? 'text-slate-500' : (r.Slope_Prev > 0.5 ? 'text-mint' : (r.Slope_Prev < -0.5 ? 'text-cherry' : 'text-slate-400'));
-                const slopePrevText = idx === 0 ? '--' : `${slopePrevSign}${r.Slope_Prev.toFixed(2)} pts`;
 
-                let structBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700/50 text-slate-300 border border-slate-600/30">Flat</span>';
-                if (idx === 0) {
-                    structBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/15 text-sky-400 border border-sky-500/25">Front Baseline</span>';
-                } else if (r.Structure === 'Contango') {
-                    structBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/15 text-mint border border-mint/25">Contango</span>';
-                } else if (r.Structure === 'Backwardation') {
-                    structBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-cherry/15 text-cherry border border-cherry/25">Backwardation</span>';
-                }
+                // Spread vs 30D Clean HV
+                const spreadClean = Number((r.ATM_IV - c_hv).toFixed(1));
+                const spreadCleanColor = spreadClean < -1.5 ? 'text-mint font-bold' : (spreadClean > 1.5 ? 'text-cherry font-semibold' : 'text-slate-300');
+                const spreadCleanTag = spreadClean < -1.5 ? '🟢 Cheap' : (spreadClean > 1.5 ? '🔴 Rich' : '⚪ Neutral');
+
+                // Spread vs 1-Yr Normal HV
+                const spread1Y = Number((r.ATM_IV - y_hv).toFixed(1));
+                const spread1YColor = spread1Y < -1.5 ? 'text-sky-400 font-bold' : (spread1Y > 1.5 ? 'text-amber-400' : 'text-slate-400');
+
+                // Call Bid / Ask & Spread %
+                const callBid = r.Call_Bid != null ? `$${Number(r.Call_Bid).toFixed(2)}` : '--';
+                const callAsk = r.Call_Ask != null ? `$${Number(r.Call_Ask).toFixed(2)}` : '--';
+                const spreadPct = r.Call_Spread_Pct != null ? `${r.Call_Spread_Pct}%` : '--';
 
                 const earnBadge = r.Spans_Earnings 
                     ? '<span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-cherry/15 text-cherry border border-cherry/25">Spans Earnings</span>' 
                     : '<span class="px-2 py-0.5 rounded text-[10px] text-slate-400">Inter-Earnings</span>';
 
+                let legTag = '';
+                if (isShortLeg) legTag = '<span class="ml-1 text-[8.5px] px-1 py-0.2 rounded bg-cherry text-white font-extrabold uppercase">Short Leg</span>';
+                if (isLongLeg) legTag = '<span class="ml-1 text-[8.5px] px-1 py-0.2 rounded bg-mint text-black font-extrabold uppercase">Long Leg</span>';
+
                 return `
-                    <tr class="${rowClass}" data-exp="${r.Expiration}" onclick="inspectSmileForExpiration('${r.Expiration}')" style="cursor: pointer;">
+                    <tr class="${rowHighlight}" data-exp="${r.Expiration}" onclick="inspectSmileForExpiration('${r.Expiration}')" style="cursor: pointer;">
                         <td class="py-2.5 px-3 font-semibold text-white whitespace-nowrap">
-                            ${r.Expiration}
-                            ${isActive ? '<span class="ml-1.5 text-[9px] px-1.5 py-0.2 rounded bg-mint text-black font-extrabold uppercase">Viewing</span>' : ''}
+                            ${r.Expiration}${legTag}
                         </td>
                         <td class="py-2.5 px-3 whitespace-nowrap">${tenorBadge}</td>
-                        <td class="py-2.5 px-3 font-mono ${oiHighlight} whitespace-nowrap">${oiFormatted} <span class="text-[10px] text-slate-500 font-normal">OI</span></td>
                         <td class="py-2.5 px-3 font-mono text-slate-300 font-bold whitespace-nowrap">${r.DTE}d</td>
-                        <td class="py-2.5 px-3 font-mono text-white whitespace-nowrap">$${r.ATM_Strike.toFixed(0)}</td>
-                        <td class="py-2.5 px-3 font-mono font-bold text-white whitespace-nowrap">${r.ATM_IV.toFixed(2)}%</td>
-                        <td class="py-2.5 px-3 font-mono ${slopeFrontColor} whitespace-nowrap">${idx === 0 ? '--' : `${slopeFrontSign}${r.Slope_Front.toFixed(2)} pts`}</td>
-                        <td class="py-2.5 px-3 font-mono ${slopePrevColor} whitespace-nowrap">${slopePrevText}</td>
-                        <td class="py-2.5 px-3 whitespace-nowrap">${structBadge}</td>
-                        <td class="py-2.5 px-3 font-mono text-slate-200 whitespace-nowrap">±$${r.Expected_Move.toFixed(2)} <span class="text-slate-400 text-[11px]">(±${r.Expected_Move_Pct.toFixed(1)}%)</span></td>
-                        <td class="py-2.5 px-3 font-mono text-slate-300 whitespace-nowrap">${r.Expected_Range}</td>
+                        <td class="py-2.5 px-3 font-mono text-white whitespace-nowrap">$${Number(r.ATM_Strike).toFixed(0)}</td>
+                        <td class="py-2.5 px-3 font-mono font-bold text-white whitespace-nowrap">${Number(r.ATM_IV).toFixed(2)}%</td>
+                        <td class="py-2.5 px-3 font-mono ${slopeFrontColor} whitespace-nowrap">${idx === 0 ? '--' : `${slopeFrontSign}${Number(r.Slope_Front).toFixed(2)} pts`}</td>
+                        <td class="py-2.5 px-3 font-mono ${spreadCleanColor} whitespace-nowrap">${spreadClean >= 0 ? '+' : ''}${spreadClean} pts <span class="text-[9.5px] font-normal">${spreadCleanTag}</span></td>
+                        <td class="py-2.5 px-3 font-mono ${spread1YColor} whitespace-nowrap">${spread1Y >= 0 ? '+' : ''}${spread1Y} pts</td>
+                        <td class="py-2.5 px-3 font-mono text-slate-300 whitespace-nowrap">${callBid} / ${callAsk} <span class="text-slate-500 text-[10px]">(${spreadPct})</span></td>
+                        <td class="py-2.5 px-3 font-mono ${oiHighlight} whitespace-nowrap">${oiFormatted}</td>
+                        <td class="py-2.5 px-3 font-mono text-slate-200 whitespace-nowrap">±$${Number(r.Expected_Move).toFixed(2)} <span class="text-slate-400 text-[11px]">(±${Number(r.Expected_Move_Pct).toFixed(1)}%)</span></td>
                         <td class="py-2.5 px-3 whitespace-nowrap">${earnBadge}</td>
                         <td class="py-2.5 px-3 text-right whitespace-nowrap">
-                            <button onclick="event.stopPropagation(); inspectSmileForExpiration('${r.Expiration}')" class="px-2 py-1 rounded bg-white/5 hover:bg-mint/20 text-slate-300 hover:text-mint font-semibold text-[11px] transition border border-white/10 hover:border-mint/30">
-                                Inspect 🔍
-                            </button>
+                            <div class="flex items-center justify-end gap-1" onclick="event.stopPropagation()">
+                                <button onclick="setRvLeg('short', '${r.Expiration}')" class="px-1.5 py-0.5 rounded bg-cherry/15 hover:bg-cherry/30 text-cherry text-[10px] font-bold border border-cherry/30 transition" title="Set as Short Leg (Sold at Bid)">
+                                    + Short
+                                </button>
+                                <button onclick="setRvLeg('long', '${r.Expiration}')" class="px-1.5 py-0.5 rounded bg-mint/15 hover:bg-mint/30 text-mint text-[10px] font-bold border border-mint/30 transition" title="Set as Long Leg (Bought at Ask)">
+                                    + Long
+                                </button>
+                                <button onclick="inspectSmileForExpiration('${r.Expiration}')" class="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 text-slate-300 text-[10px] font-semibold border border-white/10 transition" title="Inspect Smile & Skew">
+                                    🔍
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 `;
             }).join('');
+        }
+
+        function renderRelativeValueDesk(rvList, chains, spot, cleanHv, hv1y) {
+            const frontSelect = document.getElementById('rvFrontSelect');
+            const backSelect = document.getElementById('rvBackSelect');
+            const pillsContainer = document.getElementById('rvQuickPills');
+            const scanCountEl = document.getElementById('rvScanCount');
+            if (!frontSelect || !backSelect || !chains || chains.length < 2) return;
+
+            // 1. Populate Dropdown Selectors
+            const frontOpts = chains.slice(0, -1).map(r => `
+                <option value="${r.Expiration}">
+                    ${r.Expiration} (${r.DTE}d) | IV: ${Number(r.ATM_IV).toFixed(1)}% | Bid: $${(Number(r.Call_Bid) || 0).toFixed(2)}
+                </option>
+            `).join('');
+            const backOpts = chains.slice(1).map(r => `
+                <option value="${r.Expiration}">
+                    ${r.Expiration} (${r.DTE}d) | IV: ${Number(r.ATM_IV).toFixed(1)}% | Ask: $${(Number(r.Call_Ask) || 0).toFixed(2)}
+                </option>
+            `).join('');
+            
+            frontSelect.innerHTML = frontOpts;
+            backSelect.innerHTML = backOpts;
+
+            // 2. Select default pair
+            const primeOpps = (rvList || []).filter(o => o.is_prime);
+            if (scanCountEl) {
+                scanCountEl.innerText = `${(rvList || []).length} forward pairs evaluated (${primeOpps.length} prime discounts)`;
+            }
+
+            if (!CURRENT_RV_FRONT_EXP || !CURRENT_RV_BACK_EXP) {
+                if (primeOpps.length > 0) {
+                    CURRENT_RV_FRONT_EXP = primeOpps[0].front_exp;
+                    CURRENT_RV_BACK_EXP = primeOpps[0].back_exp;
+                } else {
+                    CURRENT_RV_FRONT_EXP = chains[0].Expiration;
+                    CURRENT_RV_BACK_EXP = chains[1].Expiration;
+                }
+            }
+
+            frontSelect.value = CURRENT_RV_FRONT_EXP;
+            backSelect.value = CURRENT_RV_BACK_EXP;
+
+            // 3. Populate Quick Pills
+            if (pillsContainer) {
+                if (primeOpps.length === 0) {
+                    pillsContainer.innerHTML = `<span class="text-xs text-slate-500 italic">No deep discounts detected below clean realized vol. Consecutive horizons reflect balanced forward variance.</span>`;
+                } else {
+                    pillsContainer.innerHTML = primeOpps.slice(0, 4).map(opp => `
+                        <button onclick="setRvPair('${opp.front_exp}', '${opp.back_exp}')" class="px-2.5 py-1 rounded-lg text-xs font-semibold transition border ${opp.front_exp === CURRENT_RV_FRONT_EXP && opp.back_exp === CURRENT_RV_BACK_EXP ? 'bg-mint/20 text-mint border-mint/40 shadow-sm' : 'bg-white/5 text-slate-300 hover:text-white border-white/10 hover:border-mint/30'} flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-mint"></span>
+                            <span><b>${opp.front_exp}</b> ➔ <b>${opp.back_exp}</b> (${opp.window_days}d)</span>
+                            <span class="text-mint font-mono font-bold">${opp.fwd_exec}% Fwd</span>
+                            <span class="text-[10px] px-1.5 py-0.2 rounded bg-mint/15 text-mint border border-mint/25 font-bold">${opp.spread_clean} pts vs Clean</span>
+                            <span class="text-slate-400 font-mono text-[10px]">Net Debit: $${opp.net_debit_exec}</span>
+                        </button>
+                    `).join('');
+                }
+            }
+
+            // 4. Update the live Desk Cards & KPIs
+            updateRvDeskMetrics();
+        }
+
+        function setRvLeg(role, exp) {
+            if (role === 'short') {
+                CURRENT_RV_FRONT_EXP = exp;
+                const frontSelect = document.getElementById('rvFrontSelect');
+                if (frontSelect) frontSelect.value = exp;
+            } else {
+                CURRENT_RV_BACK_EXP = exp;
+                const backSelect = document.getElementById('rvBackSelect');
+                if (backSelect) backSelect.value = exp;
+            }
+            onRvPairChange();
+        }
+
+        function setRvPair(frontExp, backExp) {
+            CURRENT_RV_FRONT_EXP = frontExp;
+            CURRENT_RV_BACK_EXP = backExp;
+            const frontSelect = document.getElementById('rvFrontSelect');
+            const backSelect = document.getElementById('rvBackSelect');
+            if (frontSelect) frontSelect.value = frontExp;
+            if (backSelect) backSelect.value = backExp;
+            onRvPairChange();
+        }
+
+        function onRvPairChange() {
+            const frontSelect = document.getElementById('rvFrontSelect');
+            const backSelect = document.getElementById('rvBackSelect');
+            if (frontSelect) CURRENT_RV_FRONT_EXP = frontSelect.value;
+            if (backSelect) CURRENT_RV_BACK_EXP = backSelect.value;
+            updateRvDeskMetrics();
+            
+            // Re-render table active leg highlights
+            const displayChains = (CURRENT_OPTIONS_FILTER_BENCHMARK && CURRENT_OPTIONS_CHAINS.some(r => r.Is_Benchmark))
+                ? CURRENT_OPTIONS_CHAINS.filter(r => r.Is_Benchmark)
+                : CURRENT_OPTIONS_CHAINS;
+            renderTermComparisonTable(displayChains, CURRENT_OPTIONS_EXPIRATION, CURRENT_OPTIONS_CLEAN_HV, CURRENT_OPTIONS_HV1Y);
+        }
+
+        function updateRvDeskMetrics() {
+            const shortCard = document.getElementById('rvShortLegCard');
+            const longCard = document.getElementById('rvLongLegCard');
+            const kpiStrip = document.getElementById('rvKpiStrip');
+            const verdictBanner = document.getElementById('rvVerdictBanner');
+            const pillsContainer = document.getElementById('rvQuickPills');
+            if (!shortCard || !longCard || !kpiStrip || !verdictBanner) return;
+
+            const chains = CURRENT_OPTIONS_CHAINS || [];
+            const cleanHv = CURRENT_OPTIONS_CLEAN_HV || 20.0;
+            const hv1y = CURRENT_OPTIONS_HV1Y || 20.0;
+
+            const r1 = chains.find(c => c.Expiration === CURRENT_RV_FRONT_EXP);
+            const r2 = chains.find(c => c.Expiration === CURRENT_RV_BACK_EXP);
+
+            if (!r1 || !r2) return;
+
+            // Highlight active pill if matched
+            if (pillsContainer) {
+                Array.from(pillsContainer.children).forEach(b => {
+                    if (b.innerText && b.innerText.includes(r1.Expiration) && b.innerText.includes(r2.Expiration)) {
+                        b.className = "px-2.5 py-1 rounded-lg text-xs font-semibold transition border bg-mint/20 text-mint border-mint/40 shadow-sm flex items-center gap-1.5";
+                    } else {
+                        b.className = "px-2.5 py-1 rounded-lg text-xs font-semibold transition border bg-white/5 text-slate-300 hover:text-white border-white/10 hover:border-mint/30 flex items-center gap-1.5";
+                    }
+                });
+            }
+
+            const dte1 = Number(r1.DTE || 1);
+            const dte2 = Number(r2.DTE || 1);
+            const windowDays = Math.max(0, dte2 - dte1);
+            const t1 = dte1 / 365.25;
+            const t2 = dte2 / 365.25;
+            const dt = Math.max(0.0001, t2 - t1);
+
+            const iv1Mid = Number(r1.ATM_IV || 20.0);
+            const iv2Mid = Number(r2.ATM_IV || 20.0);
+            const iv1Bid = Number(r1.Call_Bid_IV || iv1Mid);
+            const iv2Ask = Number(r2.Call_Ask_IV || iv2Mid);
+
+            // Mid variance & forward vol
+            const var1Mid = Math.pow(iv1Mid / 100.0, 2) * t1;
+            const var2Mid = Math.pow(iv2Mid / 100.0, 2) * t2;
+            const dvarMid = var2Mid - var1Mid;
+            const fwdMid = (dvarMid > 0 && dt > 0) ? Math.sqrt(dvarMid / dt) * 100.0 : 0.0;
+
+            // Exec variance & forward vol (Sell Front at Bid, Buy Back at Ask)
+            const var1Bid = Math.pow(iv1Bid / 100.0, 2) * t1;
+            const var2Ask = Math.pow(iv2Ask / 100.0, 2) * t2;
+            const dvarExec = var2Ask - var1Bid;
+            const fwdExec = (dvarExec > 0 && dt > 0) ? Math.sqrt(dvarExec / dt) * 100.0 : fwdMid;
+
+            const drag = fwdExec - fwdMid;
+            const edgeClean = fwdExec - cleanHv;
+            const edge1y = fwdExec - hv1y;
+            const ratioClean = fwdExec / Math.max(cleanHv, 0.1);
+            const ratio1y = fwdExec / Math.max(hv1y, 0.1);
+
+            const c1Bid = Number(r1.Call_Bid || 0);
+            const c1Ask = Number(r1.Call_Ask || 0);
+            const c1Mid = Number(r1.Call_Mid || ((c1Bid + c1Ask) / 2));
+            const c2Bid = Number(r2.Call_Bid || 0);
+            const c2Ask = Number(r2.Call_Ask || 0);
+            const c2Mid = Number(r2.Call_Mid || ((c2Bid + c2Ask) / 2));
+
+            const netDebitExec = c2Ask - c1Bid;
+            const netDebitMid = c2Mid - c1Mid;
+            const slippageCost = netDebitExec - netDebitMid;
+
+            const th1 = Math.abs(Number(r1.Call_Theta || 0));
+            const th2 = Math.abs(Number(r2.Call_Theta || 0));
+            const netTheta = th1 - th2;
+
+            const spread1Clean = (iv1Mid - cleanHv).toFixed(1);
+            const spread2Clean = (iv2Mid - cleanHv).toFixed(1);
+            const spread1_1y = (iv1Mid - hv1y).toFixed(1);
+            const spread2_1y = (iv2Mid - hv1y).toFixed(1);
+
+            // 1. Render Short Leg Card
+            shortCard.innerHTML = `
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-cherry/20 text-cherry border border-cherry/30">
+                        SHORT LEG (Front Expiration)
+                    </span>
+                    <span class="text-xs font-bold text-white font-mono">${r1.Expiration} (${r1.DTE}d DTE)</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                        <div class="text-[10px] text-slate-400 uppercase">ATM Strike & Mid</div>
+                        <div class="font-bold text-white font-mono text-sm">$${Number(r1.ATM_Strike).toFixed(0)} <span class="text-xs font-normal text-slate-400">($${c1Mid.toFixed(2)})</span></div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-cherry uppercase font-bold">Execution Mark (Sell Bid)</div>
+                        <div class="font-bold text-cherry font-mono text-sm">$${c1Bid.toFixed(2)} <span class="text-[10px] text-slate-400">(Spread: ${r1.Call_Spread_Pct || 0}%)</span></div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-slate-400 uppercase">Headline ATM IV</div>
+                        <div class="font-bold text-white font-mono">${iv1Mid.toFixed(1)}% <span class="text-[10px] text-slate-400 font-normal">(Bid IV: ${iv1Bid.toFixed(1)}%)</span></div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-mint uppercase font-semibold">Daily Theta Collected</div>
+                        <div class="font-bold text-mint font-mono">+$${th1.toFixed(2)} / contract / day</div>
+                    </div>
+                </div>
+                <div class="mt-2.5 pt-2 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-400">
+                    <span>vs Clean HV: <b class="${spread1Clean > 0 ? 'text-cherry' : 'text-mint'}">${spread1Clean > 0 ? '+' : ''}${spread1Clean} pts</b></span>
+                    <span>vs 1Y Normal: <b class="${spread1_1y > 0 ? 'text-amber-400' : 'text-sky-400'}">${spread1_1y > 0 ? '+' : ''}${spread1_1y} pts</b></span>
+                </div>
+            `;
+
+            // 2. Render Long Leg Card
+            longCard.innerHTML = `
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-mint/20 text-mint border border-mint/30">
+                        LONG LEG (Back Expiration)
+                    </span>
+                    <span class="text-xs font-bold text-white font-mono">${r2.Expiration} (${r2.DTE}d DTE)</span>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                        <div class="text-[10px] text-slate-400 uppercase">ATM Strike & Mid</div>
+                        <div class="font-bold text-white font-mono text-sm">$${Number(r2.ATM_Strike).toFixed(0)} <span class="text-xs font-normal text-slate-400">($${c2Mid.toFixed(2)})</span></div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-mint uppercase font-bold">Execution Mark (Buy Ask)</div>
+                        <div class="font-bold text-mint font-mono text-sm">$${c2Ask.toFixed(2)} <span class="text-[10px] text-slate-400">(Spread: ${r2.Call_Spread_Pct || 0}%)</span></div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-slate-400 uppercase">Headline ATM IV</div>
+                        <div class="font-bold text-white font-mono">${iv2Mid.toFixed(1)}% <span class="text-[10px] text-slate-400 font-normal">(Ask IV: ${iv2Ask.toFixed(1)}%)</span></div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-cherry uppercase font-semibold">Daily Theta Paid</div>
+                        <div class="font-bold text-cherry font-mono">-$${th2.toFixed(2)} / contract / day</div>
+                    </div>
+                </div>
+                <div class="mt-2.5 pt-2 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-400">
+                    <span>vs Clean HV: <b class="${spread2Clean > 0 ? 'text-cherry' : 'text-mint'}">${spread2Clean > 0 ? '+' : ''}${spread2Clean} pts</b></span>
+                    <span>vs 1Y Normal: <b class="${spread2_1y > 0 ? 'text-amber-400' : 'text-sky-400'}">${spread2_1y > 0 ? '+' : ''}${spread2_1y} pts</b></span>
+                </div>
+            `;
+
+            // 3. Render 4 KPI Tiles
+            const edgeCleanBadge = edgeClean <= -2.0 
+                ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-mint/20 text-mint border border-mint/30">🟢 Underpriced Window</span>' 
+                : (edgeClean >= 2.0 ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-cherry/20 text-cherry border border-cherry/30">🔴 Overpriced Window</span>' : '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-slate-700/50 text-slate-300">⚪ Neutral Pricing</span>');
+            const edgeCleanColor = edgeClean <= -2.0 ? 'text-mint' : (edgeClean >= 2.0 ? 'text-cherry' : 'text-slate-200');
+
+            const edge1yBadge = edge1y <= -2.0 
+                ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-sky-500/20 text-sky-400 border border-sky-500/30">🟢 Below 1Y Normal</span>' 
+                : (edge1y >= 2.0 ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">🔴 Above 1Y Normal</span>' : '<span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold bg-slate-700/50 text-slate-300">⚪ Near Baseline</span>');
+            const edge1yColor = edge1y <= -2.0 ? 'text-sky-400' : (edge1y >= 2.0 ? 'text-amber-400' : 'text-slate-200');
+
+            kpiStrip.innerHTML = `
+                <div class="lux-card p-3">
+                    <div class="text-[10px] font-semibold text-slate-400 uppercase">Net Execution Debit</div>
+                    <div class="text-lg font-bold text-white mt-0.5 font-mono">$${netDebitExec.toFixed(2)} <span class="text-xs font-normal text-slate-400">($${(netDebitExec * 100).toFixed(0)}/ctr)</span></div>
+                    <div class="text-[10px] text-slate-400 mt-1 truncate">Mid: $${netDebitMid.toFixed(2)} (+${slippageCost.toFixed(2)} slippage)</div>
+                </div>
+                <div class="lux-card p-3 border-l-2 border-mint">
+                    <div class="text-[10px] font-semibold text-mint uppercase">Executable Forward Vol</div>
+                    <div class="text-lg font-bold text-mint mt-0.5 font-mono">${fwdExec > 0 ? `${fwdExec.toFixed(1)}%` : 'Inverted'}</div>
+                    <div class="text-[10px] text-slate-400 mt-1 truncate">Mid Fwd: ${fwdMid.toFixed(1)}% (${drag >= 0 ? '+' : ''}${drag.toFixed(1)} pt drag)</div>
+                </div>
+                <div class="lux-card p-3">
+                    <div class="text-[10px] font-semibold text-slate-400 uppercase">Edge vs 30D Clean HV</div>
+                    <div class="text-lg font-bold ${edgeCleanColor} mt-0.5 font-mono">${edgeClean >= 0 ? '+' : ''}${edgeClean.toFixed(1)} pts</div>
+                    <div class="mt-1 flex items-center gap-1">${edgeCleanBadge} <span class="text-[10px] text-slate-400 font-mono">${ratioClean.toFixed(2)}x</span></div>
+                </div>
+                <div class="lux-card p-3">
+                    <div class="text-[10px] font-semibold text-slate-400 uppercase">Edge vs 1-Yr Normal HV</div>
+                    <div class="text-lg font-bold ${edge1yColor} mt-0.5 font-mono">${edge1y >= 0 ? '+' : ''}${edge1y.toFixed(1)} pts</div>
+                    <div class="mt-1 flex items-center gap-1">${edge1yBadge} <span class="text-[10px] text-slate-400 font-mono">${ratio1y.toFixed(2)}x</span></div>
+                </div>
+            `;
+
+            // 4. Render Verdict Banner
+            const thetaTag = netTheta >= 0 
+                ? `<span class="text-mint font-bold">+${netTheta.toFixed(2)} / contract / day</span> (Front decays faster than back)` 
+                : `<span class="text-cherry font-bold">-$${Math.abs(netTheta).toFixed(2)} / contract / day</span>`;
+
+            let analysisHtml = '';
+            if (edgeClean < -1.5) {
+                const discountPct = Math.round((1.0 - ratioClean) * 100);
+                analysisHtml = `
+                    <div class="flex items-start gap-2.5">
+                        <span class="text-base">🎯</span>
+                        <div class="space-y-1">
+                            <div class="font-bold text-white flex items-center gap-2">
+                                <span>Institutional Structural Cheapness Detected (${discountPct}% Discount Window)</span>
+                                <span class="text-[10px] px-2 py-0.2 rounded bg-mint/20 text-mint font-mono font-bold">Executable Edge: ${edgeClean.toFixed(1)} pts</span>
+                            </div>
+                            <p class="text-slate-300 leading-relaxed">
+                                Market makers are pricing the <b>${windowDays}-day forward gap</b> between <b>${r1.Expiration}</b> and <b>${r2.Expiration}</b> at an implied volatility of <b>${fwdExec.toFixed(1)}%</b>, which is <b>${Math.abs(edgeClean).toFixed(1)} vol points below</b> recent clean realized price movement (<b class="text-amber-400">${cleanHv.toFixed(1)}% Clean HV</b>).
+                            </p>
+                            <p class="text-slate-400 leading-relaxed">
+                                <b>Trade Mechanics:</b> By selling the decaying front leg (${r1.Expiration}) at Bid and purchasing the back leg (${r2.Expiration}) at Ask, you synthetically acquire that ${windowDays}-day forward period at <b>${fwdExec.toFixed(1)}% IV</b> for a net debit of <b>$${netDebitExec.toFixed(2)}</b>. You collect <b>${thetaTag}</b> in positive carry. If the stock breaks out or volatility mean-reverts, the long back contract expands significantly faster than the short leg.
+                            </p>
+                        </div>
+                    </div>
+                `;
+            } else if (edgeClean > 1.5) {
+                analysisHtml = `
+                    <div class="flex items-start gap-2.5">
+                        <span class="text-base">⚠️</span>
+                        <div class="space-y-1">
+                            <div class="font-bold text-amber-300 flex items-center gap-2">
+                                <span>Elevated Forward Volatility Window (+${edgeClean.toFixed(1)} pts Premium)</span>
+                            </div>
+                            <p class="text-slate-300 leading-relaxed">
+                                Forward volatility between <b>${r1.Expiration}</b> and <b>${r2.Expiration}</b> is priced at <b>${fwdExec.toFixed(1)}%</b>, trading at a <b>+${edgeClean.toFixed(1)} pt premium</b> to 30D Clean Realized HV. Market makers are anticipating substantial movement, catalyst events, or elevated variance during this window. Time spread buyers pay a premium here; time spread sellers collect high implied variance.
+                            </p>
+                        </div>
+                    </div>
+                `;
+            } else {
+                analysisHtml = `
+                    <div class="flex items-start gap-2.5">
+                        <span class="text-base">⚖️</span>
+                        <div class="space-y-1">
+                            <div class="font-bold text-slate-200">
+                                <span>Neutral Forward Pricing (${fwdExec.toFixed(1)}% Forward Volatility)</span>
+                            </div>
+                            <p class="text-slate-400 leading-relaxed">
+                                Forward volatility between <b>${r1.Expiration}</b> and <b>${r2.Expiration}</b> is roughly in line with underlying price movement (${ratioClean.toFixed(2)}x Clean HV). Net theta carry is ${thetaTag}.
+                            </p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            verdictBanner.innerHTML = analysisHtml;
         }
 
         async function inspectSmileForExpiration(expDate) {

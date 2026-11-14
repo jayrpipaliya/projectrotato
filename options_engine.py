@@ -127,6 +127,31 @@ def black_scholes_gamma(S, K, T, sigma, r=0.045, q=0.0075):
     gamma = (norm_pdf(d1) * np.exp(-q * T)) / (S * sigma * np.sqrt(T))
     return float(gamma)
 
+def black_scholes_theta(S, K, T, sigma, r=0.045, q=0.0075, is_call=True):
+    """Computes analytical Black-Scholes daily theta (dollar decay per calendar day)."""
+    if S <= 0 or K <= 0 or T <= 0.0001 or sigma <= 0.001:
+        return 0.0
+    d1 = (np.log(S / K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    term1 = - (S * sigma * np.exp(-q * T) * norm_pdf(d1)) / (2.0 * np.sqrt(T))
+    if is_call:
+        term2 = q * S * np.exp(-q * T) * norm_cdf(d1) - r * K * np.exp(-r * T) * norm_cdf(d2)
+    else:
+        term2 = - q * S * np.exp(-q * T) * norm_cdf(-d1) + r * K * np.exp(-r * T) * norm_cdf(-d2)
+    theta_annual = term1 + term2
+    return float(theta_annual / 365.25)
+
+def black_scholes_price(S, K, T, sigma, r=0.045, q=0.0075, is_call=True):
+    """Computes theoretical Black-Scholes option price with dividend yield q."""
+    if S <= 0 or K <= 0 or T <= 0.0001 or sigma <= 0.001:
+        return max(0.0, S - K) if is_call else max(0.0, K - S)
+    d1 = (np.log(S / K) + (r - q + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    if is_call:
+        return float(S * np.exp(-q * T) * norm_cdf(d1) - K * np.exp(-r * T) * norm_cdf(d2))
+    else:
+        return float(K * np.exp(-r * T) * norm_cdf(-d2) - S * np.exp(-q * T) * norm_cdf(-d1))
+
 def compute_iv_rank_and_percentile(ticker_symbol, current_iv_pct=None):
     """
     Computes 1-Year (252 trading sessions) IV Rank and IV Percentile:
@@ -1039,7 +1064,7 @@ def compute_realized_volatilities(df_history=None, ticker_symbol=None):
                 pass
 
     if df_history is None or len(df_history) < 20:
-        return {'HV_10': 20.0, 'HV_20': 20.0, 'HV_30': 20.0, 'HV_30_clean': 20.0, 'HV_60': 20.0, 'Parkinson_30': 20.0}
+        return {'HV_10': 20.0, 'HV_20': 20.0, 'HV_30': 20.0, 'HV_30_clean': 20.0, 'HV_60': 20.0, 'HV_252': 20.0, 'HV_1Y': 20.0, 'Parkinson_30': 20.0}
 
     df = df_history.sort_values('Date').copy() if 'Date' in df_history.columns else df_history.copy()
     ret = df['Close'].pct_change().dropna()
@@ -1048,6 +1073,7 @@ def compute_realized_volatilities(df_history=None, ticker_symbol=None):
     hv_20 = float(ret.tail(20).std() * np.sqrt(252) * 100) if len(ret) >= 20 else 20.0
     hv_30 = float(ret.tail(30).std() * np.sqrt(252) * 100) if len(ret) >= 30 else 20.0
     hv_60 = float(ret.tail(60).std() * np.sqrt(252) * 100) if len(ret) >= 60 else 20.0
+    hv_252 = float(ret.tail(252).std() * np.sqrt(252) * 100) if len(ret) >= 150 else hv_60
     
     # De-Jumped HV: Winsorize outliers beyond 3 standard deviations (removes 1-day earnings gap spike)
     tail_30 = ret.tail(30).copy()
@@ -1067,6 +1093,8 @@ def compute_realized_volatilities(df_history=None, ticker_symbol=None):
         'HV_30': round(hv_30, 2),
         'HV_30_clean': round(hv_30_clean, 2),
         'HV_60': round(hv_60, 2),
+        'HV_252': round(hv_252, 2),
+        'HV_1Y': round(hv_252, 2),
         'Parkinson_30': round(parkinson_30, 2)
     }
 
@@ -1228,6 +1256,16 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
                         status = f"🔴 Structurally Rich ({vrp_ratio}x VRP)"
                         is_cheap = False
                     
+                call_b = float(atm_call.bid) if pd.notnull(atm_call.bid) and atm_call.bid > 0 else 0.0
+                call_a = float(atm_call.ask) if pd.notnull(atm_call.ask) and atm_call.ask > 0 else 0.0
+                call_mid = round((call_b + call_a) / 2.0, 2)
+                call_spread_pct = round(((call_a - call_b) / max(call_mid, 0.05)) * 100.0, 1) if call_a >= call_b else 0.0
+                
+                q_div = get_dividend_yield(ticker_symbol)
+                call_bid_iv = round(implied_vol_solver(call_b, spot_price, atm_call.strike, t_years, q=q_div, is_call=True) * 100.0, 2) if call_b > 0 else raw_atm_iv
+                call_ask_iv = round(implied_vol_solver(call_a, spot_price, atm_call.strike, t_years, q=q_div, is_call=True) * 100.0, 2) if call_a > 0 else raw_atm_iv
+                call_theta = round(black_scholes_theta(spot_price, atm_call.strike, t_years, raw_atm_iv / 100.0, q=q_div, is_call=True), 2)
+
                 return {
                     'Expiration': exp,
                     'DTE': dte,
@@ -1248,8 +1286,13 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
                     'Event_Tag': event_tag,
                     'Status': status,
                     'Is_Cheap': is_cheap,
-                    'Call_Bid': atm_call.bid,
-                    'Call_Ask': atm_call.ask,
+                    'Call_Bid': call_b,
+                    'Call_Ask': call_a,
+                    'Call_Mid': call_mid,
+                    'Call_Spread_Pct': call_spread_pct,
+                    'Call_Bid_IV': call_bid_iv,
+                    'Call_Ask_IV': call_ask_iv,
+                    'Call_Theta': call_theta,
                     'Put_Bid': atm_put.bid,
                     'Put_Ask': atm_put.ask,
                     'Total_OI': total_oi,
