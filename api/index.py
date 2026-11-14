@@ -679,7 +679,22 @@ def api_options(ticker: str, direction: str = Query(None), side: str = Query(Non
                 th2 = abs(float(r2.get('Call_Theta', 0)))
                 net_theta = round(th1 - th2, 2)
                 
-                is_prime = bool((spread_clean <= -1.5 or spread_1y <= -1.5) and net_debit_exec > 0)
+                # Check Short Leg elevation: Front leg must be relatively expensive or higher than back leg
+                front_is_elevated = (iv1_mid >= clean_hv - 0.5) or (iv1_mid - iv2_mid >= 1.5)
+                front_is_near = (dte1 <= 21)
+                vol_edge = round(iv1_mid - fwd_exec, 1)
+                
+                # Prime Trade Criteria:
+                # 1. Front leg is elevated (or slopes down steeply to back leg)
+                # 2. Forward window is discounted vs Clean HV or 1Y Normal HV
+                # 3. Trader earns positive theta carry (front decays faster than back)
+                # 4. Front leg is near-term (<= 21 DTE) so decay actually accrues
+                # 5. Net debit > 0
+                is_prime = bool(front_is_elevated and (spread_clean <= -2.0 or spread_1y <= -2.0) and net_theta > 0 and net_debit_exec > 0 and front_is_near)
+                
+                # Institutional Trade Quality Score:
+                # Rewards high spread sold vs bought, high discount vs clean HV, and near-term decay focus
+                quality_score = vol_edge + max(0.0, clean_hv - fwd_exec) + (10.0 if dte1 <= 10 else (5.0 if dte1 <= 21 else 0.0))
                 
                 rv_opportunities.append({
                     'front_exp': str(r1['Expiration']),
@@ -687,6 +702,9 @@ def api_options(ticker: str, direction: str = Query(None), side: str = Query(Non
                     'dte1': dte1,
                     'dte2': dte2,
                     'window_days': dte2 - dte1,
+                    'iv1': iv1_mid,
+                    'iv2': iv2_mid,
+                    'vol_edge': vol_edge,
                     'fwd_mid': round(fwd_mid, 1),
                     'fwd_exec': round(fwd_exec, 1),
                     'drag': drag,
@@ -699,14 +717,15 @@ def api_options(ticker: str, direction: str = Query(None), side: str = Query(Non
                     'slippage_cost': slippage_cost,
                     'net_theta': net_theta,
                     'is_prime': is_prime,
+                    'score': round(quality_score, 1),
                     'strike_front': float(r1.get('ATM_Strike', 0)),
                     'strike_back': float(r2.get('ATM_Strike', 0)),
                     'front_tenor': r1.get('Benchmark_Tenor'),
                     'back_tenor': r2.get('Benchmark_Tenor')
                 })
         
-        # Sort so prime discounted windows come first
-        rv_opportunities = sorted(rv_opportunities, key=lambda x: (not x['is_prime'], x['spread_clean']))
+        # Sort so prime opportunities with highest trade quality score come first
+        rv_opportunities = sorted(rv_opportunities, key=lambda x: (not x['is_prime'], -x['score']))
 
         return clean_json({
             "ticker": t_up,
@@ -861,6 +880,11 @@ HTML_CONTENT = """<!DOCTYPE html>
     body {
       background-color: #08090C;
       color: #f1f5f9;
+    }
+
+    select option {
+      background-color: #0b0d12 !important;
+      color: #f8fafc !important;
     }
 
     /* Tabular numbers for clean financial alignment */
@@ -4060,12 +4084,12 @@ async function init() {
 
             // 1. Populate Dropdown Selectors
             const frontOpts = chains.slice(0, -1).map(r => `
-                <option value="${r.Expiration}">
+                <option value="${r.Expiration}" style="background-color: #0b0d12; color: #f8fafc;">
                     ${r.Expiration} (${r.DTE}d) | IV: ${Number(r.ATM_IV).toFixed(1)}% | Bid: $${(Number(r.Call_Bid) || 0).toFixed(2)}
                 </option>
             `).join('');
             const backOpts = chains.slice(1).map(r => `
-                <option value="${r.Expiration}">
+                <option value="${r.Expiration}" style="background-color: #0b0d12; color: #f8fafc;">
                     ${r.Expiration} (${r.DTE}d) | IV: ${Number(r.ATM_IV).toFixed(1)}% | Ask: $${(Number(r.Call_Ask) || 0).toFixed(2)}
                 </option>
             `).join('');
@@ -4100,10 +4124,11 @@ async function init() {
                     pillsContainer.innerHTML = primeOpps.slice(0, 4).map(opp => `
                         <button onclick="setRvPair('${opp.front_exp}', '${opp.back_exp}')" class="px-2.5 py-1 rounded-lg text-xs font-semibold transition border ${opp.front_exp === CURRENT_RV_FRONT_EXP && opp.back_exp === CURRENT_RV_BACK_EXP ? 'bg-mint/20 text-mint border-mint/40 shadow-sm' : 'bg-white/5 text-slate-300 hover:text-white border-white/10 hover:border-mint/30'} flex items-center gap-1.5">
                             <span class="w-1.5 h-1.5 rounded-full bg-mint"></span>
-                            <span><b>${opp.front_exp}</b> ➔ <b>${opp.back_exp}</b> (${opp.window_days}d)</span>
+                            <span><b>${opp.front_exp}</b> (${opp.dte1}d) ➔ <b>${opp.back_exp}</b> (${opp.dte2}d)</span>
                             <span class="text-mint font-mono font-bold">${opp.fwd_exec}% Fwd</span>
                             <span class="text-[10px] px-1.5 py-0.2 rounded bg-mint/15 text-mint border border-mint/25 font-bold">${opp.spread_clean} pts vs Clean</span>
-                            <span class="text-slate-400 font-mono text-[10px]">Net Debit: $${opp.net_debit_exec}</span>
+                            <span class="text-[10px] text-sky-400 font-mono font-bold">Edge: +${opp.vol_edge || (opp.iv1 - opp.fwd_exec).toFixed(1)} pts</span>
+                            <span class="text-slate-400 font-mono text-[10px]">Debit: $${opp.net_debit_exec}</span>
                         </button>
                     `).join('');
                 }
@@ -4228,12 +4253,20 @@ async function init() {
             const spread1_1y = (iv1Mid - hv1y).toFixed(1);
             const spread2_1y = (iv2Mid - hv1y).toFixed(1);
 
+            const isFrontCheap = (iv1Mid < cleanHv - 0.5);
+            const frontWarningBadge = isFrontCheap
+                ? '<span class="text-[9.5px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold ml-1.5" title="Warning: You are selling an option with IV below 30D Clean Realized HV.">⚠️ Selling Below Clean HV</span>'
+                : '<span class="text-[9.5px] px-1.5 py-0.5 rounded bg-mint/20 text-mint border border-mint/30 font-bold ml-1.5">🟢 Selling Elevated Vol</span>';
+
             // 1. Render Short Leg Card
             shortCard.innerHTML = `
                 <div class="flex items-center justify-between mb-2">
-                    <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-cherry/20 text-cherry border border-cherry/30">
-                        SHORT LEG (Front Expiration)
-                    </span>
+                    <div class="flex items-center">
+                        <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-cherry/20 text-cherry border border-cherry/30">
+                            SHORT LEG (Front Expiration)
+                        </span>
+                        ${frontWarningBadge}
+                    </div>
                     <span class="text-xs font-bold text-white font-mono">${r1.Expiration} (${r1.DTE}d DTE)</span>
                 </div>
                 <div class="grid grid-cols-2 gap-2 text-xs">
