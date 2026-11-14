@@ -1672,12 +1672,33 @@ HTML_CONTENT = """<!DOCTYPE html>
 
             <!-- Interactive Plotly Strike GEX Bar Chart -->
             <div class="lux-card p-4 mb-5">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">
-                    <div>
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-2.5">
+                    <div class="flex items-center gap-3">
                         <h4 class="text-sm font-bold text-white flex items-center gap-2">
                             <span>Gamma Exposure</span>
                         </h4>
                     </div>
+
+                    <!-- Strike View: Centered Range Controls -->
+                    <div class="flex flex-wrap items-center gap-1.5 bg-white/5 p-1 rounded-lg border border-white/10" id="gexRangeControlGroup">
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 hidden sm:inline">Strike View:</span>
+                        <button onclick="setGexChartRange('focused')" id="btnGexRange-focused" class="px-2.5 py-1 rounded text-xs font-bold transition bg-mint/20 text-mint border border-mint/30 shadow-sm" title="Center Spot & Key Gamma Walls (±5-7%)">
+                            🎯 Relevant (Centered)
+                        </button>
+                        <button onclick="setGexChartRange('tight')" id="btnGexRange-tight" class="px-2.5 py-1 rounded text-xs font-bold transition text-slate-400 hover:text-white border border-transparent" title="Tight ATM Strikes (±3%)">
+                            ±3% ATM
+                        </button>
+                        <button onclick="setGexChartRange('medium')" id="btnGexRange-medium" class="px-2.5 py-1 rounded text-xs font-bold transition text-slate-400 hover:text-white border border-transparent" title="Active Weekly Gamma Zone (±8%)">
+                            ±8% Active
+                        </button>
+                        <button onclick="setGexChartRange('wide')" id="btnGexRange-wide" class="px-2.5 py-1 rounded text-xs font-bold transition text-slate-400 hover:text-white border border-transparent" title="Macro Structure (±15%)">
+                            ±15% Macro
+                        </button>
+                        <button onclick="setGexChartRange('all')" id="btnGexRange-all" class="px-2.5 py-1 rounded text-xs font-bold transition text-slate-400 hover:text-white border border-transparent" title="Show All Strikes (Full Tail)">
+                            All Strikes
+                        </button>
+                    </div>
+
                     <div id="gammaTimestampBadge" class="text-right text-[11px] font-mono text-slate-400"></div>
                 </div>
                 <div id="gammaDeskChart" style="height: 420px;"></div>
@@ -4442,6 +4463,71 @@ async function init() {
             }).join('');
         }
 
+        let CURRENT_GEX_RANGE_MODE = 'focused';
+
+        function computeGexXAxisRange(g, mode) {
+            if (!g || !g.spot_price) return null;
+            const spot = Number(g.spot_price);
+            if (spot <= 0) return null;
+
+            if (mode === 'tight') {
+                const half = spot * 0.03;
+                return [Math.floor(spot - half), Math.ceil(spot + half)];
+            }
+            if (mode === 'medium') {
+                const half = spot * 0.08;
+                return [Math.floor(spot - half), Math.ceil(spot + half)];
+            }
+            if (mode === 'wide') {
+                const half = spot * 0.15;
+                return [Math.floor(spot - half), Math.ceil(spot + half)];
+            }
+            if (mode === 'all') {
+                const strikes = (g.strikes || []).map(s => s.strike);
+                if (strikes.length > 0) {
+                    return [Math.min(...strikes) - 1, Math.max(...strikes) + 1];
+                }
+                return [spot * 0.8, spot * 1.2];
+            }
+            // Default 'focused': Center Spot precisely at 50% midpoint, framing Call Wall, Put Wall & Zero Flip comfortably
+            const dCW = g.call_wall ? Math.abs(g.call_wall - spot) : 0;
+            const dPW = g.put_wall ? Math.abs(g.put_wall - spot) : 0;
+            const dFlip = (g.zero_gamma_level && typeof g.zero_gamma_level === 'number') ? Math.abs(g.zero_gamma_level - spot) : 0;
+            const maxWallDist = Math.max(dCW, dPW, dFlip);
+            const halfSpan = Math.max(spot * 0.055, maxWallDist * 1.35);
+            return [Math.floor(spot - halfSpan), Math.ceil(spot + halfSpan)];
+        }
+
+        function updateGexRangeButtons(activeMode) {
+            const modes = ['focused', 'tight', 'medium', 'wide', 'all'];
+            modes.forEach(m => {
+                const btn = document.getElementById('btnGexRange-' + m);
+                if (!btn) return;
+                if (m === activeMode) {
+                    btn.className = 'px-2.5 py-1 rounded text-xs font-bold transition bg-mint/20 text-mint border border-mint/30 shadow-sm';
+                } else {
+                    btn.className = 'px-2.5 py-1 rounded text-xs font-bold transition text-slate-400 hover:text-white border border-transparent';
+                }
+            });
+        }
+
+        function setGexChartRange(mode) {
+            CURRENT_GEX_RANGE_MODE = mode;
+            updateGexRangeButtons(mode);
+            if (!CURRENT_GAMMA_DATA) return;
+
+            const chartEl = document.getElementById('gammaDeskChart');
+            if (!chartEl || !chartEl.data) return;
+
+            const range = computeGexXAxisRange(CURRENT_GAMMA_DATA, mode);
+            if (range) {
+                Plotly.relayout('gammaDeskChart', {
+                    'xaxis.range': range,
+                    'xaxis.autorange': (mode === 'all')
+                });
+            }
+        }
+
         async function loadGammaDesk(force = false) {
             const tickerSelect = document.getElementById('gammaDeskTickerSelect');
             const ticker = (tickerSelect && tickerSelect.value) ? tickerSelect.value : 'SPY';
@@ -4617,17 +4703,17 @@ async function init() {
                         legend: { orientation: 'h', x: 1, xanchor: 'right', y: 1.12, font: { color: '#94a3b8', size: 10 } }
                     };
 
-                    // Auto-focus default view on the relevant strikes window
-                    const relStrikes = (g.strikes || []).filter(s => s.is_relevant).map(s => s.strike);
-                    if (relStrikes.length > 0) {
-                        const kMin = Math.min(...relStrikes);
-                        const kMax = Math.max(...relStrikes);
-                        const span = kMax - kMin;
-                        const pad = Math.max(span * 0.08, g.spot_price * 0.015);
-                        layout.xaxis.range = [kMin - pad, kMax + pad];
+                    // Auto-focus default view: Center on Spot & Relevant Active Strikes
+                    const initialRange = computeGexXAxisRange(g, CURRENT_GEX_RANGE_MODE);
+                    if (initialRange && CURRENT_GEX_RANGE_MODE !== 'all') {
+                        layout.xaxis.range = initialRange;
+                        layout.xaxis.autorange = false;
+                    } else if (CURRENT_GEX_RANGE_MODE === 'all') {
+                        layout.xaxis.autorange = true;
                     }
 
                     Plotly.newPlot('gammaDeskChart', [traceCalls, tracePuts], layout, { responsive: true, displayModeBar: false });
+                    updateGexRangeButtons(CURRENT_GEX_RANGE_MODE);
                 }
 
                 // 4. Tabular Per-Strike Breakdown (Curated Relevant Strikes)

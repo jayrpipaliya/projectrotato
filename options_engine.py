@@ -810,14 +810,12 @@ def plot_gamma_exposure_profile(gamma_data):
         height=390
     )
     
-    # Auto-focus the default x-axis view on the relevant strikes window
-    relevant_k = [s["strike"] for s in gamma_data.get("relevant_strikes", [])]
-    if relevant_k:
-        k_min = min(relevant_k)
-        k_max = max(relevant_k)
-        span = k_max - k_min
-        pad = max(span * 0.08, spot * 0.015)
-        fig.update_xaxes(range=[k_min - pad, k_max + pad])
+    # Center the default x-axis view on Spot and key gamma walls
+    d_cw = abs(cw - spot) if cw else 0
+    d_pw = abs(pw - spot) if pw else 0
+    d_flip = abs(zg - spot) if (zg and isinstance(zg, (int, float))) else 0
+    half_span = max(spot * 0.055, max(d_cw, d_pw, d_flip) * 1.35)
+    fig.update_xaxes(range=[spot - half_span, spot + half_span])
         
     fig.update_xaxes(gridcolor="rgba(255, 255, 255, 0.05)")
     fig.update_yaxes(gridcolor="rgba(255, 255, 255, 0.05)")
