@@ -1293,7 +1293,6 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="flex items-center space-x-2">
               <span class="w-1.5 h-1.5 rounded-full bg-mint shadow-[0_0_6px_#00F5A0]"></span>
               <h3 class="font-extrabold text-white tracking-wider uppercase text-[11px]">Core Equities & Macro Benchmarks</h3>
-              <span class="px-1.5 py-0.2 rounded bg-stealth-850 text-[9.5px] text-mint font-bold border border-mint/20">7 Primary</span>
             </div>
             <span class="text-slate-500 font-medium text-[11px]">Session Closes & Momentum</span>
           </div>
@@ -1304,13 +1303,12 @@ HTML_CONTENT = """<!DOCTYPE html>
           </div>
         </section>
 
-        <!-- 2. THE MAGNIFICENT 7 (MEGA-CAP MARKET DRIVERS) -->
+        <!-- 2. THE MAGNIFICENT 7 -->
         <section class="space-y-2 pt-1">
           <div class="flex items-center justify-between text-xs">
             <div class="flex items-center space-x-2">
               <span class="w-1.5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_6px_#38bdf8]"></span>
-              <h3 class="font-extrabold text-white tracking-wider uppercase text-[11px]">The Magnificent 7 (Mega-Cap Market Drivers)</h3>
-              <span class="px-1.5 py-0.2 rounded bg-stealth-850 text-[9.5px] text-sky-400 font-bold border border-sky-500/20">7 Titans</span>
+              <h3 class="font-extrabold text-white tracking-wider uppercase text-[11px]">The Magnificent 7</h3>
             </div>
             <span class="text-slate-500 font-medium text-[11px]">NVDA • AAPL • MSFT • AMZN • GOOGL • META • TSLA</span>
           </div>
@@ -1327,7 +1325,6 @@ HTML_CONTENT = """<!DOCTYPE html>
             <div class="flex items-center space-x-2">
               <span class="w-1.5 h-1.5 rounded-full bg-cherry shadow-[0_0_6px_#FF2E55]"></span>
               <h3 class="font-extrabold text-white tracking-wider uppercase text-[11px]">Quantitative Regime & Breadth Ratios</h3>
-              <span class="px-1.5 py-0.2 rounded bg-stealth-850 text-[9.5px] text-slate-300 font-mono border border-stealth-border">3 Pairs</span>
             </div>
             <span class="text-slate-500 font-medium text-[11px]">50-Day Z-Score & Relative Velocity</span>
           </div>
@@ -2638,7 +2635,7 @@ async function init() {
                 }
 
                 html += `
-                    <div class="lux-card p-3 space-y-2 hover:border-white/20 transition-all rounded-xl relative overflow-hidden group">
+                    <div class="lux-card p-3 space-y-1.5 hover:border-white/20 transition-all rounded-xl relative overflow-hidden group">
                         <div class="flex items-center justify-between gap-1">
                             <div class="flex items-center gap-1.5 min-w-0">
                                 <span class="text-sm font-black text-white font-mono tracking-tight">${c.ticker}</span>
@@ -2646,6 +2643,8 @@ async function init() {
                             </div>
                             <span class="${badgeClass} px-1.5 py-0.5 rounded text-[10.5px] font-bold font-mono tracking-tight shrink-0">${sign}${Number(p1d).toFixed(2)}%</span>
                         </div>
+                        <!-- Role / Asset Classification UNDER the title -->
+                        <div class="text-[10px] text-slate-400 font-medium truncate leading-tight" title="${c.sub2}">${c.sub2}</div>
                         <div class="flex items-baseline justify-between pt-0.5">
                             <span class="text-xl sm:text-2xl font-black text-white tracking-tight font-mono">$${Number(c.price || 0).toFixed(2)}</span>
                             <div class="w-14 h-5 flex items-center shrink-0" title="${c.ticker} 5-Day Trend (${p5d >= 0 ? '+' : ''}${Number(p5d).toFixed(2)}%)">
@@ -2656,8 +2655,7 @@ async function init() {
                             </div>
                         </div>
                         <div class="pt-1.5 border-t border-white/5 space-y-0.5 text-xs text-slate-400">
-                            <div class="font-mono text-[10.5px] truncate">${c.sub1}</div>
-                            <div class="text-[10px] text-slate-500 font-medium truncate">${c.sub2}</div>
+                            <div class="font-mono text-[10px] truncate">${c.sub1}</div>
                         </div>
                     </div>
                 `;
@@ -2710,13 +2708,17 @@ async function init() {
                 const techColor = getStateColor(d.tech_status);
 
                 html += `
-                    <div class="lux-card p-3 space-y-2 hover:border-white/20 transition-all rounded-xl relative overflow-hidden group">
+                    <div class="lux-card p-3 space-y-1.5 hover:border-white/20 transition-all rounded-xl relative overflow-hidden group">
                         <div class="flex items-center justify-between gap-1">
                             <div class="flex items-center gap-1.5 min-w-0">
                                 <span class="text-sm font-black text-white font-mono tracking-tight">${ticker}</span>
                                 <span class="text-[10.5px] text-slate-400 font-medium truncate">• ${info.name}</span>
                             </div>
                             <span class="${badgeClass} px-1.5 py-0.5 rounded text-[10.5px] font-bold font-mono tracking-tight shrink-0">${sign}${p1d.toFixed(2)}%</span>
+                        </div>
+                        <!-- SIGNAL / TECHNICAL REGIME PLACED UNDER THE TITLE -->
+                        <div class="text-[10px] ${techColor} font-semibold truncate leading-tight" title="${d.tech_status || 'Tracking'}">
+                            <span class="truncate">${d.tech_status || 'Tracking / Trend Active'}</span>
                         </div>
                         <div class="flex items-baseline justify-between pt-0.5">
                             <span class="text-xl sm:text-2xl font-black text-white tracking-tight font-mono">$${Number(d.close || 0).toFixed(2)}</span>
@@ -2733,10 +2735,8 @@ async function init() {
                                 <span>5D: <b class="${p5d >= 0 ? 'text-mint' : 'text-cherry'}">${p5d >= 0 ? '+' : ''}${p5d.toFixed(1)}%</b></span>
                                 <span>20D: <b class="${p20d >= 0 ? 'text-mint' : 'text-cherry'}">${p20d >= 0 ? '+' : ''}${p20d.toFixed(1)}%</b></span>
                             </div>
-                            <div class="flex items-center justify-between text-[9.5px] pt-0.5 text-slate-500 font-sans">
-                                <span class="truncate">${info.desc}</span>
-                                <span class="${techColor} shrink-0 ml-1 font-semibold">${d.tech_status || 'Tracking'}</span>
-                            </div>
+                            <!-- Company Sector Description has full width -->
+                            <div class="text-[9.5px] pt-0.5 text-slate-500 font-sans truncate" title="${info.desc}">${info.desc}</div>
                         </div>
                     </div>
                 `;
