@@ -1934,7 +1934,6 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <div>
                         <h3 class="text-sm font-bold text-white flex items-center gap-2">
                             <span>Multi-Expiry Contract Comparison Matrix</span>
-                            <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-mint/15 text-mint border border-mint/20">Cycle Comparison</span>
                         </h3>
                         <p class="text-xs text-slate-400 mt-0.5">Compare contract horizons across months to benchmark ATM IV against 30D Clean Realized HV and 1-Year Normal Baseline HV.</p>
                     </div>
@@ -3842,7 +3841,7 @@ async function init() {
                 }
                 
                 const tenorBadge = r.Benchmark_Tenor 
-                    ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/15 text-mint border border-mint/25 whitespace-nowrap">${r.Benchmark_Tenor}</span>`
+                    ? `<span class="px-2 py-0.5 rounded text-[10px] font-medium bg-white/5 text-slate-300 border border-white/10 whitespace-nowrap">${r.Benchmark_Tenor}</span>`
                     : `<span class="text-slate-500 text-[10px] whitespace-nowrap">Weekly</span>`;
                 
                 const oiVal = r.Total_OI || 0;
@@ -3861,7 +3860,7 @@ async function init() {
 
                 // Spread vs 1-Yr Normal HV
                 const spread1Y = Number((r.ATM_IV - y_hv).toFixed(1));
-                const spread1YColor = spread1Y < -1.5 ? 'text-sky-400 font-bold' : (spread1Y > 1.5 ? 'text-amber-400' : 'text-slate-400');
+                const spread1YColor = 'text-slate-300 font-medium';
 
                 // Call Bid / Ask & Spread %
                 const callBid = r.Call_Bid != null ? `$${Number(r.Call_Bid).toFixed(2)}` : '--';
