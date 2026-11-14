@@ -540,15 +540,15 @@ def api_options(ticker: str, direction: str = Query(None), side: str = Query(Non
         net_slope = round(back_atm - front_atm_iv, 2)
         if net_slope > 1.0:
             regime_name = f"Contango (+{net_slope} pts)"
-            regime_desc = "Normal upward term slope: Back-month IV trades at premium to front"
+            regime_desc = "Normal upward slope: Back-month premium"
             regime_style = "mint"
         elif net_slope < -1.0:
             regime_name = f"Backwardation ({net_slope} pts)"
-            regime_desc = "Inverted term slope: Front-month elevated / event spike"
+            regime_desc = "Inverted slope: Front elevated / event spike"
             regime_style = "cherry"
         else:
             regime_name = f"Flat Term ({net_slope:+} pts)"
-            regime_desc = "Balanced volatility term slope across horizons"
+            regime_desc = "Balanced slope across horizons"
             regime_style = "slate"
             
         term_regime = {
@@ -3818,13 +3818,13 @@ async function init() {
                     </div>
                     <div class="lux-card p-3.5">
                         <div class="text-[11px] font-semibold text-slate-400 uppercase">30D Realized HV & VRP</div>
-                        <div class="text-xl font-bold text-white mt-1 font-mono">${cleanHv.toFixed(1)}% <span class="text-xs font-normal text-slate-400">| ${ivHvRatio}x VRP Ratio</span></div>
+                        <div class="text-xl font-bold text-white mt-1 font-mono">${cleanHv.toFixed(1)}% <span class="text-xs font-normal text-slate-400">| ${ivHvRatio}x VRP</span></div>
                         <div class="text-[11px] ${vrpSpreadColor} mt-0.5 font-medium">VRP: ${Number(vrpSpread) >= 0 ? '+' : ''}${vrpSpread} pts vs 30D HV</div>
                     </div>
                     <div class="lux-card p-3.5">
                         <div class="text-[11px] font-semibold text-slate-400 uppercase">Term Structure Regime</div>
-                        <div class="text-base font-bold ${termRegimeColor} mt-1 truncate">${termRegimeName}</div>
-                        <div class="text-[11px] text-slate-400 mt-0.5 truncate" title="${termRegime.description || ''}">${termRegime.description || 'Horizons Balanced'}</div>
+                        <div class="text-base font-bold ${termRegimeColor} mt-1">${termRegimeName}</div>
+                        <div class="text-[10.5px] text-slate-400 mt-0.5 leading-snug" title="${termRegime.description || ''}">${termRegime.description || 'Horizons Balanced'}</div>
                     </div>
                 `;
 
