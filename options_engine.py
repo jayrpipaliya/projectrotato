@@ -1156,6 +1156,10 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
                 if calls.empty or puts.empty:
                     return None
                 
+                total_call_oi = int(pd.to_numeric(calls['openInterest'], errors='coerce').fillna(0).sum())
+                total_put_oi = int(pd.to_numeric(puts['openInterest'], errors='coerce').fillna(0).sum())
+                total_oi = total_call_oi + total_put_oi
+                
                 exp_date = pd.Timestamp(exp)
                 dte = (exp_date - today).days
                 t_years = dte / 365.25
@@ -1247,7 +1251,10 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
                     'Call_Bid': atm_call.bid,
                     'Call_Ask': atm_call.ask,
                     'Put_Bid': atm_put.bid,
-                    'Put_Ask': atm_put.ask
+                    'Put_Ask': atm_put.ask,
+                    'Total_OI': total_oi,
+                    'Call_OI': total_call_oi,
+                    'Put_OI': total_put_oi
                 }
             except Exception:
                 return None

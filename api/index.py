@@ -501,7 +501,29 @@ def api_options(ticker: str, direction: str = Query(None), side: str = Query(Non
             r_dict['Slope_Front'] = slope_front
             r_dict['Slope_Prev'] = slope_prev
             r_dict['Structure'] = struct_label
+            r_dict['Total_OI'] = int(row.get('Total_OI', 0))
             enriched_chains.append(r_dict)
+            
+        # Identify High-OI Benchmark cycles (Front, 1M, 2M, 3M, Quarterly/4M, 6M, 12M)
+        buckets = [
+            ("Front Cycle", 5, 20),
+            ("1M Benchmark", 21, 48),
+            ("2M Benchmark", 49, 75),
+            ("3M Benchmark", 76, 110),
+            ("Quarterly (4M)", 111, 160),
+            ("6M Benchmark", 161, 260),
+            ("12M Benchmark", 261, 420),
+        ]
+        benchmark_map = {}
+        for label, min_d, max_d in buckets:
+            candidates = [r for r in enriched_chains if min_d <= int(r.get('DTE', 0)) <= max_d]
+            if candidates:
+                best_cand = max(candidates, key=lambda x: int(x.get('Total_OI', 0)))
+                benchmark_map[best_cand['Expiration']] = label
+
+        for r in enriched_chains:
+            r['Benchmark_Tenor'] = benchmark_map.get(r['Expiration'], None)
+            r['Is_Benchmark'] = r['Expiration'] in benchmark_map
             
         # Determine overall Term Structure Regime
         back_atm = float(term_df['ATM_IV'].iloc[-1])
@@ -584,7 +606,10 @@ def api_options(ticker: str, direction: str = Query(None), side: str = Query(Non
                 "exp_move_dollars": round(float(row.get('Expected_Move', 0)), 2),
                 "spans_earnings": bool(row.get('Spans_Earnings', False)),
                 "structure": row.get('Structure', 'Flat'),
-                "slope_front": row.get('Slope_Front', 0.0)
+                "slope_front": row.get('Slope_Front', 0.0),
+                "total_oi": int(row.get('Total_OI', 0)),
+                "is_benchmark": bool(row.get('Is_Benchmark', False)),
+                "benchmark_tenor": row.get('Benchmark_Tenor', None)
             }
             for row in enriched_chains
         ]
@@ -1753,16 +1778,23 @@ HTML_CONTENT = """<!DOCTYPE html>
 
             <!-- SECTION 2: Multi-Expiry Contract Comparison Matrix -->
             <div class="lux-card p-4 mb-5">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                     <div>
                         <h3 class="text-sm font-bold text-white flex items-center gap-2">
                             <span>Multi-Expiry Contract Comparison Matrix</span>
                             <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-mint/15 text-mint border border-mint/20">Cycle Comparison</span>
                         </h3>
-                        <p class="text-xs text-slate-400 mt-0.5">Compare contract horizons across months (Dec, Jan, Mar, Jun) to evaluate relative cheapness, term slope steps (ΔIV), and expected moves.</p>
+                        <p class="text-xs text-slate-400 mt-0.5">Compare contract horizons across months (Dec, Jan, Mar, Jun) to evaluate relative cheapness, term slope steps (ΔIV), and open interest liquidity.</p>
                     </div>
-                    <div class="text-[11px] text-slate-400">
-                        Click any contract row or <b class="text-mint font-semibold">Inspect</b> to view its Volatility Smile & Skew below.
+                    <!-- Open Interest Benchmark Slicer Toggle -->
+                    <div class="flex items-center gap-2 bg-[#0b0d12] p-1 rounded-lg border border-white/10 shrink-0">
+                        <button onclick="setOptionsFilter(true)" id="btnOptFilterBenchmark" class="px-3 py-1 rounded text-xs font-bold transition bg-mint/20 text-mint border border-mint/30 shadow-sm flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-mint"></span>
+                            <span>High OI Benchmarks (1M, 2M, 3M, 6M, 12M)</span>
+                        </button>
+                        <button onclick="setOptionsFilter(false)" id="btnOptFilterAll" class="px-3 py-1 rounded text-xs font-bold transition text-slate-400 hover:text-white">
+                            All Expirations
+                        </button>
                     </div>
                 </div>
 
@@ -1771,6 +1803,8 @@ HTML_CONTENT = """<!DOCTYPE html>
                         <thead class="bg-white/[0.03] text-[11px] uppercase tracking-wider text-slate-400 border-b border-white/10">
                             <tr>
                                 <th class="py-2.5 px-3">Expiration Date</th>
+                                <th class="py-2.5 px-3">Horizon / Tenor</th>
+                                <th class="py-2.5 px-3">Open Interest (OI)</th>
                                 <th class="py-2.5 px-3">DTE</th>
                                 <th class="py-2.5 px-3">ATM Strike</th>
                                 <th class="py-2.5 px-3">ATM IV</th>
@@ -1784,7 +1818,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                             </tr>
                         </thead>
                         <tbody id="optionsTermComparisonTbody" class="divide-y divide-white/5">
-                            <tr><td colspan="11" class="text-center py-4 text-slate-500">Loading term structure cycles...</td></tr>
+                            <tr><td colspan="13" class="text-center py-4 text-slate-500">Loading term structure cycles...</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -3500,6 +3534,10 @@ async function init() {
         let CURRENT_OPTIONS_EXPIRATION = "";
         let CURRENT_OPTIONS_SPOT = 0;
         let CURRENT_OPTIONS_TICKER = "QQQ";
+        let CURRENT_OPTIONS_CHAINS = [];
+        let CURRENT_OPTIONS_FILTER_BENCHMARK = true;
+        let CURRENT_OPTIONS_CLEAN_HV = 0;
+        let CURRENT_OPTIONS_FRONT_IV = 0;
 
         async function loadOptionsDesk(force = false) {
             const ticker = document.getElementById('optionsTickerSelect').value || 'QQQ';
@@ -3508,7 +3546,7 @@ async function init() {
             
             kpiRow.innerHTML = `<div class="col-span-full py-4 text-center text-xs text-slate-400">Loading macro volatility surface, term slopes, and skew for <b>${ticker}</b>...</div>`;
             if (termTbody) {
-                termTbody.innerHTML = `<tr><td colspan="11" class="text-center py-6 text-xs text-slate-500 animate-pulse">Calculating expiration term structure and slope metrics...</td></tr>`;
+                termTbody.innerHTML = `<tr><td colspan="13" class="text-center py-6 text-xs text-slate-500 animate-pulse">Calculating expiration term structure and slope metrics...</td></tr>`;
             }
 
             try {
@@ -3518,7 +3556,7 @@ async function init() {
                 const data = await res.json();
                 if (data.error) {
                     kpiRow.innerHTML = `<div class="col-span-full text-xs text-amber-400 bg-amber-500/10 p-3 rounded-lg border border-amber-500/20">${data.error}</div>`;
-                    if (termTbody) termTbody.innerHTML = `<tr><td colspan="11" class="text-center py-4 text-slate-500">Data unavailable.</td></tr>`;
+                    if (termTbody) termTbody.innerHTML = `<tr><td colspan="13" class="text-center py-4 text-slate-500">Data unavailable.</td></tr>`;
                     return;
                 }
 
@@ -3533,6 +3571,9 @@ async function init() {
 
                 CURRENT_OPTIONS_SPOT = spot;
                 CURRENT_OPTIONS_EXPIRATION = data.selected_expiration || (data.smile ? data.smile.expiration : '');
+                CURRENT_OPTIONS_CHAINS = termChains || [];
+                CURRENT_OPTIONS_CLEAN_HV = cleanHv || 0;
+                CURRENT_OPTIONS_FRONT_IV = frontAtmIv || 0;
 
                 // 1. Render Top 5 Macro Volatility KPI Cards
                 const ivp = ivStats.iv_percentile != null ? Number(ivStats.iv_percentile).toFixed(0) : '--';
@@ -3579,16 +3620,15 @@ async function init() {
                     </div>
                 `;
 
-
-
-                CURRENT_OPTIONS_SPOT = spot;
-                CURRENT_OPTIONS_EXPIRATION = data.selected_expiration || (data.smile ? data.smile.expiration : '');
+                const displayChains = (CURRENT_OPTIONS_FILTER_BENCHMARK && CURRENT_OPTIONS_CHAINS.some(r => r.Is_Benchmark))
+                    ? CURRENT_OPTIONS_CHAINS.filter(r => r.Is_Benchmark)
+                    : CURRENT_OPTIONS_CHAINS;
 
                 // 2. Render Volatility Term Structure Curve (Plotly Chart)
-                renderTermStructureChart(termChains, cleanHv, frontAtmIv);
+                renderTermStructureChart(displayChains, cleanHv, frontAtmIv);
 
                 // 3. Render Multi-Expiry Contract Comparison Matrix Table
-                renderTermComparisonTable(termChains, CURRENT_OPTIONS_EXPIRATION);
+                renderTermComparisonTable(displayChains, CURRENT_OPTIONS_EXPIRATION);
 
                 // 4. Populate Expiration Dropdown Selector
                 const expSelect = document.getElementById('optionsExpSelect');
@@ -3610,6 +3650,28 @@ async function init() {
             }
         }
 
+        function setOptionsFilter(onlyBenchmark) {
+            CURRENT_OPTIONS_FILTER_BENCHMARK = onlyBenchmark;
+            const btnBench = document.getElementById('btnOptFilterBenchmark');
+            const btnAll = document.getElementById('btnOptFilterAll');
+            if (btnBench && btnAll) {
+                if (onlyBenchmark) {
+                    btnBench.className = "px-3 py-1 rounded text-xs font-bold transition bg-mint/20 text-mint border border-mint/30 shadow-sm flex items-center gap-1.5";
+                    btnBench.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-mint"></span><span>High OI Benchmarks (1M, 2M, 3M, 6M, 12M)</span>`;
+                    btnAll.className = "px-3 py-1 rounded text-xs font-bold transition text-slate-400 hover:text-white";
+                } else {
+                    btnAll.className = "px-3 py-1 rounded text-xs font-bold transition bg-mint/20 text-mint border border-mint/30 shadow-sm";
+                    btnBench.className = "px-3 py-1 rounded text-xs font-bold transition text-slate-400 hover:text-white flex items-center gap-1.5";
+                    btnBench.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span><span>High OI Benchmarks (1M, 2M, 3M, 6M, 12M)</span>`;
+                }
+            }
+            const displayChains = (CURRENT_OPTIONS_FILTER_BENCHMARK && CURRENT_OPTIONS_CHAINS.some(r => r.Is_Benchmark))
+                ? CURRENT_OPTIONS_CHAINS.filter(r => r.Is_Benchmark)
+                : CURRENT_OPTIONS_CHAINS;
+            renderTermStructureChart(displayChains, CURRENT_OPTIONS_CLEAN_HV, CURRENT_OPTIONS_FRONT_IV);
+            renderTermComparisonTable(displayChains, CURRENT_OPTIONS_EXPIRATION);
+        }
+
         function renderTermStructureChart(chains, cleanHv, frontAtmIv) {
             if (!chains || chains.length === 0) return;
             const xLabels = chains.map(r => `${r.Expiration}<br><b>${r.DTE}d</b>`);
@@ -3618,18 +3680,20 @@ async function init() {
             const hoverTexts = chains.map(r => {
                 const slopeSign = r.Slope_Front >= 0 ? '+' : '';
                 const earnTag = r.Spans_Earnings ? '⚠️ Spans Earnings Event' : 'Inter-Earnings';
-                return `<b>${r.Expiration} (${r.DTE} DTE)</b><br>` +
+                const tenorTag = r.Benchmark_Tenor ? `[${r.Benchmark_Tenor}] ` : '';
+                const oiTag = r.Total_OI ? `<br>Total Open Interest: <b>${r.Total_OI.toLocaleString()} contracts</b>` : '';
+                return `<b>${tenorTag}${r.Expiration} (${r.DTE} DTE)</b><br>` +
                        `ATM Strike: <b>$${r.ATM_Strike}</b><br>` +
                        `ATM IV: <b>${r.ATM_IV.toFixed(2)}%</b><br>` +
                        `Term Slope vs Front: <b>${slopeSign}${r.Slope_Front.toFixed(2)} pts</b> (${r.Structure})<br>` +
                        `Slope vs Prev: <b>${r.Slope_Prev >= 0 ? '+' : ''}${r.Slope_Prev.toFixed(2)} pts</b><br>` +
                        `1σ Expected Move: <b>±$${r.Expected_Move.toFixed(2)} (±${r.Expected_Move_Pct.toFixed(1)}%)</b><br>` +
-                       `Expected Range: <b>${r.Expected_Range}</b><br>` +
+                       `Expected Range: <b>${r.Expected_Range}</b>${oiTag}<br>` +
                        `${earnTag}<extra></extra>`;
             });
 
             const markerColors = chains.map(r => r.Spans_Earnings ? '#F59E0B' : (r.Structure === 'Contango' ? '#00F5A0' : (r.Structure === 'Backwardation' ? '#FF2E55' : '#38BDF8')));
-            const markerSizes = chains.map(r => r.Spans_Earnings ? 11 : 9);
+            const markerSizes = chains.map(r => r.Is_Benchmark ? 11 : 8);
 
             const traces = [
                 {
@@ -3686,7 +3750,7 @@ async function init() {
             const tbody = document.getElementById('optionsTermComparisonTbody');
             if (!tbody) return;
             if (!chains || chains.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="11" class="text-center py-4 text-slate-500">No active cycles found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="13" class="text-center py-4 text-slate-500">No active cycles found.</td></tr>';
                 return;
             }
 
@@ -3696,6 +3760,16 @@ async function init() {
                     ? 'bg-mint/10 border-l-2 border-mint transition' 
                     : 'hover:bg-white/[0.02] transition border-b border-white/5 last:border-0';
                 
+                const tenorBadge = r.Benchmark_Tenor 
+                    ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-mint/15 text-mint border border-mint/25 whitespace-nowrap">${r.Benchmark_Tenor}</span>`
+                    : `<span class="text-slate-500 text-[10px] whitespace-nowrap">Weekly</span>`;
+                
+                const oiVal = r.Total_OI || 0;
+                const oiFormatted = oiVal >= 1000000 
+                    ? `${(oiVal / 1000000).toFixed(2)}M` 
+                    : (oiVal >= 1000 ? `${(oiVal / 1000).toFixed(0)}k` : oiVal.toLocaleString());
+                const oiHighlight = oiVal >= 500000 ? 'text-white font-bold' : (oiVal >= 100000 ? 'text-slate-200 font-semibold' : 'text-slate-400');
+
                 const slopeFrontSign = r.Slope_Front >= 0 ? '+' : '';
                 const slopeFrontColor = r.Slope_Front > 0.5 ? 'text-mint font-bold' : (r.Slope_Front < -0.5 ? 'text-cherry font-bold' : 'text-slate-300 font-medium');
                 
@@ -3722,6 +3796,8 @@ async function init() {
                             ${r.Expiration}
                             ${isActive ? '<span class="ml-1.5 text-[9px] px-1.5 py-0.2 rounded bg-mint text-black font-extrabold uppercase">Viewing</span>' : ''}
                         </td>
+                        <td class="py-2.5 px-3 whitespace-nowrap">${tenorBadge}</td>
+                        <td class="py-2.5 px-3 font-mono ${oiHighlight} whitespace-nowrap">${oiFormatted} <span class="text-[10px] text-slate-500 font-normal">OI</span></td>
                         <td class="py-2.5 px-3 font-mono text-slate-300 font-bold whitespace-nowrap">${r.DTE}d</td>
                         <td class="py-2.5 px-3 font-mono text-white whitespace-nowrap">$${r.ATM_Strike.toFixed(0)}</td>
                         <td class="py-2.5 px-3 font-mono font-bold text-white whitespace-nowrap">${r.ATM_IV.toFixed(2)}%</td>
