@@ -1796,7 +1796,6 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <div>
                         <div class="flex items-center gap-2">
                             <h2 class="text-lg font-black text-white tracking-wide">Macro Volatility & Term Structure Desk</h2>
-                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/25">Macro Vol Architecture</span>
                         </div>
                         <p class="text-xs text-slate-400 mt-1 max-w-3xl">
                             15-Minute Delayed Data from YFinance analyzing 1-Year IV Percentile (IVP), Volatility Skew / Smile, and Expiration Term Slopes across contract cycles (Contango vs Backwardation).
@@ -1915,7 +1914,6 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <div>
                         <h3 class="text-sm font-bold text-white flex items-center gap-2">
                             <span>Volatility Term Structure Curve (ATM IV across Expirations)</span>
-                            <span id="termSlopeBadge" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/20">Term Structure</span>
                         </h3>
                         <p class="text-xs text-slate-400 mt-0.5" id="optionsTermSubtitle">Plots ATM implied volatility across contract cycles. Normal markets slope upward (Contango); event risk or heavy hedging creates near-term inversion (Backwardation).</p>
                     </div>
@@ -1928,7 +1926,33 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div id="optionsTermStructureChart" style="height: 330px;"></div>
             </div>
 
-            <!-- SECTION 2: Multi-Expiry Contract Comparison Matrix -->
+            <!-- SECTION 2: Volatility Skew & Smile Surface Inspector -->
+            <div class="lux-card p-4 mb-5">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
+                    <div>
+                        <h4 class="text-sm font-bold text-white flex items-center gap-1.5">
+                            Volatility Skew & Smile Surface <span class="text-slate-500 hover:text-slate-300 cursor-pointer text-xs" title="Institutional Volatility Surface: Stitched OTM Puts (Downside Crash Risk) & OTM Calls (Upside Speculation) with Risk Reversal Skew Metrics">ⓘ</span>
+                        </h4>
+                        <p class="text-[11px] text-slate-400" id="optionsSmileSubtitle">Showing stitched OTM put/call surface, monotonic PCHIP curve, and 1σ expected move boundary</p>
+                    </div>
+                    <!-- Expiration Date Slicer / Selector -->
+                    <div class="flex items-center gap-2">
+                        <label for="optionsExpSelect" class="text-xs font-bold text-slate-400 whitespace-nowrap">Expiration Date:</label>
+                        <select id="optionsExpSelect" onchange="onExpirationChange(this.value)" class="bg-[#0b0d12] text-xs font-semibold text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-mint min-w-[210px]">
+                            <option value="">Nearest Active Chain</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 6 Institutional Skew KPI Cards -->
+                <div id="optionsSkewKpiStrip" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-4">
+                    <!-- Populated dynamically: ATM IV, 25Δ SKEW, 25Δ BUTTERFLY, 10Δ SKEW, SKEW SLOPE, TERM SLOPE -->
+                </div>
+
+                <div id="optionsSmileChart" style="height: 440px;"></div>
+            </div>
+
+            <!-- SECTION 3: Multi-Expiry Contract Comparison Matrix -->
             <div class="lux-card p-4 mb-5">
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                     <div>
@@ -2044,32 +2068,6 @@ HTML_CONTENT = """<!DOCTYPE html>
                 <div id="rvVerdictBanner" class="p-3.5 rounded-lg border text-xs bg-slate-900/60 border-white/10 text-slate-300">
                     <!-- Populated dynamically -->
                 </div>
-            </div>
-
-            <!-- SECTION 3: Volatility Skew & Smile Surface Inspector -->
-            <div class="lux-card p-4 mb-4">
-                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
-                    <div>
-                        <h4 class="text-sm font-bold text-white flex items-center gap-1.5">
-                            Volatility Skew & Smile Surface <span class="text-slate-500 hover:text-slate-300 cursor-pointer text-xs" title="Institutional Volatility Surface: Stitched OTM Puts (Downside Crash Risk) & OTM Calls (Upside Speculation) with Risk Reversal Skew Metrics">ⓘ</span>
-                        </h4>
-                        <p class="text-[11px] text-slate-400" id="optionsSmileSubtitle">Showing stitched OTM put/call surface, monotonic PCHIP curve, and 1σ expected move boundary</p>
-                    </div>
-                    <!-- Expiration Date Slicer / Selector -->
-                    <div class="flex items-center gap-2">
-                        <label for="optionsExpSelect" class="text-xs font-bold text-slate-400 whitespace-nowrap">Expiration Date:</label>
-                        <select id="optionsExpSelect" onchange="onExpirationChange(this.value)" class="bg-[#0b0d12] text-xs font-semibold text-white border border-white/10 px-3 py-1.5 rounded-lg focus:outline-none focus:border-mint min-w-[210px]">
-                            <option value="">Nearest Active Chain</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- 6 Institutional Skew KPI Cards -->
-                <div id="optionsSkewKpiStrip" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mb-4">
-                    <!-- Populated dynamically: ATM IV, 25Δ SKEW, 25Δ BUTTERFLY, 10Δ SKEW, SKEW SLOPE, TERM SLOPE -->
-                </div>
-
-                <div id="optionsSmileChart" style="height: 440px;"></div>
             </div>
         </div>
 
