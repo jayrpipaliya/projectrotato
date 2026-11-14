@@ -92,7 +92,7 @@ def api_market_data():
     
     # 5-session (6-close) real price trajectory for smooth SVG sparklines
     sparklines = {}
-    for sym in ["SPY", "QQQ", "IWM", "GLD", "TLT", "IBIT", "USO"]:
+    for sym in ["SPY", "QQQ", "IWM", "GLD", "TLT", "IBIT", "USO", "NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA"]:
         df_sym = load_ticker_data(sym)
         if not df_sym.empty and "Close" in df_sym.columns:
             sparklines[sym] = [round(float(c), 2) for c in df_sym["Close"].tail(6).tolist()]
@@ -1249,41 +1249,13 @@ HTML_CONTENT = """<!DOCTYPE html>
     <!-- MAIN BODY CONTENT -->
     <main class="p-6 space-y-6 max-w-[1600px] w-full">
 
-      <!-- ================= 1. CORE EQUITIES & MACRO BENCHMARKS ================= -->
-      <section class="space-y-3">
-        <div class="flex items-center justify-between text-xs">
-          <div class="flex items-center space-x-2">
-            <span class="w-1.5 h-1.5 rounded-full bg-mint"></span>
-            <h3 class="font-bold text-slate-300 tracking-wider uppercase text-[11px]">Core Equities & Macro Benchmarks</h3>
-          </div>
-          <span class="text-slate-500 font-medium text-[11px]">Session Closes & Momentum • 7 Universe Assets</span>
-        </div>
-
-        <!-- Responsive Grid for All 7 Primary Universe Assets -->
-        <div id="benchmarksRow" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-          <!-- Dynamically populated by renderBenchmarks() with inline sparklines -->
-        </div>
-      </section>
-
-      <!-- ================= 2. QUANTITATIVE REGIME & BREADTH RATIOS ================= -->
-      <section class="space-y-3 pt-1">
-        <div class="flex items-center justify-between text-xs">
-          <div class="flex items-center space-x-2">
-            <span class="w-1.5 h-1.5 rounded-full bg-cherry"></span>
-            <h3 class="font-bold text-slate-300 tracking-wider uppercase text-[11px]">Quantitative Regime & Breadth Ratios</h3>
-            <span class="px-1.5 py-0.5 rounded bg-stealth-850 text-[10px] text-slate-400 font-mono border border-stealth-border">3 Pairs Monitored</span>
-          </div>
-          <span class="text-slate-500 font-medium text-[11px]">50-Day Z-Score & Relative Velocity</span>
-        </div>
-
-        <div id="macroBarometersRow" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <!-- Dynamically populated by renderMacroBarometers() with Z-Score Gauge Spectrum Meters -->
-        </div>
-      </section>
-
       <!-- ================= 3. NAVIGATION PILL TABS ================= -->
       <nav class="flex items-center space-x-1.5 overflow-x-auto py-1 border-b border-stealth-border text-xs scrollbar-none font-medium">
-        <button onclick="switchTab('tab2')" id="btn-tab2" class="tab-btn active px-4 py-2 rounded-lg bg-stealth-850 text-white font-semibold border border-mint/40 shadow-[0_0_12px_rgba(0,245,160,0.15)] shrink-0">
+        <button onclick="switchTab('tab_overview')" id="btn-tab_overview" class="tab-btn active px-4 py-2 rounded-lg bg-stealth-850 text-white font-semibold border border-mint/40 shadow-[0_0_12px_rgba(0,245,160,0.15)] shrink-0 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-mint shadow-[0_0_6px_#00F5A0]"></span>
+          <span>Market Overview</span>
+        </button>
+        <button onclick="switchTab('tab2')" id="btn-tab2" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
           Automated Trade Ideas
         </button>
         <button onclick="switchTab('tab_gamma')" id="btn-tab_gamma" class="tab-btn px-3.5 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-stealth-900 transition-colors shrink-0">
@@ -1313,15 +1285,68 @@ HTML_CONTENT = """<!DOCTYPE html>
         </button>
       </nav>
 
-        <!-- Tab 2: Automated Trade Ideas -->
-        <div id="tab2" class="tab-pane">
-            <div class="bg-white/[0.03] border border-white/5 rounded-xl p-3 mb-4 text-xs text-slate-400">
-                <b class="text-mint font-semibold">Strict Confluence Rules:</b> Green conviction scores (+15 to +100) are reserved strictly for <b>Long Setups</b>. Red conviction scores (-15 to -100) are strictly flagged for <b>Distribution Fades or De-risking</b> to protect portfolio equity.
+      <!-- ================= TAB: MARKET OVERVIEW ================= -->
+      <div id="tab_overview" class="tab-pane space-y-6">
+        <!-- 1. CORE EQUITIES & MACRO BENCHMARKS -->
+        <section class="space-y-3.5">
+          <div class="flex items-center justify-between text-xs">
+            <div class="flex items-center space-x-2.5">
+              <span class="w-2 h-2 rounded-full bg-mint shadow-[0_0_8px_#00F5A0]"></span>
+              <h3 class="font-extrabold text-white tracking-wider uppercase text-xs">Core Equities & Macro Benchmarks</h3>
+              <span class="px-2 py-0.5 rounded bg-stealth-850 text-[10px] text-mint font-bold border border-mint/20">7 Primary Assets</span>
             </div>
-            <div id="tradeCardsContainer" class="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                <div class="text-xs text-slate-400">Loading high-probability trade setups...</div>
+            <span class="text-slate-400 font-medium text-xs">Session Closes & Multi-Day Momentum Trajectory</span>
+          </div>
+
+          <!-- Large High-Readability 4-Column Responsive Grid -->
+          <div id="benchmarksRow" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <!-- Dynamically populated by renderBenchmarks() -->
+          </div>
+        </section>
+
+        <!-- 2. THE MAGNIFICENT 7 (MEGA-CAP MARKET DRIVERS) -->
+        <section class="space-y-3.5 pt-2">
+          <div class="flex items-center justify-between text-xs">
+            <div class="flex items-center space-x-2.5">
+              <span class="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8]"></span>
+              <h3 class="font-extrabold text-white tracking-wider uppercase text-xs">The Magnificent 7 (Mega-Cap Market Drivers)</h3>
+              <span class="px-2 py-0.5 rounded bg-stealth-850 text-[10px] text-sky-400 font-bold border border-sky-500/20">7 Titans</span>
             </div>
+            <span class="text-slate-400 font-medium text-xs">NVDA • AAPL • MSFT • AMZN • GOOGL • META • TSLA</span>
+          </div>
+
+          <!-- Large High-Readability 4-Column Responsive Grid for Mag 7 -->
+          <div id="mag7CardsRow" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <!-- Dynamically populated by renderMag7Cards() -->
+          </div>
+        </section>
+
+        <!-- 3. QUANTITATIVE REGIME & BREADTH RATIOS -->
+        <section class="space-y-3.5 pt-2">
+          <div class="flex items-center justify-between text-xs">
+            <div class="flex items-center space-x-2.5">
+              <span class="w-2 h-2 rounded-full bg-cherry shadow-[0_0_8px_#FF2E55]"></span>
+              <h3 class="font-extrabold text-white tracking-wider uppercase text-xs">Quantitative Regime & Breadth Ratios</h3>
+              <span class="px-2 py-0.5 rounded bg-stealth-850 text-[10px] text-slate-300 font-mono border border-stealth-border">3 Pairs Monitored</span>
+            </div>
+            <span class="text-slate-400 font-medium text-xs">50-Day Z-Score & Relative Velocity</span>
+          </div>
+
+          <div id="macroBarometersRow" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Dynamically populated by renderMacroBarometers() -->
+          </div>
+        </section>
+      </div>
+
+      <!-- Tab 2: Automated Trade Ideas -->
+      <div id="tab2" class="tab-pane hidden">
+        <div class="bg-white/[0.03] border border-white/5 rounded-xl p-3 mb-4 text-xs text-slate-400">
+            <b class="text-mint font-semibold">Strict Confluence Rules:</b> Green conviction scores (+15 to +100) are reserved strictly for <b>Long Setups</b>. Red conviction scores (-15 to -100) are strictly flagged for <b>Distribution Fades or De-risking</b> to protect portfolio equity.
         </div>
+        <div id="tradeCardsContainer" class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            <div class="text-xs text-slate-400">Loading high-probability trade setups...</div>
+        </div>
+      </div>
 
         <!-- Tab Ledger: Institutional Trade Ledger & Risk Radar -->
         <div id="tab_ledger" class="tab-pane hidden">
@@ -2100,6 +2125,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 }
 
                 renderBenchmarks();
+                renderMag7Cards();
                 renderMacroBarometers();
                 renderBriefingBaskets();
                 renderRegime();
@@ -2166,6 +2192,7 @@ HTML_CONTENT = """<!DOCTYPE html>
                 }
 
                 renderBenchmarks();
+                renderMag7Cards();
                 renderMacroBarometers();
                 renderBriefingBaskets();
                 renderRegime();
@@ -2190,10 +2217,11 @@ HTML_CONTENT = """<!DOCTYPE html>
             }
         }
 
-        const LOADED_TABS = new Set(['tab2']);
+        const LOADED_TABS = new Set(['tab_overview', 'tab2']);
         let AI_DATA = null;
 
         const TAB_NAMES = {
+            'tab_overview': 'Market Overview',
             'tab2': 'Automated Trade Ideas Desk',
             'tab_gamma': 'Gamma Exposure Map',
             'tab_options': 'Volatility Pricing',
@@ -2425,6 +2453,7 @@ async function init() {
                 
                 // 2. Render primary dashboard shell immediately
                 renderBenchmarks();
+                renderMag7Cards();
                 renderMacroBarometers();
                 renderBriefingBaskets();
                 renderRegime();
@@ -2609,30 +2638,111 @@ async function init() {
                 }
 
                 html += `
-                    <div class="stealth-card p-2.5 space-y-1.5 overflow-hidden">
-                        <div class="flex items-center justify-between gap-1 overflow-hidden min-w-0">
-                            <div class="text-[9px] font-bold text-slate-200 whitespace-nowrap tracking-tighter shrink-0 flex items-center gap-0.5" title="${c.ticker} • ${c.name}">
-                                <span>${c.ticker}</span><span class="text-slate-400 font-normal text-[8px] tracking-tighter">• ${c.name}</span>
-                            </div>
-                            <span class="${badgeClass} px-1 py-0.5 rounded text-[8px] font-semibold tabular-num shrink-0">${sign}${Number(p1d).toFixed(2)}%</span>
-                        </div>
+                    <div class="lux-card p-4 sm:p-5 space-y-3.5 hover:border-white/20 transition-all rounded-xl relative overflow-hidden group">
                         <div class="flex items-center justify-between">
-                            <span class="text-xl font-bold text-white tracking-tight tabular-num">$${Number(c.price || 0).toFixed(2)}</span>
-                            <div class="w-14 h-5 flex items-center shrink-0" title="${c.ticker} 5-Day Trend (${p5d >= 0 ? '+' : ''}${Number(p5d).toFixed(2)}%)">
+                            <div class="flex items-center gap-2">
+                                <span class="text-base font-black text-white tracking-wide font-mono">${c.ticker}</span>
+                                <span class="text-xs text-slate-400 font-medium">• ${c.name}</span>
+                            </div>
+                            <span class="${badgeClass} px-2 py-0.5 rounded-md text-xs font-bold font-mono tracking-tight">${sign}${Number(p1d).toFixed(2)}%</span>
+                        </div>
+                        <div class="flex items-baseline justify-between pt-0.5">
+                            <span class="text-2xl sm:text-3xl font-black text-white tracking-tight font-mono">$${Number(c.price || 0).toFixed(2)}</span>
+                            <div class="w-20 h-7 flex items-center shrink-0" title="${c.ticker} 5-Day Trend (${p5d >= 0 ? '+' : ''}${Number(p5d).toFixed(2)}%)">
                                 <svg class="w-full h-full overflow-visible" viewBox="0 0 56 20">
-                                    <path d="${sparkPath}" fill="none" stroke="${sparkColor}" stroke-width="1.5" stroke-linecap="round" />
-                                    <circle cx="${sparkEndX}" cy="${sparkEndY}" r="2" fill="${sparkColor}" />
+                                    <path d="${sparkPath}" fill="none" stroke="${sparkColor}" stroke-width="2" stroke-linecap="round" />
+                                    <circle cx="${sparkEndX}" cy="${sparkEndY}" r="2.5" fill="${sparkColor}" />
                                 </svg>
                             </div>
                         </div>
-                        <div class="pt-1.5 border-t border-stealth-border/70 space-y-0.5 text-[10.5px] tabular-num text-slate-400">
-                            <div class="whitespace-nowrap overflow-hidden text-ellipsis">${c.sub1}</div>
-                            <div class="text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis">${c.sub2}</div>
+                        <div class="pt-2.5 border-t border-white/5 space-y-1.5 text-xs text-slate-400">
+                            <div class="font-mono text-[11.5px]">${c.sub1}</div>
+                            <div class="text-[11.5px] text-slate-500 font-medium truncate">${c.sub2}</div>
                         </div>
                     </div>
                 `;
             });
             const row = document.getElementById('benchmarksRow');
+            if (row) row.innerHTML = html;
+        }
+
+        function renderMag7Cards() {
+            const mag7 = DATA.market_data?.mag7 || {};
+            const metaInfo = {
+                "NVDA": { name: "Nvidia", desc: "Accelerated Computing & AI Hardware" },
+                "AAPL": { name: "Apple", desc: "Consumer Ecosystem & Devices" },
+                "MSFT": { name: "Microsoft", desc: "Enterprise Cloud & AI Copilot" },
+                "AMZN": { name: "Amazon", desc: "E-Commerce & AWS Cloud Infrastructure" },
+                "GOOGL": { name: "Alphabet", desc: "Global Search, YouTube & Gemini AI" },
+                "META": { name: "Meta Platforms", desc: "Social Media Networks & Open AI" },
+                "TSLA": { name: "Tesla", desc: "Autonomous Systems & Electric Mobility" }
+            };
+
+            const order = ["NVDA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "TSLA"];
+            let html = '';
+
+            order.forEach(ticker => {
+                const d = mag7[ticker] || {};
+                const info = metaInfo[ticker] || { name: ticker, desc: "Mega-Cap Tech Titan" };
+                const p1d = Number(d.pct_1d || 0);
+                const isPos = p1d >= 0;
+                const badgeClass = isPos ? 'badge-mint' : 'badge-cherry';
+                const sign = isPos ? '+' : '';
+                const p5d = Number(d.pct_5d || 0);
+                const p20d = Number(d.pct_20d || 0);
+                const athDd = Number(d.drawdown_ath || 0);
+                const is5dPos = p5d >= 0;
+                const sparkColor = is5dPos ? '#00F5A0' : '#FF2E55';
+
+                const sparkData = (DATA.sparklines && DATA.sparklines[ticker]) ? DATA.sparklines[ticker] : null;
+                let sparkPath, sparkEndX, sparkEndY;
+                if (sparkData && sparkData.length >= 2) {
+                    const res = generateSmoothSparkline(sparkData);
+                    sparkPath = res.path;
+                    sparkEndX = res.endX;
+                    sparkEndY = res.endY;
+                } else {
+                    sparkPath = is5dPos ? 'M 3 15 Q 16 12, 28 8 T 42 10 T 50 6' : 'M 3 7 Q 15 4, 28 13 T 44 10 T 50 14';
+                    sparkEndX = 50;
+                    sparkEndY = is5dPos ? 6 : 14;
+                }
+
+                const techColor = getStateColor(d.tech_status);
+
+                html += `
+                    <div class="lux-card p-4 sm:p-5 space-y-3.5 hover:border-white/20 transition-all rounded-xl relative overflow-hidden group">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="text-base font-black text-white tracking-wide font-mono">${ticker}</span>
+                                <span class="text-xs text-slate-400 font-medium">• ${info.name}</span>
+                            </div>
+                            <span class="${badgeClass} px-2 py-0.5 rounded-md text-xs font-bold font-mono tracking-tight">${sign}${p1d.toFixed(2)}%</span>
+                        </div>
+                        <div class="flex items-baseline justify-between pt-0.5">
+                            <span class="text-2xl sm:text-3xl font-black text-white tracking-tight font-mono">$${Number(d.close || 0).toFixed(2)}</span>
+                            <div class="w-20 h-7 flex items-center shrink-0" title="${ticker} 5-Day Trend (${p5d >= 0 ? '+' : ''}${p5d.toFixed(2)}%)">
+                                <svg class="w-full h-full overflow-visible" viewBox="0 0 56 20">
+                                    <path d="${sparkPath}" fill="none" stroke="${sparkColor}" stroke-width="2" stroke-linecap="round" />
+                                    <circle cx="${sparkEndX}" cy="${sparkEndY}" r="2.5" fill="${sparkColor}" />
+                                </svg>
+                            </div>
+                        </div>
+                        <div class="pt-2.5 border-t border-white/5 space-y-1.5 text-xs text-slate-400 font-mono">
+                            <div class="flex items-center justify-between text-[11.5px]">
+                                <span>ATH DD: <b class="${athDd < 0 ? 'text-cherry' : 'text-slate-200'}">${athDd.toFixed(1)}%</b></span>
+                                <span>5D: <b class="${p5d >= 0 ? 'text-mint' : 'text-cherry'}">${p5d >= 0 ? '+' : ''}${p5d.toFixed(1)}%</b></span>
+                                <span>20D: <b class="${p20d >= 0 ? 'text-mint' : 'text-cherry'}">${p20d >= 0 ? '+' : ''}${p20d.toFixed(1)}%</b></span>
+                            </div>
+                            <div class="flex items-center justify-between text-[11px] pt-0.5 text-slate-500 font-sans">
+                                <span class="truncate">${info.desc}</span>
+                                <span class="${techColor} shrink-0 ml-1.5">${d.tech_status || 'Tracking'}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            const row = document.getElementById('mag7CardsRow');
             if (row) row.innerHTML = html;
         }
 
