@@ -3788,8 +3788,25 @@ async function init() {
                 // 1. Render Top 5 Macro Volatility KPI Cards
                 const ivp = ivStats.iv_percentile != null ? Number(ivStats.iv_percentile).toFixed(0) : '--';
                 const ivr = ivStats.iv_rank != null ? Number(ivStats.iv_rank).toFixed(0) : '--';
-                const ivStyle = ivStats.style === 'cherry' ? 'text-cherry' : (ivStats.style === 'mint' ? 'text-mint' : (ivStats.style === 'sky' ? 'text-sky-400' : 'text-slate-300'));
-                const ivPillBg = ivStats.style === 'cherry' ? 'bg-cherry/15 text-cherry border-cherry/25' : (ivStats.style === 'mint' ? 'bg-mint/15 text-mint border-mint/25' : (ivStats.style === 'sky' ? 'bg-sky-500/15 text-sky-400 border-sky-500/25' : 'bg-slate-700/50 text-slate-300 border-slate-600/30'));
+                
+                let ivStyle = 'text-slate-200';
+                let ivPillBg = 'bg-slate-700/50 text-slate-300 border-slate-600/30';
+                const styleKey = (ivStats.style || '').toLowerCase();
+                const regimeStr = (ivStats.vol_regime || '').toLowerCase();
+
+                if (styleKey === 'cherry' || regimeStr.includes('elevated')) {
+                    ivStyle = 'text-cherry';
+                    ivPillBg = 'bg-cherry/15 text-cherry border-cherry/25';
+                } else if (styleKey === 'amber' || styleKey === 'orange' || regimeStr.includes('above average')) {
+                    ivStyle = 'text-orange-400';
+                    ivPillBg = 'bg-orange-500/15 text-orange-400 border-orange-500/30';
+                } else if (styleKey === 'mint' || regimeStr.includes('cheap')) {
+                    ivStyle = 'text-mint';
+                    ivPillBg = 'bg-mint/15 text-mint border-mint/25';
+                } else if (styleKey === 'sky' || regimeStr.includes('below average')) {
+                    ivStyle = 'text-sky-400';
+                    ivPillBg = 'bg-sky-500/15 text-sky-400 border-sky-500/25';
+                }
                 const ivHvRatio = (Number(frontAtmIv) / Math.max(cleanHv, 1)).toFixed(2);
                 const vrpSpread = (Number(frontAtmIv) - cleanHv).toFixed(1);
                 const vrpSpreadColor = Number(vrpSpread) >= 0 ? 'text-mint' : 'text-cherry';
