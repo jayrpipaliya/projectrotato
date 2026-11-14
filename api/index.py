@@ -1286,50 +1286,50 @@ HTML_CONTENT = """<!DOCTYPE html>
       </nav>
 
       <!-- ================= TAB: MARKET OVERVIEW ================= -->
-      <div id="tab_overview" class="tab-pane space-y-4">
+      <div id="tab_overview" class="tab-pane space-y-5 lg:space-y-6 pb-6">
         <!-- 1. CORE EQUITIES & MACRO BENCHMARKS -->
-        <section class="space-y-2">
+        <section class="space-y-2.5">
           <div class="flex items-center justify-between text-xs">
             <div class="flex items-center space-x-2">
-              <span class="w-1.5 h-1.5 rounded-full bg-mint shadow-[0_0_6px_#00F5A0]"></span>
-              <h3 class="font-extrabold text-white tracking-wider uppercase text-[11px]">Core Equities & Macro Benchmarks</h3>
+              <span class="w-2 h-2 rounded-full bg-mint shadow-[0_0_8px_#00F5A0]"></span>
+              <h3 class="font-extrabold text-white tracking-wider uppercase text-xs">Core Equities & Macro Benchmarks</h3>
             </div>
-            <span class="text-slate-500 font-medium text-[11px]">Session Closes & Momentum</span>
+            <span class="text-slate-400 font-medium text-xs">Session Closes & Multi-Day Momentum</span>
           </div>
 
           <!-- Single-Row 7-Column Grid on Desktop -->
-          <div id="benchmarksRow" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+          <div id="benchmarksRow" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 sm:gap-3">
             <!-- Dynamically populated by renderBenchmarks() -->
           </div>
         </section>
 
         <!-- 2. THE MAGNIFICENT 7 -->
-        <section class="space-y-2 pt-1">
+        <section class="space-y-2.5">
           <div class="flex items-center justify-between text-xs">
             <div class="flex items-center space-x-2">
-              <span class="w-1.5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_6px_#38bdf8]"></span>
-              <h3 class="font-extrabold text-white tracking-wider uppercase text-[11px]">The Magnificent 7</h3>
+              <span class="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8]"></span>
+              <h3 class="font-extrabold text-white tracking-wider uppercase text-xs">The Magnificent 7</h3>
             </div>
-            <span class="text-slate-500 font-medium text-[11px]">NVDA • AAPL • MSFT • AMZN • GOOGL • META • TSLA</span>
+            <span class="text-slate-400 font-medium text-xs">NVDA • AAPL • MSFT • AMZN • GOOGL • META • TSLA</span>
           </div>
 
           <!-- Single-Row 7-Column Grid on Desktop -->
-          <div id="mag7CardsRow" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+          <div id="mag7CardsRow" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 sm:gap-3">
             <!-- Dynamically populated by renderMag7Cards() -->
           </div>
         </section>
 
         <!-- 3. QUANTITATIVE REGIME & BREADTH RATIOS -->
-        <section class="space-y-2 pt-1">
+        <section class="space-y-2.5">
           <div class="flex items-center justify-between text-xs">
             <div class="flex items-center space-x-2">
-              <span class="w-1.5 h-1.5 rounded-full bg-cherry shadow-[0_0_6px_#FF2E55]"></span>
-              <h3 class="font-extrabold text-white tracking-wider uppercase text-[11px]">Quantitative Regime & Breadth Ratios</h3>
+              <span class="w-2 h-2 rounded-full bg-cherry shadow-[0_0_8px_#FF2E55]"></span>
+              <h3 class="font-extrabold text-white tracking-wider uppercase text-xs">Quantitative Regime & Breadth Ratios</h3>
             </div>
-            <span class="text-slate-500 font-medium text-[11px]">50-Day Z-Score & Relative Velocity</span>
+            <span class="text-slate-400 font-medium text-xs">50-Day Z-Score & Relative Velocity</span>
           </div>
 
-          <div id="macroBarometersRow" class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div id="macroBarometersRow" class="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4">
             <!-- Dynamically populated by renderMacroBarometers() -->
           </div>
         </section>
@@ -2563,7 +2563,7 @@ async function init() {
                 sessionBadge.innerText = 'Prices: ' + DATA.last_market_session;
             }
             const b = DATA.benchmarks || {};
-            const macro = DATA.market_data.macro_assets || {};
+            const macro = DATA.market_data?.macro_assets || {};
 
             const cards = [
                 { 
@@ -2635,26 +2635,28 @@ async function init() {
                 }
 
                 html += `
-                    <div class="lux-card p-3 space-y-1.5 hover:border-white/20 transition-all rounded-xl relative overflow-hidden group">
-                        <div class="flex items-center justify-between gap-1">
-                            <div class="flex items-center gap-1.5 min-w-0">
-                                <span class="text-sm font-black text-white font-mono tracking-tight">${c.ticker}</span>
-                                <span class="text-[10.5px] text-slate-400 font-medium truncate">• ${c.name}</span>
+                    <div class="lux-card p-3.5 sm:p-4 space-y-2.5 hover:border-white/20 transition-all rounded-xl relative overflow-hidden group flex flex-col justify-between">
+                        <div class="space-y-1.5">
+                            <div class="flex items-center justify-between gap-1">
+                                <div class="flex items-center gap-1.5 min-w-0">
+                                    <span class="text-sm font-black text-white font-mono tracking-tight">${c.ticker}</span>
+                                    <span class="text-[10.5px] text-slate-400 font-medium truncate">• ${c.name}</span>
+                                </div>
+                                <span class="${badgeClass} px-1.5 py-0.5 rounded text-[10.5px] font-bold font-mono tracking-tight shrink-0">${sign}${Number(p1d).toFixed(2)}%</span>
                             </div>
-                            <span class="${badgeClass} px-1.5 py-0.5 rounded text-[10.5px] font-bold font-mono tracking-tight shrink-0">${sign}${Number(p1d).toFixed(2)}%</span>
-                        </div>
-                        <!-- Role / Asset Classification UNDER the title -->
-                        <div class="text-[10px] text-slate-400 font-medium truncate leading-tight" title="${c.sub2}">${c.sub2}</div>
-                        <div class="flex items-baseline justify-between pt-0.5">
-                            <span class="text-xl sm:text-2xl font-black text-white tracking-tight font-mono">$${Number(c.price || 0).toFixed(2)}</span>
-                            <div class="w-14 h-5 flex items-center shrink-0" title="${c.ticker} 5-Day Trend (${p5d >= 0 ? '+' : ''}${Number(p5d).toFixed(2)}%)">
-                                <svg class="w-full h-full overflow-visible" viewBox="0 0 56 20">
-                                    <path d="${sparkPath}" fill="none" stroke="${sparkColor}" stroke-width="1.8" stroke-linecap="round" />
-                                    <circle cx="${sparkEndX}" cy="${sparkEndY}" r="2" fill="${sparkColor}" />
-                                </svg>
+                            <!-- Role / Asset Classification title directly above the price -->
+                            <div class="text-[10px] sm:text-[10.5px] text-slate-400 font-medium truncate leading-tight" title="${c.sub2}">${c.sub2}</div>
+                            <div class="flex items-baseline justify-between pt-0.5">
+                                <span class="text-xl sm:text-2xl font-black text-white tracking-tight font-mono">$${Number(c.price || 0).toFixed(2)}</span>
+                                <div class="w-14 h-5 flex items-center shrink-0" title="${c.ticker} 5-Day Trend (${p5d >= 0 ? '+' : ''}${Number(p5d).toFixed(2)}%)">
+                                    <svg class="w-full h-full overflow-visible" viewBox="0 0 56 20">
+                                        <path d="${sparkPath}" fill="none" stroke="${sparkColor}" stroke-width="1.8" stroke-linecap="round" />
+                                        <circle cx="${sparkEndX}" cy="${sparkEndY}" r="2" fill="${sparkColor}" />
+                                    </svg>
+                                </div>
                             </div>
                         </div>
-                        <div class="pt-1.5 border-t border-white/5 space-y-0.5 text-xs text-slate-400">
+                        <div class="pt-2 border-t border-white/5 text-xs text-slate-400">
                             <div class="font-mono text-[10px] truncate">${c.sub1}</div>
                         </div>
                     </div>
@@ -2708,35 +2710,46 @@ async function init() {
                 const techColor = getStateColor(d.tech_status);
 
                 html += `
-                    <div class="lux-card p-3 space-y-1.5 hover:border-white/20 transition-all rounded-xl relative overflow-hidden group">
-                        <div class="flex items-center justify-between gap-1">
-                            <div class="flex items-center gap-1.5 min-w-0">
-                                <span class="text-sm font-black text-white font-mono tracking-tight">${ticker}</span>
-                                <span class="text-[10.5px] text-slate-400 font-medium truncate">• ${info.name}</span>
+                    <div class="lux-card p-3.5 sm:p-4 space-y-2.5 hover:border-white/20 transition-all rounded-xl relative overflow-hidden group flex flex-col justify-between">
+                        <div class="space-y-1.5">
+                            <!-- Top Row: Ticker & Name + 1D Badge -->
+                            <div class="flex items-center justify-between gap-1">
+                                <div class="flex items-center gap-1.5 min-w-0">
+                                    <span class="text-sm font-black text-white font-mono tracking-tight">${ticker}</span>
+                                    <span class="text-[10.5px] text-slate-400 font-medium truncate">• ${info.name}</span>
+                                </div>
+                                <span class="${badgeClass} px-1.5 py-0.5 rounded text-[10.5px] font-bold font-mono tracking-tight shrink-0">${sign}${p1d.toFixed(2)}%</span>
                             </div>
-                            <span class="${badgeClass} px-1.5 py-0.5 rounded text-[10.5px] font-bold font-mono tracking-tight shrink-0">${sign}${p1d.toFixed(2)}%</span>
-                        </div>
-                        <!-- SIGNAL / TECHNICAL REGIME PLACED UNDER THE TITLE -->
-                        <div class="text-[10px] ${techColor} font-semibold truncate leading-tight" title="${d.tech_status || 'Tracking'}">
-                            <span class="truncate">${d.tech_status || 'Tracking / Trend Active'}</span>
-                        </div>
-                        <div class="flex items-baseline justify-between pt-0.5">
-                            <span class="text-xl sm:text-2xl font-black text-white tracking-tight font-mono">$${Number(d.close || 0).toFixed(2)}</span>
-                            <div class="w-14 h-5 flex items-center shrink-0" title="${ticker} 5-Day Trend (${p5d >= 0 ? '+' : ''}${p5d.toFixed(2)}%)">
-                                <svg class="w-full h-full overflow-visible" viewBox="0 0 56 20">
-                                    <path d="${sparkPath}" fill="none" stroke="${sparkColor}" stroke-width="1.8" stroke-linecap="round" />
-                                    <circle cx="${sparkEndX}" cy="${sparkEndY}" r="2" fill="${sparkColor}" />
-                                </svg>
+                            
+                            <!-- TITLE DIRECTLY ABOVE THE PRICE -->
+                            <div class="text-[10px] sm:text-[10.5px] text-slate-400 font-medium truncate leading-tight" title="${info.desc}">
+                                ${info.desc}
                             </div>
-                        </div>
-                        <div class="pt-1.5 border-t border-white/5 space-y-0.5 text-xs text-slate-400 font-mono">
-                            <div class="flex items-center justify-between text-[10px]">
+
+                            <!-- Price & 5-Day Trajectory Sparkline -->
+                            <div class="flex items-baseline justify-between pt-0.5">
+                                <span class="text-xl sm:text-2xl font-black text-white tracking-tight font-mono">$${Number(d.close || 0).toFixed(2)}</span>
+                                <div class="w-14 h-5 flex items-center shrink-0" title="${ticker} 5-Day Trend (${p5d >= 0 ? '+' : ''}${p5d.toFixed(2)}%)">
+                                    <svg class="w-full h-full overflow-visible" viewBox="0 0 56 20">
+                                        <path d="${sparkPath}" fill="none" stroke="${sparkColor}" stroke-width="1.8" stroke-linecap="round" />
+                                        <circle cx="${sparkEndX}" cy="${sparkEndY}" r="2" fill="${sparkColor}" />
+                                    </svg>
+                                </div>
+                            </div>
+
+                            <!-- Multi-Day Momentum & Drawdown Metrics -->
+                            <div class="pt-1.5 border-t border-white/5 flex items-center justify-between text-[10px] font-mono text-slate-400">
                                 <span>ATH: <b class="${athDd < 0 ? 'text-cherry' : 'text-slate-200'}">${athDd.toFixed(1)}%</b></span>
                                 <span>5D: <b class="${p5d >= 0 ? 'text-mint' : 'text-cherry'}">${p5d >= 0 ? '+' : ''}${p5d.toFixed(1)}%</b></span>
                                 <span>20D: <b class="${p20d >= 0 ? 'text-mint' : 'text-cherry'}">${p20d >= 0 ? '+' : ''}${p20d.toFixed(1)}%</b></span>
                             </div>
-                            <!-- Company Sector Description has full width -->
-                            <div class="text-[9.5px] pt-0.5 text-slate-500 font-sans truncate" title="${info.desc}">${info.desc}</div>
+                        </div>
+
+                        <!-- SIGNAL ON THE BOTTOM WITH 2-LINE WRAP (NEVER CUT OFF) -->
+                        <div class="pt-2 border-t border-white/5 flex items-center min-h-[32px]">
+                            <div class="text-[9.5px] sm:text-[10px] ${techColor} font-semibold leading-snug line-clamp-2 break-words" title="${d.tech_status || 'Tracking / Trend Active'}">
+                                ${d.tech_status || 'Tracking / Trend Active'}
+                            </div>
                         </div>
                     </div>
                 `;
@@ -2747,7 +2760,7 @@ async function init() {
         }
 
         function renderMacroBarometers() {
-            const r = DATA.market_data.ratios || {};
+            const r = DATA.market_data?.ratios || {};
             const spy_rsp = r.SPY_RSP || {};
             const qqq_rsp = r.QQQ_RSP || {};
             const iwm_qqq = r.IWM_QQQ || {};
@@ -2796,54 +2809,54 @@ async function init() {
                 const trendSign = is5dPos ? '+' : '';
 
                 // Pill styling for state
-                let statusPillClass = 'text-[11px] text-mint font-semibold bg-mint/10 px-2 py-0.5 rounded border border-mint/20 truncate';
+                let statusPillClass = 'text-[11px] sm:text-xs text-mint font-semibold bg-mint/10 px-2.5 py-1 rounded border border-mint/20 truncate';
                 const stLower = (c.state || '').toLowerCase();
                 if (stLower.includes('range') || stLower.includes('neutral') || stLower.includes('consolidat')) {
-                    statusPillClass = 'text-[11px] text-slate-300 font-semibold bg-stealth-850 px-2 py-0.5 rounded border border-stealth-border truncate';
+                    statusPillClass = 'text-[11px] sm:text-xs text-slate-300 font-semibold bg-stealth-850 px-2.5 py-1 rounded border border-stealth-border truncate';
                 } else if (stLower.includes('risk-off') || stLower.includes('bear') || stLower.includes('narrow') || stLower.includes('oversold') || stLower.includes('washout') || stLower.includes('overextend') || stLower.includes('peaking')) {
-                    statusPillClass = 'text-[11px] text-cherry font-semibold bg-cherry/10 px-2 py-0.5 rounded border border-cherry/20 truncate';
+                    statusPillClass = 'text-[11px] sm:text-xs text-cherry font-semibold bg-cherry/10 px-2.5 py-1 rounded border border-cherry/20 truncate';
                 }
 
                 html += `
-                    <div class="lux-card p-3 sm:p-3.5 space-y-2 hover:border-white/20 transition-all rounded-xl">
+                    <div class="lux-card p-4 sm:p-5 lg:p-5.5 space-y-3.5 hover:border-white/20 transition-all rounded-xl">
                         <div class="flex items-center justify-between">
                             <div>
-                                <div class="text-xs font-bold text-white flex items-center space-x-1.5">
+                                <div class="text-xs sm:text-sm font-bold text-white flex items-center space-x-1.5">
                                     <span>${c.ticker}</span>
-                                    <span class="text-slate-500 font-normal text-[11px]">• ${c.name}</span>
+                                    <span class="text-slate-400 font-normal text-xs">• ${c.name}</span>
                                 </div>
-                                <div class="text-[10.5px] text-slate-500">${c.subtitle}</div>
+                                <div class="text-[11px] text-slate-500 font-medium">${c.subtitle}</div>
                             </div>
-                            <span class="${badgeCls} px-2 py-0.5 rounded text-xs font-bold tabular-num">
+                            <span class="${badgeCls} px-2.5 py-1 rounded text-xs font-bold tabular-num">
                                 ${zText}
                             </span>
                         </div>
 
-                        <div class="flex items-baseline justify-between pt-0.5">
-                            <span class="text-2xl font-black text-white font-mono tracking-tight tabular-num">${Number(c.value).toFixed(2)}</span>
+                        <div class="flex items-baseline justify-between pt-1">
+                            <span class="text-3xl sm:text-4xl font-black text-white font-mono tracking-tight tabular-num">${Number(c.value).toFixed(2)}</span>
                             <span class="${statusPillClass}">
                                 ${c.state}
                             </span>
                         </div>
 
                         <!-- Z-Score Gauge Spectrum Meter (-3σ to +3σ) -->
-                        <div class="space-y-1 pt-0.5">
-                            <div class="flex justify-between text-[9.5px] text-slate-500 font-mono">
+                        <div class="space-y-1.5 pt-1">
+                            <div class="flex justify-between text-[10px] text-slate-400 font-mono">
                                 <span>-3.0σ (Oversold)</span>
                                 <span>0.0σ</span>
                                 <span>+3.0σ (Extended)</span>
                             </div>
-                            <div class="w-full h-1.5 rounded-full bg-stealth-800 relative overflow-hidden">
-                                <div class="absolute left-1/2 top-0 bottom-0 w-0.5 bg-slate-600"></div>
-                                <div class="absolute top-0 bottom-0 ${needleColor} rounded-full" style="left: ${needlePct}%; width: 8px; margin-left: -4px;"></div>
+                            <div class="w-full h-2 rounded-full bg-stealth-800 relative overflow-hidden">
+                                <div class="absolute left-1/2 top-0 bottom-0 w-0.5 bg-slate-500"></div>
+                                <div class="absolute top-0 bottom-0 ${needleColor} rounded-full" style="left: ${needlePct}%; width: 10px; margin-left: -5px;"></div>
                             </div>
                         </div>
 
-                        <div class="pt-2 border-t border-stealth-border/70 flex items-center justify-between text-xs text-slate-400">
+                        <div class="pt-2.5 border-t border-stealth-border/70 flex items-center justify-between text-xs text-slate-400">
                             <div>
                                 5D Trend: <span class="${trendCol} font-semibold tabular-num">${trendSign}${Number(pct5d).toFixed(2)}%</span>
                             </div>
-                            <div class="text-slate-500 text-[11px]">
+                            <div class="text-slate-400 text-xs font-medium truncate max-w-[65%]" title="${c.action}">
                                 ${c.action}
                             </div>
                         </div>
