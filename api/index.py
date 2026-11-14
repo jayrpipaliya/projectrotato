@@ -3803,8 +3803,8 @@ async function init() {
                         <div class="text-xl font-bold text-white mt-1 font-mono">$${spot.toFixed(2)}</div>
                         <div class="text-[11px] text-mint font-semibold mt-0.5">${ticker} Live Underlying</div>
                     </div>
-                    <div class="lux-card p-3.5 border-l-2 border-mint">
-                        <div class="text-[11px] font-semibold text-mint uppercase">1-Yr IV Percentile (IVP)</div>
+                    <div class="lux-card p-3.5">
+                        <div class="text-[11px] font-semibold text-slate-400 uppercase">1-Yr IV Percentile (IVP)</div>
                         <div class="text-xl font-bold ${ivStyle} mt-1 font-mono">${ivp}% <span class="text-xs font-normal text-slate-400">| ${ivr}% IVR</span></div>
                         <div class="mt-1 flex items-center gap-1.5 flex-wrap">
                             <span class="text-[9.5px] px-1.5 py-0.5 rounded font-bold border ${ivPillBg}">${ivStats.vol_regime || 'Neutral Vol'}</span>
