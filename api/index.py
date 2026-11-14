@@ -3817,8 +3817,8 @@ async function init() {
                         </div>
                     </div>
                     <div class="lux-card p-3.5">
-                        <div class="text-[11px] font-semibold text-slate-400 uppercase">Realized Vol & Ratio</div>
-                        <div class="text-xl font-bold text-white mt-1 font-mono">${cleanHv.toFixed(1)}% <span class="text-xs font-normal text-slate-400">| ${ivHvRatio}x</span></div>
+                        <div class="text-[11px] font-semibold text-slate-400 uppercase">30D Realized HV & VRP</div>
+                        <div class="text-xl font-bold text-white mt-1 font-mono">${cleanHv.toFixed(1)}% <span class="text-xs font-normal text-slate-400">| ${ivHvRatio}x VRP Ratio</span></div>
                         <div class="text-[11px] ${vrpSpreadColor} mt-0.5 font-medium">VRP: ${Number(vrpSpread) >= 0 ? '+' : ''}${vrpSpread} pts vs 30D HV</div>
                     </div>
                     <div class="lux-card p-3.5">
