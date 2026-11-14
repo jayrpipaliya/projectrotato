@@ -1741,7 +1741,6 @@ HTML_CONTENT = """<!DOCTYPE html>
                     <div>
                         <h4 class="text-sm font-bold text-white flex items-center gap-2">
                             <span>Detailed Strike Gamma &amp; Open Interest Breakdown</span>
-                            <span id="gammaFilterBadge" class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/20">Relevant Strikes</span>
                         </h4>
                         <p class="text-[11px] text-slate-400">Straddle layout: Calls on left, strike &amp; net dealer regime center, Puts on right.</p>
                     </div>
@@ -4294,22 +4293,13 @@ async function init() {
             CURRENT_GAMMA_ONLY_RELEVANT = onlyRelevant;
             const btnRel = document.getElementById('btnGammaRelevant');
             const btnAll = document.getElementById('btnGammaAll');
-            const badge = document.getElementById('gammaFilterBadge');
             if (btnRel && btnAll) {
                 if (onlyRelevant) {
                     btnRel.className = 'px-2.5 py-1 rounded font-bold transition bg-mint/20 text-mint border border-mint/30';
                     btnAll.className = 'px-2.5 py-1 rounded font-bold transition text-slate-400';
-                    if (badge) {
-                        badge.innerText = 'Relevant Strikes';
-                        badge.className = 'text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-sky-500/15 text-sky-400 border border-sky-500/20';
-                    }
                 } else {
                     btnRel.className = 'px-2.5 py-1 rounded font-bold transition text-slate-400';
                     btnAll.className = 'px-2.5 py-1 rounded font-bold transition bg-white/10 text-white border border-white/20';
-                    if (badge) {
-                        badge.innerText = 'All Mapped Strikes';
-                        badge.className = 'text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-white/10 text-slate-300 border border-white/20';
-                    }
                 }
             }
             if (CURRENT_GAMMA_DATA) {
