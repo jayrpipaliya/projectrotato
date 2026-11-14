@@ -1876,7 +1876,7 @@ HTML_CONTENT = """<!DOCTYPE html>
 
             <!-- Top 5 Macro Volatility KPI Cards -->
             <div id="optionsKpiRow" class="grid grid-cols-2 sm:grid-cols-5 gap-3.5 mb-5">
-                <!-- Dynamically populated: Spot, 30D ATM IV, 1Y IVP/IVR, 30D HV & Ratio, Term Regime -->
+                <!-- Dynamically populated: Spot, 1Y IVP/IVR, 30D ATM IV, 30D Realized HV & VRP, Term Regime -->
             </div>
 
             <!-- SECTION 1: Volatility Term Structure Curve (Plotly Chart) -->
@@ -3803,11 +3803,6 @@ async function init() {
                         <div class="text-xl font-bold text-white mt-1 font-mono">$${spot.toFixed(2)}</div>
                         <div class="text-[11px] text-mint font-semibold mt-0.5">${ticker} Live Underlying</div>
                     </div>
-                    <div class="lux-card p-3.5">
-                        <div class="text-[11px] font-semibold text-slate-400 uppercase">30D ATM IV</div>
-                        <div class="text-xl font-bold text-white mt-1 font-mono">${frontAtmIv}%</div>
-                        <div class="text-[11px] text-slate-400 mt-0.5">Front Baseline Vol</div>
-                    </div>
                     <div class="lux-card p-3.5 border-l-2 border-mint">
                         <div class="text-[11px] font-semibold text-mint uppercase">1-Yr IV Percentile (IVP)</div>
                         <div class="text-xl font-bold ${ivStyle} mt-1 font-mono">${ivp}% <span class="text-xs font-normal text-slate-400">| ${ivr}% IVR</span></div>
@@ -3817,9 +3812,14 @@ async function init() {
                         </div>
                     </div>
                     <div class="lux-card p-3.5">
+                        <div class="text-[11px] font-semibold text-slate-400 uppercase">30D ATM IV</div>
+                        <div class="text-xl font-bold text-white mt-1 font-mono">${frontAtmIv}%</div>
+                        <div class="text-[11px] text-slate-400 mt-0.5">Front Baseline Vol</div>
+                    </div>
+                    <div class="lux-card p-3.5">
                         <div class="text-[11px] font-semibold text-slate-400 uppercase">30D Realized HV & VRP</div>
-                        <div class="text-xl font-bold text-white mt-1 font-mono">${cleanHv.toFixed(1)}% <span class="text-xs font-normal text-slate-400">| ${ivHvRatio}x VRP</span></div>
-                        <div class="text-[11px] ${vrpSpreadColor} mt-0.5 font-medium">VRP: ${Number(vrpSpread) >= 0 ? '+' : ''}${vrpSpread} pts vs 30D HV</div>
+                        <div class="text-xl font-bold text-white mt-1 font-mono tracking-tight">${cleanHv.toFixed(1)}% <span class="text-slate-500 font-normal text-base">|</span> ${Number(vrpSpread) >= 0 ? '+' : ''}${vrpSpread}% VRP</div>
+                        <div class="text-[11px] text-slate-400 mt-0.5 font-medium">VRP Ratio: <b class="text-white">${ivHvRatio}x</b> vs 30D Clean HV</div>
                     </div>
                     <div class="lux-card p-3.5">
                         <div class="text-[11px] font-semibold text-slate-400 uppercase">Term Structure Regime</div>
