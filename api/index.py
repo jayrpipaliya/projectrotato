@@ -2088,7 +2088,10 @@ HTML_CONTENT = """<!DOCTYPE html>
                     LOADED_TABS.add('tab_options');
                     loadOptionsDesk();
                 } else {
-                    setTimeout(() => Plotly.Plots.resize('optionsSmileChart'), 50);
+                    setTimeout(() => {
+                        try { Plotly.Plots.resize('optionsTermStructureChart'); } catch (e) {}
+                        try { Plotly.Plots.resize('optionsSmileChart'); } catch (e) {}
+                    }, 50);
                 }
             }
         }
@@ -3541,6 +3544,9 @@ async function init() {
 
         async function loadOptionsDesk(force = false) {
             const ticker = document.getElementById('optionsTickerSelect').value || 'QQQ';
+            if (CURRENT_OPTIONS_TICKER !== ticker) {
+                CURRENT_OPTIONS_EXPIRATION = "";
+            }
             const kpiRow = document.getElementById('optionsKpiRow');
             const termTbody = document.getElementById('optionsTermComparisonTbody');
             
