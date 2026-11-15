@@ -2,17 +2,43 @@ import os
 import sys
 import time
 import json
+import math
+import re
+import shutil
+from pathlib import Path
 from datetime import datetime
 import numpy as np
 import pandas as pd
 from typing import Optional
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 # Ensure root directory is in sys.path
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
+
+import data_manager
+import durable_storage
+
+# Runtime isolation and durable cloud storage setup
+runtime = Path('/tmp/double-edge-preview') if os.environ.get('VERCEL') else Path(ROOT_DIR) / '.runtime'
+runtime.mkdir(parents=True, exist_ok=True)
+raw_writable = Path('/tmp/raw_csv') if os.environ.get('VERCEL') else Path(ROOT_DIR) / 'raw_csv'
+raw_writable.mkdir(parents=True, exist_ok=True)
+
+for filename in ('gamma_history.json', 'spy_rsp.csv', 'qqq_rsp.csv', 'iwm_qqq.csv'):
+    source, target = Path(ROOT_DIR) / 'processed_data' / filename, runtime / filename
+    if source.is_file() and not target.exists():
+        shutil.copyfile(source, target)
+data_manager.PROCESSED_DIR = str(runtime)
+
+try:
+    restored = durable_storage.sync_cloud_to_local(runtime, raw_writable)
+    if restored > 0:
+        print(f"[Storage] Restored {restored} persistent files from Vercel Blob.")
+except Exception as e:
+    print(f"[Storage] Cold-start cloud sync note: {e}")
 
 from data_manager import (
     load_ticker_data, get_available_tickers,
@@ -811,8 +837,89 @@ def api_options_smile(ticker: str, expiration: str = Query(...), direction: str 
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/api/preview/history/{ticker}")
+def api_preview_history(ticker: str):
+    if not re.fullmatch(r"[A-Z0-9][A-Z0-9.\-]{0,14}", ticker):
+        return JSONResponse({"error": "Invalid ticker."}, status_code=400)
+    frame = load_ticker_data(ticker)
+    if frame.empty:
+        return JSONResponse({"error": "No OHLC data for this ticker."}, status_code=404)
+    columns = ["Date", "Open", "High", "Low", "Close", "Volume"]
+    rows = []
+    for date, *values in frame[columns].tail(520).itertuples(index=False, name=None):
+        if all(math.isfinite(float(value)) for value in values):
+            rows.append([date.strftime("%Y-%m-%d"), *map(float, values)])
+    return {"ticker": ticker, "rows": rows}
+
+
+def is_sync_request(request: Request):
+    origin = request.headers.get("origin")
+    expected = f"{request.url.scheme}://{request.headers.get('host', '')}"
+    return origin == expected and request.headers.get("x-preview-sync") == "1"
+
+
+@app.post("/api/preview/sync-csv")
+def api_preview_sync_csv(request: Request):
+    if not is_sync_request(request):
+        return JSONResponse({"message": "Use the dashboard sync button."}, status_code=403)
+    result = api_sync_csv()
+    if isinstance(result, JSONResponse):
+        return result
+    return {"message": f"CSV cache reloaded for {result['loaded_count']} tickers. The hosted build reads its packaged CSVs."}
+
+
+@app.post("/api/preview/sync-yfinance")
+def api_preview_sync_yfinance(request: Request):
+    if not is_sync_request(request):
+        return JSONResponse({"message": "Use the dashboard sync button."}, status_code=403)
+    return run_yfinance_sync()
+
+
+def run_yfinance_sync():
+    result = api_sync_data({"scope": "core"})
+    if isinstance(result, JSONResponse):
+        return result
+
+    try:
+        generate_synthetic_ratios()
+    except Exception as e:
+        print(f"[Sync] Error generating synthetic ratios: {e}")
+
+    _CACHE.clear()
+
+    persisted_count = 0
+    if durable_storage.get_blob_token():
+        try:
+            for ratio in ('spy_rsp.csv', 'qqq_rsp.csv', 'iwm_qqq.csv'):
+                f = runtime / ratio
+                if f.is_file() and durable_storage.persist_file_to_cloud(f, ratio):
+                    persisted_count += 1
+            if raw_writable.is_dir():
+                for p in raw_writable.glob("*_us_d.csv"):
+                    if durable_storage.persist_file_to_cloud(p, p.name):
+                        persisted_count += 1
+            durable_storage.persist_gamma_history(runtime)
+        except Exception as e:
+            print(f"[Storage] Cloud persistence warning: {e}")
+
+    storage_note = (
+        f" Persisted {persisted_count} files to Vercel Blob."
+        if persisted_count > 0
+        else (" Persisted to Vercel Blob." if durable_storage.get_blob_token() else " Saved to runtime cache.")
+    )
+    msg = (
+        f"Synced {result.get('updated_count', 0)} of {result.get('total', 0)} tickers "
+        f"from yfinance (latest: {result.get('last_date', 'today')}).{storage_note}"
+    )
+    return {"message": msg, **result}
+
+
 @app.get("/", response_class=HTMLResponse)
 def index_page():
+    index_file = os.path.join(ROOT_DIR, "public", "index.html")
+    if os.path.isfile(index_file):
+        with open(index_file, "r", encoding="utf-8") as f:
+            return f.read()
     return HTML_CONTENT
 
 HTML_CONTENT = """<!DOCTYPE html>

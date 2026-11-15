@@ -1,7 +1,8 @@
 # Vercel Deployment Ignore
 .streamlit
-app.py
+legacy_streamlit_app.py
 scratch/
+.runtime/
 *.bat
 run_dashboard.bat
 __pycache__/

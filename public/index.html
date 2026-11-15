@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en" data-theme="hybrid" data-font="tahoma" data-sweep="replay">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Double Edge | Market Desk</title>
+<link rel="stylesheet" href="desk.css">
+<script defer src="snapshot.js"></script>
+<script defer src="desk.js"></script>
+</head>
+<body>
+<div class="shell">
+ <aside class="rail">
+  <a class="brand" href="#overview"><span class="mark" aria-hidden="true"></span><span>Double Edge<small>QUANTITATIVE DESK</small></span></a>
+  <p class="nav-label">WORKSPACE</p>
+  <nav aria-label="Workspace">
+   <a href="#overview"><span aria-hidden="true">◈</span>Market Overview</a>
+   <a href="#charts"><span aria-hidden="true">⌁</span>Single Ticker</a>
+   <a href="#gamma"><span aria-hidden="true">▥</span>Gamma Exposure</a>
+   <a href="#volatility"><span aria-hidden="true">∿</span>Volatility Pricing</a>
+   <a href="#bias"><span aria-hidden="true">≋</span>Bias Matrix</a>
+   <a href="#sector"><span aria-hidden="true">▦</span>Index &amp; Sector Flow</a>
+   <a href="#mag7"><span aria-hidden="true">⟋</span>Magnificent 7 Flow</a>
+   <a href="#ratios"><span aria-hidden="true">⇄</span>Synthetic Ratio Rotations</a>
+  </nav>
+  <section class="sidebar-sync" aria-label="Data sync">
+   <p class="nav-label">DATA SYNC</p>
+   <button id="sync-yfinance" type="button">Sync from yfinance</button>
+   <button id="sync-csv" type="button">Sync from CSV</button>
+   <p id="sync-status" role="status"></p>
+  </section>
+  <div class="rail-foot"><span class="signal"></span> LOCAL DESIGN PREVIEW</div>
+ </aside>
+ <main>
+  <div class="market-replay" id="market-replay" aria-hidden="true"></div>
+  <div class="market-network" aria-hidden="true">
+   <svg viewBox="0 0 1200 560" preserveAspectRatio="xMidYMid slice" focusable="false">
+    <defs>
+     <radialGradient id="network-glow"><stop stop-color="#2443a2" stop-opacity=".26"/><stop offset="1" stop-color="#19295c" stop-opacity="0"/></radialGradient>
+     <pattern id="network-grid" width="30" height="30" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#7a9df0" opacity=".18"/></pattern>
+    </defs>
+    <ellipse cx="780" cy="220" rx="620" ry="355" fill="url(#network-glow)"/>
+    <rect width="1200" height="560" fill="url(#network-grid)"/>
+    <g class="network-traces">
+     <path d="M-35 172H83L151 104H382L460 182H658L738 102H1045L1152 30H1235"/>
+     <path d="M-25 307H110L218 199H345L425 279H634L711 356H922L1006 272H1225"/>
+     <path d="M-20 500H147L243 404H429L502 331H622L748 457H983L1087 353H1220"/>
+     <path d="M151 104V28M345 199L460 84H597L658 145V182M738 102V28M922 356L983 417V457M218 199V303L147 374V500M502 331V279M1087 353V502"/>
+    </g>
+    <g class="network-nodes">
+     <circle cx="151" cy="104" r="3"/><circle cx="345" cy="199" r="3"/><circle cx="460" cy="182" r="3"/><circle cx="738" cy="102" r="3"/>
+     <circle cx="218" cy="199" r="3"/><circle cx="502" cy="331" r="3"/><circle cx="922" cy="356" r="3"/><circle cx="1087" cy="353" r="3"/>
+     <circle class="network-pulse" r="3"><animateMotion dur="16s" repeatCount="indefinite" path="M-35 172H83L151 104H382L460 182H658L738 102H1045L1152 30H1235"/></circle>
+     <circle class="network-pulse" r="2.5"><animateMotion dur="21s" begin="-7s" repeatCount="indefinite" path="M-25 307H110L218 199H345L425 279H634L711 356H922L1006 272H1225"/></circle>
+     <circle class="network-pulse" r="3"><animateMotion dur="24s" begin="-12s" repeatCount="indefinite" path="M-20 500H147L243 404H429L502 331H622L748 457H983L1087 353H1220"/></circle>
+    </g>
+    <g class="network-symbols"><text x="160" y="96">SPY</text><text x="468" y="174">QQQ</text><text x="746" y="93">NVDA</text><text x="226" y="217">IWM</text><text x="511" y="350">AAPL</text><text x="931" y="347">MSFT</text><text x="1096" y="371">GLD</text></g>
+   </svg>
+  </div>
+  <header class="top"><span id="crumb">WORKSPACE / MARKET OVERVIEW</span><div><span class="snapshot"><i class="signal"></i> <span id="source-badge">SAVED SNAPSHOT</span></span><button class="search" id="open-search">Find symbol <kbd>/</kbd></button></div></header>
+  <div class="stage">
+   <div id="content" aria-live="off"></div>
+   <footer><span>DOUBLE EDGE</span><span id="api-status" role="status">Saved snapshot</span></footer>
+  </div>
+ </main>
+</div>
+<dialog id="finder"><div class="dialog-head"><label for="query">Find a symbol</label><button id="close-search" aria-label="Close symbol search">✕</button></div><input id="query" placeholder="Search tickers" autocomplete="off"><div id="results"></div></dialog>
+<noscript>JavaScript is required to display the market preview.</noscript>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

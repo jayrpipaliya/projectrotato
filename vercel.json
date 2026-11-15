@@ -1,11 +1,12 @@
 {
+  "framework": "fastapi",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index.py" }
+    { "source": "/", "destination": "/index.html" }
   ],
   "functions": {
-    "api/index.py": {
+    "app.py": {
       "maxDuration": 60,
-      "excludeFiles": "{app.py,.streamlit/**,scratch/**,*.bat}"
+      "excludeFiles": "{public/**,legacy_streamlit_app.py,.streamlit/**,scratch/**,*.bat}"
     }
   }
 }
