@@ -540,35 +540,37 @@ function opportunitiesPage() {
     filtered.sort((a,b) => b.total_oi - a.total_oi);
   }
 
-  const topLeap = payload.top_leaps?.[0];
-  const topInv = payload.top_inversion?.[0];
-  const discCount = payload.relative_discount_count != null ? payload.relative_discount_count : opps.filter(o => o.ratio_clean < 1.0).length;
-  const invCount = payload.inverted_count != null ? payload.inverted_count : opps.filter(o => o.term_spread < -1.0).length;
+  const cards = payload.actionable_cards || {};
+  const cal = cards.prime_calendar;
+  const leap = cards.prime_leap;
+  const conf = cards.prime_confluence;
+  const macro = cards.macro_term_state;
+  const crush = cards.peak_iv_crush;
 
   const tile = (label, val, detail, tone='neutral') => 
     '<div class="gamma-kpi vol-kpi" data-regime="'+tone+'"><small>'+label+'</small><div class="vol-kpi-value">'+val+'</div><div class="vol-kpi-details">'+detail+'</div></div>';
 
   const kpis = [
-    tile('Top LEAP Discount (1Y+)', 
-      topLeap ? '<strong>'+topLeap.ticker+' '+topLeap.expiration+'</strong>' : '—', 
-      topLeap ? '<span class="vol-regime-pill" style="color:var(--green)">'+topLeap.ratio_clean+'× HV ('+signed(topLeap.vrp_clean,' pp')+')</span><small>IV '+topLeap.atm_iv+'% vs Clean HV '+topLeap.clean_hv+'%</small>' : 'None', 
+    tile('Prime Calendar Setup', 
+      cal ? '<strong>'+cal.ticker+' '+cal.expiration+'</strong>' : '—', 
+      cal ? '<span class="vol-regime-pill" style="color:var(--green)">'+signed(cal.term_spread,' pp')+' Front Skew</span><small>Buy '+cal.atm_iv+'% IV ('+cal.ratio_clean+'× HV) · Sell '+cal.front_iv+'%</small>' : 'None', 
       'low'),
-    tile('Deepest Term Inversion', 
-      topInv ? '<strong>'+topInv.ticker+' '+topInv.expiration+'</strong>' : '—', 
-      topInv ? '<span class="vol-regime-pill" style="color:var(--green)">'+signed(topInv.term_spread,' pp')+'</span><small>Back IV '+topInv.atm_iv+'% vs Front '+topInv.front_iv+'%</small>' : 'None', 
+    tile('Prime Long LEAP Value', 
+      leap ? '<strong>'+leap.ticker+' '+leap.expiration+'</strong>' : '—', 
+      leap ? '<span class="vol-regime-pill" style="color:var(--green)">'+leap.ratio_clean+'× Clean HV ('+signed(leap.vrp_clean,' pp')+')</span><small>Contract IV '+leap.atm_iv+'% vs Realized '+leap.clean_hv+'%</small>' : 'None', 
       'low'),
-    tile('Relative Discounts (IV < HV)', 
-      '<strong>'+discCount+' / '+opps.length+'</strong>', 
-      '<small>Underpriced vs 30D Clean Realized Movement</small>', 
-      'neutral'),
-    tile('Inverted Term Structures', 
-      '<strong>'+invCount+' / '+opps.length+'</strong>', 
-      '<small>Back month cheaper than front event week</small>', 
-      'neutral'),
-    tile('Scan Timestamp', 
-      '<strong>'+(payload.scan_date ? payload.scan_date.split(' ')[0] : 'Today')+'</strong>', 
-      '<small>'+(payload.scan_date ? payload.scan_date.split(' ')[1] : '')+' EST · Quantitative Engine</small>', 
-      'neutral')
+    tile('Double Edge Confluence', 
+      conf ? '<strong>'+conf.ticker+' '+conf.expiration+'</strong>' : '—', 
+      conf ? '<span class="vol-regime-pill" style="color:#38bdf8">Bias +'+conf.bias_score+' · '+conf.ratio_clean+'× HV</span><small>'+conf.bias_label+' Trend · '+signed(conf.term_spread,' pp')+' Front Skew</small>' : 'None', 
+      'low'),
+    tile('Macro Term Structure', 
+      macro ? '<strong>'+macro.state_label+'</strong>' : '—', 
+      macro ? '<span class="vol-regime-pill" style="color:'+(macro.tone==='cherry'?'var(--red)':'var(--amber)')+'">'+macro.inversion_pct+'% Universe Inverted ('+macro.inverted_count+'/'+macro.total_tickers+')</span><small>Avg Front Skew +'+macro.avg_front_skew+' pp over back tenors</small>' : 'None', 
+      macro ? macro.tone : 'neutral'),
+    tile('Peak IV Crush Target', 
+      crush && crush.ticker ? '<strong>'+crush.ticker+' Front Cycle ('+crush.front_dte+'d)</strong>' : '—', 
+      crush && crush.ticker ? '<span class="vol-regime-pill" style="color:var(--amber)">'+crush.front_iv+'% IV ('+Math.round(crush.front_iv_percentile)+'th IVP)</span><small>Term Spread '+signed(crush.term_spread,' pp')+' vs back month</small>' : 'None', 
+      'high')
   ];
 
   const kpiSection = '<section class="vol-kpis in" aria-label="Opportunities metrics">'+kpis.join('')+'</section>';
@@ -620,7 +622,7 @@ function opportunitiesPage() {
     + tickerSelect
     + sortSelect
     + '<button id="opps-refresh">Refresh Scan</button>'
-    + '<span class="muted" style="margin-left:auto;font-size:12px;">Showing '+filtered.length+' opportunities</span>'
+    + '<span class="muted" style="margin-left:auto;font-size:12px;">Updated '+(payload.scan_date ? payload.scan_date.split(' ')[0] : 'Today')+' · Showing '+filtered.length+' opportunities</span>'
     + '</div>'
     + '</div>';
 

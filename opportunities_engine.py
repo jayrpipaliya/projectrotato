@@ -185,6 +185,123 @@ def scan_volatility_opportunities(universe=None):
     low_vol_count = sum(1 for o in opportunities if o['contract_iv_percentile'] <= 50.0 or o['front_iv_percentile'] <= 50.0)
     double_edge_count = sum(1 for o in opportunities if o['ratio_clean'] < 1.0 and (o['contract_iv_percentile'] <= 50.0 or o['front_iv_percentile'] <= 50.0))
 
+    # Actionable Trade Strip
+    # 1. Prime Calendar Setup (3M or 6M tenor, deep term inversion, IV < HV)
+    calendars = [
+        o for o in opportunities 
+        if o['horizon_code'] in ('3M', '6M') and o.get('term_spread', 0) <= -4.0 and o.get('ratio_clean', 1.0) < 1.0
+    ]
+    if not calendars:
+        calendars = [o for o in opportunities if o.get('term_spread', 0) < 0]
+    calendars.sort(key=lambda x: (x['ratio_clean'], x['term_spread']))
+    prime_cal = calendars[0] if calendars else None
+
+    # 2. Prime Long LEAP Value (1Y+ tenor, deepest discount to clean HV, liquid)
+    leaps = [o for o in opportunities if o['horizon_code'] == 'LEAP' and o.get('ratio_clean', 1.0) < 1.0]
+    if not leaps:
+        leaps = [o for o in opportunities if o['horizon_code'] == 'LEAP']
+    leaps.sort(key=lambda x: (x['ratio_clean'], -x['total_oi']))
+    prime_leap = leaps[0] if leaps else None
+
+    # 3. Double Edge Confluence (Directional Trend Confluence + Volatility Discount)
+    ticker_biases = {}
+    try:
+        from confluence_engine import compute_confluence_score
+        for t in tickers:
+            try:
+                conf = compute_confluence_score(t)
+                ticker_biases[t] = conf
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    confluence_candidates = []
+    for o in opportunities:
+        conf = ticker_biases.get(o['ticker'])
+        if conf and conf.get('score', 0) >= 20 and o.get('ratio_clean', 1.0) <= 0.98:
+            confluence_candidates.append({
+                **o,
+                'bias_score': conf.get('score', 0),
+                'bias_label': conf.get('bias_label', 'Bullish')
+            })
+    if not confluence_candidates:
+        for o in opportunities:
+            conf = ticker_biases.get(o['ticker'])
+            if conf and conf.get('score', 0) > 0 and o.get('ratio_clean', 1.0) < 1.0:
+                confluence_candidates.append({
+                    **o,
+                    'bias_score': conf.get('score', 0),
+                    'bias_label': conf.get('bias_label', 'Bullish')
+                })
+    confluence_candidates.sort(key=lambda x: (-x['bias_score'], x['ratio_clean']))
+    prime_conf = confluence_candidates[0] if confluence_candidates else None
+
+    # 4. Macro Term Structure State (Cross-asset curve backwardation vs contango)
+    tickers_term = {}
+    for o in opportunities:
+        t = o['ticker']
+        if t not in tickers_term:
+            tickers_term[t] = {'front_iv': o['front_iv'], 'back_ivs': []}
+        tickers_term[t]['back_ivs'].append(o['atm_iv'])
+
+    inv_t_count = 0
+    front_skews = []
+    for t, t_info in tickers_term.items():
+        if t_info['back_ivs']:
+            avg_back = sum(t_info['back_ivs']) / len(t_info['back_ivs'])
+            diff = t_info['front_iv'] - avg_back
+            front_skews.append(diff)
+            if diff > 1.0:
+                inv_t_count += 1
+
+    total_scanned_tickers = len(tickers_term)
+    inversion_pct = round((inv_t_count / max(total_scanned_tickers, 1)) * 100)
+    avg_front_skew = round(sum(front_skews) / max(len(front_skews), 1), 1)
+
+    if inversion_pct >= 70:
+        macro_label = "Deep Backwardation"
+        macro_tone = "cherry"
+    elif inversion_pct >= 50:
+        macro_label = "Mild Backwardation"
+        macro_tone = "amber"
+    elif inversion_pct <= 30:
+        macro_label = "Contango (Normal)"
+        macro_tone = "mint"
+    else:
+        macro_label = "Flat / Mixed Curve"
+        macro_tone = "slate"
+
+    macro_term_state = {
+        "state_label": macro_label,
+        "tone": macro_tone,
+        "inversion_pct": inversion_pct,
+        "inverted_count": inv_t_count,
+        "total_tickers": total_scanned_tickers,
+        "avg_front_skew": avg_front_skew
+    }
+
+    # 5. Peak IV Crush Target (Most bloated front-month weekly cycle)
+    crush_candidates = sorted(opportunities, key=lambda x: (x.get('front_iv', 0), -x.get('term_spread', 0)), reverse=True)
+    top_crush = crush_candidates[0] if crush_candidates else None
+    peak_crush = {
+        "ticker": top_crush['ticker'] if top_crush else "—",
+        "front_iv": top_crush['front_iv'] if top_crush else 0.0,
+        "front_dte": top_crush.get('front_dte', 1) if top_crush else 1,
+        "front_iv_percentile": top_crush.get('front_iv_percentile', 100.0) if top_crush else 100.0,
+        "term_spread": top_crush['term_spread'] if top_crush else 0.0,
+        "back_exp": top_crush['expiration'] if top_crush else "",
+        "back_iv": top_crush['atm_iv'] if top_crush else 0.0
+    } if top_crush else {}
+
+    actionable_cards = {
+        "prime_calendar": prime_cal,
+        "prime_leap": prime_leap,
+        "prime_confluence": prime_conf,
+        "macro_term_state": macro_term_state,
+        "peak_iv_crush": peak_crush
+    }
+
     payload = {
         "scan_timestamp": scan_timestamp,
         "scan_date": scan_date_str,
@@ -198,6 +315,7 @@ def scan_volatility_opportunities(universe=None):
         "top_6m": top_6m,
         "top_3m": top_3m,
         "top_inversion": top_inversion,
+        "actionable_cards": actionable_cards,
         "opportunities": opportunities
     }
 
@@ -275,40 +393,49 @@ def render_opportunities_page():
         st.warning("No volatility opportunities currently detected. Try refreshing.")
         return
 
-    # Top KPI Metric Strip
-    top_leap = data.get("top_leaps", [{}])[0] if data.get("top_leaps") else {}
-    top_inv = data.get("top_inversion", [{}])[0] if data.get("top_inversion") else {}
-    disc_count = data.get("relative_discount_count", sum(1 for o in opps if o.get("ratio_clean", 1.0) < 1.0))
-    inv_count = data.get("inverted_count", sum(1 for o in opps if o.get("term_spread", 0) < -1.0))
+    # Actionable Trade Strip
+    cards = data.get("actionable_cards", {})
+    cal = cards.get("prime_calendar") or {}
+    leap = cards.get("prime_leap") or {}
+    conf = cards.get("prime_confluence") or {}
+    macro = cards.get("macro_term_state") or {}
+    crush = cards.get("peak_iv_crush") or {}
 
-    k1, k2, k3, k4 = st.columns(4)
+    k1, k2, k3, k4, k5 = st.columns(5)
     with k1:
         st.metric(
-            "Top LEAP Discount (1Y+)",
-            f"{top_leap.get('ticker', '—')} {top_leap.get('expiration', '')}",
-            f"{top_leap.get('ratio_clean', 1.0):.2f}x HV ({top_leap.get('vrp_clean', 0):+.1f} pp)" if top_leap else "—",
+            "Prime Calendar Setup",
+            f"{cal.get('ticker', '—')} {cal.get('expiration', '')}",
+            f"{cal.get('term_spread', 0):+.1f} pp Skew ({cal.get('ratio_clean', 1.0):.2f}x HV)" if cal else "—",
             delta_color="normal"
         )
     with k2:
         st.metric(
-            "Deepest Term Inversion",
-            f"{top_inv.get('ticker', '—')} {top_inv.get('expiration', '')}",
-            f"{top_inv.get('term_spread', 0):+.1f} pp vs Front {top_inv.get('front_iv', 0):.1f}%" if top_inv else "—",
+            "Prime Long LEAP Value",
+            f"{leap.get('ticker', '—')} {leap.get('expiration', '')}",
+            f"{leap.get('ratio_clean', 1.0):.2f}x HV ({leap.get('vrp_clean', 0):+.1f} pp)" if leap else "—",
             delta_color="normal"
         )
     with k3:
         st.metric(
-            "Relative Discounts (IV < HV)",
-            f"{disc_count} / {len(opps)}",
-            "Underpriced vs 30D Clean Realized Movement",
-            delta_color="off"
+            "Double Edge Confluence",
+            f"{conf.get('ticker', '—')} {conf.get('expiration', '')}",
+            f"Bias +{conf.get('bias_score', 0)} ({conf.get('ratio_clean', 1.0):.2f}x HV)" if conf else "—",
+            delta_color="normal"
         )
     with k4:
         st.metric(
-            "Inverted Curve Opportunities",
-            f"{inv_count} / {len(opps)}",
-            "Back IV is cheaper than front-month weekly",
-            delta_color="off"
+            "Macro Term Structure",
+            macro.get("state_label", "Normal"),
+            f"{macro.get('inversion_pct', 0)}% Inverted (+{macro.get('avg_front_skew', 0):.1f} pp)" if macro else "—",
+            delta_color="inverse" if macro.get("tone") == "cherry" else "normal"
+        )
+    with k5:
+        st.metric(
+            "Peak IV Crush Target",
+            f"{crush.get('ticker', '—')} Front ({crush.get('front_dte', 1)}d)",
+            f"{crush.get('front_iv', 0):.1f}% IV ({crush.get('term_spread', 0):+.1f} pp)" if crush else "—",
+            delta_color="inverse"
         )
 
     st.markdown("---")
