@@ -7,7 +7,9 @@ const signed = (n, unit = '%') => Number.isFinite(n) ? (n >= 0 ? '+' : '−') + 
 const tone = n => n >= 0 ? 'up' : 'down';
 const safe = v => String(v ?? '—').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const names = {SPY:'S&P 500',QQQ:'Nasdaq 100',IWM:'Russell 2000',NVDA:'NVIDIA',DIA:'Dow Jones',RSP:'S&P 500 Equal Weight',GLD:'Gold',TLT:'Long Treasuries',SMH:'Semiconductors'};
-const titles = {overview:'Market Overview',charts:'Single Ticker',gamma:'Gamma Exposure',volatility:'Volatility Pricing',bias:'Bias Matrix',sector:'Index & Sector Flow',mag7:'Magnificent 7 Flow',ratios:'Synthetic Ratio Rotations'};
+const titles = {overview:'Market Overview',opportunities:'Opportunities',charts:'Single Ticker',gamma:'Gamma Exposure',volatility:'Volatility Pricing',bias:'Bias Matrix',sector:'Index & Sector Flow',mag7:'Magnificent 7 Flow',ratios:'Synthetic Ratio Rotations'};
+const oppsSelection = {horizon:'All', sort:'discount', ticker:'All'};
+let remoteOpportunities = null;
 const state = {symbol:'SPY', range:63, priceMode:'Candles', ema:true, vol:30, gammaMode:'Net GEX', gammaRange:'Relevant', gammaTable:'Relevant only', gammaDate:''};
 const W=800,H=301,L=10,R=730,T=19,B=272;
 const priceRows = () => data.prices[state.symbol];
@@ -503,6 +505,172 @@ function bindVolatility() {
   watchSelect('vol-front',value=>{volSelection.front=value;volSelection.back='';});
   watchSelect('vol-back',value=>{volSelection.back=value;});
   byId('vol-refresh')?.addEventListener('click',()=>loadPageData(true));
+}
+
+function opportunitiesPage() {
+  const payload = remoteOpportunities || data.opportunities;
+  if (!payload || !Array.isArray(payload.opportunities)) {
+    return hero('Volatility Mispricings', 'Opportunities Desk.', 'Scanning universe for long-dated implied volatility discounts (IV < HV and low IV percentile)...', 'Live Scan')
+      + card('Scanning', 'Opportunities Loading', '<div class="empty">Loading opportunities from quantitative engine…</div>');
+  }
+
+  const opps = payload.opportunities;
+  const filtered = opps.filter(o => {
+    if (oppsSelection.horizon !== 'All' && o.horizon_code !== oppsSelection.horizon) return false;
+    if (oppsSelection.ticker !== 'All' && o.ticker !== oppsSelection.ticker) return false;
+    return true;
+  });
+
+  if (oppsSelection.sort === 'discount') {
+    filtered.sort((a,b) => a.ratio_clean - b.ratio_clean || a.vrp_clean - b.vrp_clean);
+  } else if (oppsSelection.sort === 'percentile') {
+    filtered.sort((a,b) => a.iv_percentile - b.iv_percentile || a.ratio_clean - b.ratio_clean);
+  } else if (oppsSelection.sort === 'liquidity') {
+    filtered.sort((a,b) => b.total_oi - a.total_oi);
+  }
+
+  const topLeap = payload.top_leaps?.[0];
+  const top6m = payload.top_6m?.[0];
+  const top3m = payload.top_3m?.[0];
+  const primeCount = opps.filter(o => o.ratio_clean < 1.0).length;
+
+  const tile = (label, val, detail, tone='neutral') => 
+    '<div class="gamma-kpi vol-kpi" data-regime="'+tone+'"><small>'+label+'</small><div class="vol-kpi-value">'+val+'</div><div class="vol-kpi-details">'+detail+'</div></div>';
+
+  const kpis = [
+    tile('Top LEAP Discount (1Y+)', 
+      topLeap ? '<strong>'+topLeap.ticker+' '+topLeap.expiration+'</strong>' : '—', 
+      topLeap ? '<span class="vol-regime-pill" style="color:var(--green)">'+topLeap.ratio_clean+'× HV ('+signed(topLeap.vrp_clean,' pp')+')</span><small>IV '+topLeap.atm_iv+'% vs HV '+topLeap.clean_hv+'%</small>' : 'None', 
+      'low'),
+    tile('Top 6-Month Discount', 
+      top6m ? '<strong>'+top6m.ticker+' '+top6m.expiration+'</strong>' : '—', 
+      top6m ? '<span class="vol-regime-pill" style="color:var(--green)">'+top6m.ratio_clean+'× HV ('+signed(top6m.vrp_clean,' pp')+')</span><small>IV '+top6m.atm_iv+'% vs HV '+top6m.clean_hv+'%</small>' : 'None', 
+      'low'),
+    tile('Top 3-Month Discount', 
+      top3m ? '<strong>'+top3m.ticker+' '+top3m.expiration+'</strong>' : '—', 
+      top3m ? '<span class="vol-regime-pill" style="color:var(--green)">'+top3m.ratio_clean+'× HV ('+signed(top3m.vrp_clean,' pp')+')</span><small>IV '+top3m.atm_iv+'% vs HV '+top3m.clean_hv+'%</small>' : 'None', 
+      'low'),
+    tile('Total Discount Opportunities', 
+      '<strong>'+primeCount+' / '+opps.length+'</strong>', 
+      '<small>Contracts trading at IV &lt; Clean HV30 across '+payload.universe_count+' assets</small>', 
+      'neutral'),
+    tile('Scan Timestamp', 
+      '<strong>'+(payload.scan_date ? payload.scan_date.split(' ')[0] : 'Today')+'</strong>', 
+      '<small>'+(payload.scan_date ? payload.scan_date.split(' ')[1] : '')+' EST · Quantitative Engine</small>', 
+      'neutral')
+  ];
+
+  const kpiSection = '<section class="vol-kpis in" aria-label="Opportunities metrics">'+kpis.join('')+'</section>';
+
+  const tickers = ['All', ...new Set(opps.map(o => o.ticker))].sort();
+
+  const horizons = [
+    ['All', 'All Horizons'],
+    ['3M', '3-Month (~90D)'],
+    ['6M', '6-Month (~180D)'],
+    ['LEAP', 'LEAPS (1Y+)']
+  ];
+
+  const horizonButtons = '<div class="gamma-ranges controls" aria-label="Horizon filter">'
+    + horizons.map(([code, label]) => '<button type="button" class="opp-horizon-btn '+(oppsSelection.horizon===code?'active':'')+'" data-horizon="'+code+'" style="padding:4px 10px;font-size:12px;cursor:pointer;">'+label+'</button>').join('')
+    + '</div>';
+
+  const sortSelect = '<label>Sort by <select id="opp-sort">'
+    + '<option value="discount" '+(oppsSelection.sort==='discount'?'selected':'')+'>Deepest Vol Discount (Lowest IV/HV)</option>'
+    + '<option value="percentile" '+(oppsSelection.sort==='percentile'?'selected':'')+'>Lowest 1Y IV Percentile</option>'
+    + '<option value="liquidity" '+(oppsSelection.sort==='liquidity'?'selected':'')+'>Highest Open Interest (Liquidity)</option>'
+    + '</select></label>';
+
+  const tickerSelect = '<label>Underlying <select id="opp-ticker">'
+    + tickers.map(t => '<option value="'+t+'" '+(oppsSelection.ticker===t?'selected':'')+'>'+(t==='All'?'All Underlyings':t)+'</option>').join('')
+    + '</select></label>';
+
+  const toolbar = '<div class="vol-toolbar controls" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">'
+    + horizonButtons
+    + tickerSelect
+    + sortSelect
+    + '<button id="opps-refresh">Refresh Scan</button>'
+    + '<span class="muted" style="margin-left:auto;font-size:12px;">Showing '+filtered.length+' opportunities</span>'
+    + '</div>';
+
+  const rows = filtered.map(o => {
+    const vrpColor = o.vrp_clean < 0 ? 'var(--green)' : 'var(--red)';
+    const ratioColor = o.ratio_clean <= 0.88 ? 'var(--green)' : o.ratio_clean < 1.0 ? '#38bdf8' : o.ratio_clean <= 1.05 ? 'var(--amber)' : 'var(--muted)';
+    const discPct = Math.round((1.0 - o.ratio_clean) * 100);
+    const badgeText = discPct > 0 ? discPct+'% Discount' : '+'+Math.abs(discPct)+'% Premium';
+    const badgeBg = discPct > 0 ? 'rgba(0, 245, 160, 0.12)' : 'rgba(255, 46, 85, 0.12)';
+    const badgeCol = discPct > 0 ? 'var(--green)' : 'var(--red)';
+
+    const tenorBadgeBg = o.horizon_code==='LEAP' ? 'rgba(168, 85, 247, 0.15)' : o.horizon_code==='6M' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(234, 179, 8, 0.15)';
+    const tenorBadgeCol = o.horizon_code==='LEAP' ? '#a855f7' : o.horizon_code==='6M' ? '#38bdf8' : '#eab308';
+
+    return '<tr>'
+      + '<td style="font-weight:700;color:var(--text);text-align:left;">'+o.ticker+'</td>'
+      + '<td style="text-align:right;">'+money(o.spot_price)+'</td>'
+      + '<td style="text-align:center;"><span style="background:'+tenorBadgeBg+';color:'+tenorBadgeCol+';font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;">'+o.horizon+'</span></td>'
+      + '<td style="text-align:center;font-weight:600;">'+o.expiration+' <small style="color:var(--muted)">('+o.dte+'d)</small></td>'
+      + '<td style="text-align:right;font-weight:700;color:var(--text);">'+pct(o.atm_iv)+'</td>'
+      + '<td style="text-align:right;">'+pct(o.clean_hv)+'<br><small style="color:var(--muted)">1Y: '+pct(o.hv_1y)+'</small></td>'
+      + '<td style="text-align:right;font-weight:700;color:'+vrpColor+';">'+signed(o.vrp_clean,' pp')+'</td>'
+      + '<td style="text-align:center;"><strong style="color:'+ratioColor+';">'+o.ratio_clean+'×</strong><br><span style="background:'+badgeBg+';color:'+badgeCol+';font-size:10px;padding:1px 5px;border-radius:3px;font-weight:600;">'+badgeText+'</span></td>'
+      + '<td style="text-align:center;"><strong class="vol-regime-text">'+pct(o.iv_percentile)+'</strong><br><small style="color:var(--muted)">'+o.vol_regime+'</small></td>'
+      + '<td style="text-align:left;font-size:11px;max-width:280px;white-space:normal;color:#cbd5e1;"><span style="color:var(--green);font-weight:600;">'+safe(o.recommended_strategy)+'</span></td>'
+      + '<td style="text-align:right;font-family:var(--mono);">'+contracts(o.total_oi)+'</td>'
+      + '</tr>';
+  }).join('');
+
+  const tableHeaders = [
+    '<th scope="col" style="text-align:left;">Ticker</th>',
+    '<th scope="col" style="text-align:right;">Spot</th>',
+    '<th scope="col" style="text-align:center;">Horizon</th>',
+    '<th scope="col" style="text-align:center;">Expiration (DTE)</th>',
+    '<th scope="col" style="text-align:right;">ATM IV</th>',
+    '<th scope="col" style="text-align:right;">30D Clean HV</th>',
+    '<th scope="col" style="text-align:right;">VRP Spread</th>',
+    '<th scope="col" style="text-align:center;">IV / HV Ratio</th>',
+    '<th scope="col" style="text-align:center;">1Y IV Pct</th>',
+    '<th scope="col" style="text-align:left;">Recommended Strategy</th>',
+    '<th scope="col" style="text-align:right;">Open Interest</th>'
+  ].join('');
+
+  const tableCard = card(
+    'Systematic Volatility Mispricings',
+    'Cheap Implied Volatility Scanner (IV < Clean Realized Volatility)',
+    toolbar
+    + '<div class="gamma-table-wrap" tabindex="0" role="region" aria-label="Opportunities table" style="max-height:550px;">'
+    + '<table class="gamma-table vol-matrix">'
+    + '<thead><tr>' + tableHeaders + '</tr></thead>'
+    + '<tbody>' + (rows || '<tr><td colspan="11" class="empty" style="text-align:center;padding:24px;">No opportunities matching selected filters.</td></tr>') + '</tbody>'
+    + '</table></div>'
+    + '<p class="vol-chart-hint" style="margin-top:10px;"><b>Quantitative Edge:</b> When Implied Volatility (IV) trades at a discount to Clean Realized Volatility (IV/HV &lt; 1.0x) and 1-Year IV Percentile is low, long-dated options (LEAPS, 6M, and calendar long legs) are underpriced relative to actual price variance.</p>',
+    '',
+    'wide in'
+  );
+
+  return hero('Volatility Mispricings', 'Opportunities Desk.', 'Identify institutional contracts where implied volatility (IV) is deeply discounted vs historical realized volatility ($IV < HV$ and low IV percentile) across 3-Month, 6-Month, and LEAP horizons.', payload.scan_date || 'Live Scan')
+    + kpiSection
+    + tableCard;
+}
+
+function bindOpportunities() {
+  document.querySelectorAll('.opp-horizon-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      oppsSelection.horizon = btn.dataset.horizon;
+      render();
+    });
+  });
+  byId('opp-sort')?.addEventListener('change', e => {
+    oppsSelection.sort = e.target.value;
+    render();
+  });
+  byId('opp-ticker')?.addEventListener('change', e => {
+    oppsSelection.ticker = e.target.value;
+    render();
+  });
+  byId('opps-refresh')?.addEventListener('click', () => {
+    loadPageData(true);
+  });
+}
 
 }
 
@@ -946,7 +1114,7 @@ const backendRequests=new Map();
 const loadedHistories=new Set();
 function dataKey() {
   const page=route();
-  if(page==='overview'||page==='sector'||page==='mag7') return page;
+  if(page==='overview'||page==='sector'||page==='mag7'||page==='opportunities') return page;
   if(page==='bias') return page+'/'+biasSelection.scope;
   if(page==='ratios') return page+'/'+ratioSelection.pair;
   if(page==='charts') return page+'/'+state.symbol+'/'+explorerSelection.horizon+'/'+explorerSelection.view;
@@ -1063,6 +1231,11 @@ async function hydrateView(page,symbol,force) {
       current.smiles.set(expiry,reply.smile);
     }
   }
+  if(page==='opportunities'){
+    const p=await readBackend('opportunities'+(force?'?refresh=true':''));
+    if(!p||!Array.isArray(p.opportunities)) throw new Error('No opportunities returned.');
+    remoteOpportunities=p;
+  }
 }
 function updateBackendNotice(message) {
 
@@ -1144,6 +1317,7 @@ function render() {
   if(page==='charts') html=tickerExplorer(date);
   if(page==='ratios') html=ratioPage();
   if(page==='volatility') html=volatilityPage(date);
+  if(page==='opportunities') html=opportunitiesPage();
   if(page==='gamma') html=gammaPage(date);
   if(page==='bias') html=biasPage();
   if(page==='sector'||page==='mag7') html=flowPage(page==='mag7');
@@ -1163,6 +1337,7 @@ function render() {
   if(page==='gamma') animateGammaMarkers(previousMarkers);
   if(page==='mag7') bindFlowEmphasis();
   if(page==='volatility'){bindVolatility();bindVolStudyTips();}
+  if(page==='opportunities') bindOpportunities();
   byId('explorer-symbol')?.addEventListener('change',e=>{choose(e.target.value);byId('explorer-symbol')?.focus({preventScroll:true});});
   byId('rotation-pair')?.addEventListener('change',e=>{ratioSelection.pair=e.target.value;render();byId('rotation-pair')?.focus({preventScroll:true});});
   byId('bias-asset')?.addEventListener('change',e=>{biasSelection.ticker=e.target.value;render();byId('bias-asset')?.focus({preventScroll:true});});

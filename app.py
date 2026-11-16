@@ -49,6 +49,7 @@ READ_PATHS = {
     "/api/ticker/{ticker}", "/api/gamma/{ticker}", "/api/gamma/{ticker}/shift",
     "/api/gamma/{ticker}/heatmap", "/api/gamma/{ticker}/oi-history",
     "/api/options/{ticker}", "/api/options/{ticker}/smile",
+    "/api/opportunities",
 }
 for route in legacy.app.routes:
     if route.path in READ_PATHS and getattr(route, "methods", None) == {"GET"}:

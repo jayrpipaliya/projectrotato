@@ -435,3 +435,6 @@ dialog,.tooltip{background:var(--control)}
 .vol-study-tip{white-space:pre-line;font:11px/1.45 var(--mono)}
 .vol-chart-hint{margin-top:8px!important}
 .smile-metrics{margin:0 0 10px;padding:0 0 9px;border-top:0;border-bottom:1px solid var(--edge)}
+.opp-horizon-btn{background:var(--control);border:1px solid var(--edge);color:var(--text);border-radius:6px;transition:all .15s}
+.opp-horizon-btn:hover{border-color:var(--amber);color:var(--amber)}
+.opp-horizon-btn.active{background:var(--selected);border-color:var(--selected-edge);color:var(--amber);font-weight:700}

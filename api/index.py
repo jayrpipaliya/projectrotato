@@ -834,6 +834,14 @@ def api_options_smile(ticker: str, expiration: str = Query(...), direction: str 
         })
     except Exception as e:
         return {"error": str(e)}
+
+@app.get("/api/opportunities")
+def api_opportunities(refresh: bool = False):
+    try:
+        from opportunities_engine import get_opportunities_data, scan_volatility_opportunities
+        if refresh:
+            return scan_volatility_opportunities()
+        return get_opportunities_data()
     except Exception as e:
         return {"error": str(e)}
 

@@ -27,6 +27,9 @@ import importlib
 import options_engine
 importlib.reload(options_engine)
 from options_engine import render_options_vol_page, render_gamma_desk_page
+import opportunities_engine
+importlib.reload(opportunities_engine)
+from opportunities_engine import render_opportunities_page
 import ledger_engine
 importlib.reload(ledger_engine)
 from ledger_engine import (
@@ -858,7 +861,7 @@ def render_trade_logging_widget(t, key_suffix):
             st.rerun()
 
 # ----------------- MODERN TABS (Institutional Options Desk v3.0 Full Suite) -----------------
-tab1, tab_agent, tab_ledger, tab3, tab5, tab4, tab6, tab7, tab_gamma, tab_options = st.tabs([
+tab1, tab_agent, tab_ledger, tab3, tab5, tab4, tab6, tab7, tab_gamma, tab_options, tab_opps = st.tabs([
     "AI Macro Letter",
     "AI Agent",
     "Trade Ledger & Audit",
@@ -868,7 +871,8 @@ tab1, tab_agent, tab_ledger, tab3, tab5, tab4, tab6, tab7, tab_gamma, tab_option
     "Synthetic Ratio Rotations",
     "Single Ticker Explorer",
     "Dealer Gamma Desk",
-    "Volatility Pricing"
+    "Volatility Pricing",
+    "Opportunities"
 ])
 
 # ================= TAB 1: AI MACRO LETTER =================
@@ -1870,4 +1874,8 @@ with tab_gamma:
 # ================= TAB 9: VOLATILITY PRICING =================
 with tab_options:
     render_options_vol_page(get_available_tickers(), load_ticker_data)
+
+# ================= TAB 10: OPPORTUNITIES =================
+with tab_opps:
+    render_opportunities_page()
 
