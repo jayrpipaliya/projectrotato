@@ -195,7 +195,7 @@ function gammaFilters(g) {
   const tickerOptions = symbols.map(t=>'<option '+(t===state.symbol?'selected ':'')+'value="'+t+'">'+t+'</option>').join('');
   const latestOption=currentGamma.has(state.symbol)?'<option value="live" '+(state.gammaDate==='live'?'selected':'')+'>Latest calculation</option>':'';
   const sessions = latestOption+[...gammaRows()].reverse().map(row=>'<option '+(row.date===state.gammaDate||(!state.gammaDate&&row.date===g?.date)?'selected ':'')+'value="'+safe(row.date)+'">'+safe(row.date)+'</option>').join('');
-  return '<div class="gamma-filters controls"><label>Underlying <select id="gamma-symbol">'+tickerOptions+'</select></label><label>Session <select id="session" '+(sessions?'':'disabled')+'>'+(sessions||'<option>Unavailable</option>')+'</select></label><button id="gamma-recalculate">Recalculate GEX</button></div>';
+  return '<div class="vol-toolbar controls gamma-filters"><label>Underlying <select id="gamma-symbol">'+tickerOptions+'</select></label><label>Session <select id="session" '+(sessions?'':'disabled')+'>'+(sessions||'<option>Unavailable</option>')+'</select></label><button id="gamma-recalculate">Recalculate GEX</button></div>';
 }
 function gammaSummary(g) {
   const history = gammaRows();
@@ -510,8 +510,8 @@ function bindVolatility() {
 function opportunitiesPage() {
   const payload = remoteOpportunities || data.opportunities;
   if (!payload || !Array.isArray(payload.opportunities)) {
-    return hero('Volatility Mispricings', 'Opportunities Desk.', 'Scanning universe for long-dated implied volatility discounts (IV < HV and low IV percentile)...', 'Live Scan')
-      + card('Scanning', 'Opportunities Loading', '<div class="empty">Loading opportunities from quantitative engine…</div>');
+    return hero('Volatility Mispricings', 'Opportunities Desk.', 'Scanning universe for long-dated implied volatility discounts (IV < HV and low IV percentile)...', 'Live Scan', true)
+      + '<div class="flow-panels in">' + card('Scanning', 'Opportunities Loading', '<div class="empty">Loading opportunities from quantitative engine…</div>') + '</div>';
   }
 
   const opps = payload.opportunities;
@@ -647,9 +647,12 @@ function opportunitiesPage() {
     'wide in'
   );
 
-  return hero('Volatility Mispricings', 'Opportunities Desk.', 'Identify institutional contracts where implied volatility (IV) is deeply discounted vs historical realized volatility ($IV < HV$ and low IV percentile) across 3-Month, 6-Month, and LEAP horizons.', payload.scan_date || 'Live Scan')
+  const header = hero('Volatility Mispricings', 'Opportunities Desk.', 'Identify institutional contracts where implied volatility (IV) is deeply discounted vs historical realized volatility ($IV < HV$ and low IV percentile) across 3-Month, 6-Month, and LEAP horizons.', payload.scan_date || 'Live Scan', true);
+  return header
+    + '<div class="flow-panels in">'
     + kpiSection
-    + tableCard;
+    + tableCard
+    + '</div>';
 }
 
 function bindOpportunities() {
