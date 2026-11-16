@@ -542,7 +542,7 @@ def api_options(ticker: str, direction: str = Query(None), side: str = Query(Non
             
         # Identify High-OI Benchmark cycles (Front, 1M, 2M, 3M, Quarterly/4M, 6M, 12M)
         buckets = [
-            ("Front Cycle", 5, 20),
+            ("Front Cycle", 1, 20),
             ("1M Benchmark", 21, 48),
             ("2M Benchmark", 49, 75),
             ("3M Benchmark", 76, 110),

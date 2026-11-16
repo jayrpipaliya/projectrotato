@@ -1178,7 +1178,7 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
         spot_price = float(fast_info.last_price or fast_info.previous_close)
         today = pd.Timestamp.now().normalize()
         
-        target_exps = [e for e in expirations if 5 <= (pd.Timestamp(e) - today).days <= 365]
+        target_exps = [e for e in expirations if 1 <= (pd.Timestamp(e) - today).days <= 365]
         
         # Calendar to Trading-Day IV conversion factor: sqrt(252 / 365.25) = 0.8307
         CAL_TO_TRADING_FACTOR = np.sqrt(252.0 / 365.25)
@@ -1876,11 +1876,11 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
 
     # 4. Scope Selection: Cross-Chain vs. Specific Date
     if side_clean == "Sell":
-        chains_df = term_df[term_df['DTE'] >= 8].copy()
+        chains_df = term_df[term_df['DTE'] >= 1].copy()
     else:
         has_cheap = term_df['Is_Cheap'].any()
         if not has_cheap:
-            chains_df = term_df[term_df['DTE'] >= 8].copy()
+            chains_df = term_df[term_df['DTE'] >= 1].copy()
         else:
             chains_df = term_df[term_df['Is_Cheap']].copy()
 
@@ -1913,8 +1913,11 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
                     is_call_rec = ("Call" in dir_clean)
                     c_type = "Call" if is_call_rec else "Put"
                     
-                    if rec['DTE'] <= 22:
-                        h_tag = "Tactical (10–21d)"
+                    if rec['DTE'] <= 7:
+                        h_tag = "Weekly / Event (1–7d)"
+                        badge_color = "#f43f5e"
+                    elif rec['DTE'] <= 22:
+                        h_tag = "Tactical (8–21d)"
                         badge_color = "#38bdf8"
                     elif rec['DTE'] <= 45:
                         h_tag = "Fast Swing (25–45d)"
@@ -2003,7 +2006,7 @@ def render_options_vol_page(available_tickers, load_ticker_data_func):
 
     exp_col1, exp_col2 = st.columns([2.5, 1.5])
     
-    display_df = chains_df.copy()
+    display_df = term_df.copy()
     exp_options = display_df['Expiration'].tolist()
     exp_labels = [f"{row['Expiration']}  |  {row['DTE']}d DTE  |  ATM IV: {row['ATM_IV']}%  |  IV/HV: {row['IV_HV_Ratio']}x  |  Expected Move: ±{row['Expected_Move_Pct']}%" 
                   for _, row in display_df.iterrows()]
