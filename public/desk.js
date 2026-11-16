@@ -250,7 +250,7 @@ function volControls() {
   const symbols=Object.keys(data.prices).sort();
   return '<div class="vol-toolbar controls"><label>Underlying <select id="vol-symbol">'
     +symbols.map(t=>'<option value="'+t+'" '+(state.symbol===t?'selected':'')+'>'+t+'</option>').join('')
-    +'</select></label><button id="vol-refresh">Refresh options</button><button id="open-options-file">Load options JSON</button><input type="file" id="options-file" accept=".json,application/json" hidden>'
+    +'</select></label><button id="vol-refresh">Refresh options</button>'
     +'<span class="muted" role="status">'+safe(volMessage||'Saved data preview')+'</span></div>';
 }
 function volBaseline(snapshot) {
@@ -406,7 +406,7 @@ function expirySelect(chains,id,label,value) {
   return '<label>'+label+' <select id="'+id+'">'+chains.map(row=>'<option value="'+row.Expiration+'" '+(row.Expiration===value?'selected':'')+'>'+row.Expiration+' · '+row.DTE+'D</option>').join('')+'</select></label>';
 }
 function termStructure(snapshot,baseline) {
-  if(!snapshot) return card('Term structure','ATM IV by expiration',volUnavailable('Connect the options API or load options JSON to plot expiration IV.'));
+  if(!snapshot) return card('Term structure','ATM IV by expiration',volUnavailable('Connect the options API to plot expiration IV.'));
   const rows=visibleChains(snapshot);
   const points=rows.map((r,i)=>({x:i,y:r.ATM_IV,label:short(r.Expiration),dte:r.DTE,radius:r.Is_Benchmark?5:3.5,outline:true,
     color:r.Spans_Earnings?'var(--amber)':r.Structure==='Contango'?'var(--green)':r.Structure==='Backwardation'?'var(--red)':'var(--iv)',
@@ -423,7 +423,7 @@ function termStructure(snapshot,baseline) {
 }
 function smileCard(snapshot) {
   const title='Volatility Smile &amp; Skew';
-  if(!snapshot) return card('Strike pricing',title,volUnavailable('Connect the options API or load an options response with a smile.'));
+  if(!snapshot) return card('Strike pricing',title,volUnavailable('Connect the options API to inspect smile and skew.'));
   const expiry=volSelection.expiry||snapshot.selected_expiration||snapshot.chains[0].Expiration;
   const smile=snapshot.smiles.get(expiry);
   const selector=expirySelect(snapshot.chains,'vol-expiry','Expiration',expiry);
@@ -503,17 +503,7 @@ function bindVolatility() {
   watchSelect('vol-front',value=>{volSelection.front=value;volSelection.back='';});
   watchSelect('vol-back',value=>{volSelection.back=value;});
   byId('vol-refresh')?.addEventListener('click',()=>loadPageData(true));
-  byId('open-options-file')?.addEventListener('click',()=>byId('options-file').click());
-  byId('options-file')?.addEventListener('change',async event=>{
-    const file=event.target.files[0];
-    if(!file) return;
-    try {
-      const parsed=JSON.parse(await file.text());
-      if(Array.isArray(parsed?.term_chains)) optionSnapshot(parsed);
-      else addSmileSnapshot(parsed);
-    } catch(error) {volMessage=error instanceof SyntaxError?'That file is not valid JSON.':error.message;}
-    if(route()==='volatility'){render();byId('open-options-file').focus({preventScroll:true});}
-  });
+
 }
 
 function gammaChart(g, strikes) {
