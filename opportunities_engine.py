@@ -265,7 +265,7 @@ def render_opportunities_page():
 
     col_btn, col_info = st.columns([1.5, 4.5])
     with col_btn:
-        refresh_clicked = st.button("🔄 Refresh Live Options Scan", help="Runs real-time multi-threaded scan across all core underlyings.")
+        refresh_clicked = st.button("Refresh Live Options Scan", help="Runs real-time multi-threaded scan across all core underlyings.")
     
     with st.spinner("Loading volatility mispricings..."):
         data = get_opportunities_data(force_refresh=refresh_clicked)
@@ -325,10 +325,10 @@ def render_opportunities_page():
             "Strategy Opportunity Type:",
             [
                 "All Opportunities",
-                "⚡ Relative Discounts (IV < HV) [Calendars & Diagonals]",
-                "★ Term Inversions (Back IV < Front IV)",
-                "💎 Absolute Low Vol (Contract IVP ≤ 50%)",
-                "👑 Double Edge Prime (Discount & Low Vol)"
+                "Relative Discounts (IV < HV) [Calendars & Diagonals]",
+                "Term Inversions (Back IV < Front IV)",
+                "Absolute Low Vol (Contract IVP ≤ 50%)",
+                "Double Edge Prime (Discount & Low Vol)"
             ]
         )
     with f_col3:

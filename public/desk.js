@@ -577,10 +577,10 @@ function opportunitiesPage() {
 
   const regimes = [
     ['All', 'All Opportunities'],
-    ['discount', '⚡ Relative Discounts (IV < HV)'],
-    ['inversion', '★ Inverted (Back IV < Front IV)'],
-    ['low_vol', '💎 Low Vol (IVP ≤ 50%)'],
-    ['double', '👑 Double Edge Prime']
+    ['discount', 'Relative Discounts (IV < HV)'],
+    ['inversion', 'Inverted (Back IV < Front IV)'],
+    ['low_vol', 'Low Vol (IVP ≤ 50%)'],
+    ['double', 'Double Edge Prime']
   ];
 
   const regimeButtons = '<div class="gamma-ranges controls" aria-label="Strategy regime filter">'
