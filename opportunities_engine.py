@@ -9,7 +9,9 @@ from options_engine import fetch_term_structure, compute_realized_volatilities, 
 from data_manager import load_ticker_data, PROCESSED_DIR
 
 DEFAULT_UNIVERSE = [
-    'SPY', 'QQQ', 'IWM', 'AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'TSLA', 'SMH', 'GLD', 'TLT', 'XLF', 'XLE'
+    'SPY', 'QQQ', 'IWM', 'SMH', 'GLD', 'TLT', 'IBIT',
+    'AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'TSLA',
+    'AMD', 'PLTR', 'AVGO', 'MU', 'NFLX', 'COIN', 'HOOD'
 ]
 
 OPPORTUNITIES_FILE = Path(PROCESSED_DIR) / "opportunities.json"
@@ -69,6 +71,10 @@ def scan_volatility_opportunities(universe=None):
                     horizon_code = "LEAP"
 
                 if not tenor:
+                    continue
+
+                # Liquidity Guardrail: eliminate illiquid strikes with zero or negligible open interest
+                if oi < 50:
                     continue
 
                 spread_clean = round(atm_iv - clean_hv, 2)

@@ -1746,7 +1746,7 @@ function playStartup() {
   const listeners = new AbortController();
   const options = {once:true, signal:listeners.signal};
   const easing = 'cubic-bezier(.2,.7,.2,1)';
-  const startupDuration = 3000;
+  const startupDuration = 4000;
   const timing = milliseconds => milliseconds * startupDuration / 1800;
   const reveal = (element, delay, duration = 460) => element.animate([
     {opacity:0, translate:'0 9px'},

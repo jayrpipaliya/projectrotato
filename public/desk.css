@@ -319,11 +319,17 @@ dialog,.tooltip{background:var(--control)}
 @media(max-width:620px){.explorer-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 @media(min-width:851px){
-  .ohlc-grid{align-items:stretch}
-  .ohlc-grid>.card{display:flex;flex-direction:column}
+  .ohlc-grid,
+  .vol-realized{align-items:stretch}
+  .ohlc-grid>.card,
+  .vol-realized>.card{display:flex;flex-direction:column}
   .ohlc-grid .chart{flex:1;min-height:max(210px, 38cqw)}
   .ohlc-grid>.card{container-type:inline-size}
   .ohlc-grid .chart svg{position:absolute;inset:0;width:100%;height:100%;aspect-ratio:auto}
+  .vol-realized>.card .chart{flex:1}
+  .vol-realized>.card .chart-note{margin-top:auto}
+  .vol-realized>.stack{display:flex;flex-direction:column}
+  .vol-realized>.stack>.card{flex:1;display:flex;flex-direction:column}
 }
 
 .gamma-bar{transform-origin:0 var(--zero);animation:gamma-rise .36s var(--ease) both}
