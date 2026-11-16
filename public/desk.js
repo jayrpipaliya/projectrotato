@@ -672,8 +672,6 @@ function bindOpportunities() {
   });
 }
 
-}
-
 function gammaChart(g, strikes) {
   const spot=g.spot_price, mode=state.gammaMode;
   const rangePct={'±3% ATM':.03,'±8% Active':.08,'±15% Macro':.15};
