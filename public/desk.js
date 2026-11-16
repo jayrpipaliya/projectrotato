@@ -1256,6 +1256,7 @@ function bindFlowEmphasis() {
 }
 const remoteBias=new Map(), remoteRatios=new Map(), remoteTicker=new Map(), remoteReturns=new Map();
 const backendRequests=new Map();
+const pendingPageLoads=new Map();
 const loadedHistories=new Set();
 function dataKey() {
   const page=route();
@@ -1389,17 +1390,22 @@ function updateBackendNotice(message) {
   const badge=byId('source-badge');
   if(badge) badge.textContent=message.startsWith('Original API data')?'ORIGINAL API':message.startsWith('Loading')?'CONNECTING':'SAVED SNAPSHOT';
 }
-async function loadPageData(force=false) {
+function loadPageData(force=false) {
   const key=dataKey();
   if(!key||location.protocol==='file:') return;
+  if(pendingPageLoads.has(key)) return pendingPageLoads.get(key);
   if(!force&&backendRequests.has(key)){
     if(backendRequests.get(key)==='ready') updateBackendNotice('Original API data · saved history where applicable');
     if(backendRequests.get(key)==='failed') updateBackendNotice('Saved data shown · original API data unavailable');
     return;
   }
-  if(backendRequests.get(key)==='pending') return;
+  const request=fetchPageData(key,force).finally(()=>pendingPageLoads.delete(key));
+  pendingPageLoads.set(key,request);
+  return request;
+}
+
+async function fetchPageData(key,force) {
   const page=route(),symbol=state.symbol;
-  backendRequests.set(key,'pending');
   updateBackendNotice('Loading original API data…');
   try {
     await hydrateView(page,symbol,force);
@@ -1662,13 +1668,23 @@ ambientMotion.addEventListener('change',renderAmbientChart);
 
 renderAmbientChart();
 const syncStatus=byId('sync-status'), syncButtons=[byId('sync-yfinance'),byId('sync-csv')];
+let resumedAfterSync=false;
 try {
   syncStatus.textContent=sessionStorage.getItem('double-edge-sync-result')||'';
+  resumedAfterSync=Boolean(syncStatus.textContent);
   sessionStorage.removeItem('double-edge-sync-result');
   const priorSymbol=sessionStorage.getItem('double-edge-sync-symbol');
   sessionStorage.removeItem('double-edge-sync-symbol');
   if(priorSymbol&&Object.hasOwn(data.prices,priorSymbol)) state.symbol=priorSymbol;
 } catch {}
+
+async function requestPreviewSync(source) {
+  const syncPath=location.hostname==='127.0.0.1'&&location.port==='4173'?'/preview/sync-':'/api/preview/sync-';
+  const response=await fetch(syncPath+source,{method:'POST',headers:{'X-Preview-Sync':'1'}});
+  const result=await response.json();
+  return {ok:response.ok,message:result.message||'The preview server could not complete the sync.'};
+}
+
 async function syncPreview(source) {
   if(location.protocol==='file:'){
     syncStatus.textContent='Open the local server preview to sync data.';
@@ -1677,11 +1693,9 @@ async function syncPreview(source) {
   syncButtons.forEach(button=>button.disabled=true);
   syncStatus.textContent=source==='csv'?'Reading local CSV files…':'Requesting yfinance data…';
   try {
-    const syncPath=location.hostname==='127.0.0.1'&&location.port==='4173'?'/preview/sync-':'/api/preview/sync-';
-    const response=await fetch(syncPath+source,{method:'POST',headers:{'X-Preview-Sync':'1'}});
-    const result=await response.json();
+    const result=await requestPreviewSync(source);
     syncStatus.textContent=result.message;
-    if(response.ok){
+    if(result.ok){
       try {
         sessionStorage.setItem('double-edge-sync-result',result.message);
         sessionStorage.setItem('double-edge-sync-symbol',state.symbol);
@@ -1697,6 +1711,33 @@ async function syncPreview(source) {
 syncButtons[0].addEventListener('click',()=>syncPreview('yfinance'));
 syncButtons[1].addEventListener('click',()=>syncPreview('csv'));
 
+async function syncOnStartup() {
+  if(location.protocol==='file:'||resumedAfterSync) return;
+  syncButtons.forEach(button=>button.disabled=true);
+  const results=[];
+  // Both syncs use the same CSV files and ratio cache.
+  for(const [source,label] of [['yfinance','yfinance'],['csv','CSV']]){
+    syncStatus.textContent='Startup sync · '+label+'…';
+    try {
+      results.push(await requestPreviewSync(source));
+    } catch {
+      results.push({ok:false,message:label+' sync could not reach the preview server.'});
+    }
+  }
+  syncStatus.textContent=results.map(result=>result.message).join(' ');
+  syncButtons.forEach(button=>button.disabled=false);
+  if(results.some(result=>result.ok)){
+    backendRequests.clear();
+    const key=dataKey();
+    const pending=pendingPageLoads.get(key);
+    if(pending){
+      await pending;
+      backendRequests.delete(key);
+    }
+    void loadPageData();
+  }
+}
+
 function playStartup() {
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
   if (motion.matches || document.hidden || !Element.prototype.animate) return;
@@ -1705,26 +1746,32 @@ function playStartup() {
   const listeners = new AbortController();
   const options = {once:true, signal:listeners.signal};
   const easing = 'cubic-bezier(.2,.7,.2,1)';
-  const reveal = (element, delay) => element.animate([
+  const startupDuration = 3000;
+  const timing = milliseconds => milliseconds * startupDuration / 1800;
+  const reveal = (element, delay, duration = 460) => element.animate([
     {opacity:0, translate:'0 9px'},
     {opacity:1, translate:'0 0'},
-  ], {duration:460, delay, easing, fill:'backwards'});
+  ], {duration:timing(duration), delay:timing(delay), easing, fill:'backwards'});
 
+  const content = byId('content');
+  const panelSelector = '.overview-flip, .chart, .card';
+  const panels = [...content.querySelectorAll(panelSelector)]
+    .filter(panel => !panel.parentElement.closest(panelSelector)).slice(0, 7);
   splash.hidden = false;
   const animations = [
-    splash.animate([{opacity:1}, {opacity:0}], {duration:270, delay:850, fill:'both'}),
+    splash.animate([{opacity:1}, {opacity:0}], {duration:timing(270), delay:timing(850), fill:'both'}),
     splash.firstElementChild.animate([
       {opacity:0, transform:'translateY(8px) scale(.94)', filter:'blur(7px)'},
       {opacity:1, transform:'none', filter:'none'},
-    ], {duration:550, easing}),
+    ], {duration:timing(550), easing}),
     reveal(document.querySelector('.rail'), 810),
     reveal(document.querySelector('.top'), 910),
-    reveal(byId('content'), 1000),
+    reveal(content, 1000, panels.length ? 460 : 800),
   ];
-  const content = byId('content');
-  const panels = content.querySelectorAll('.overview-flip, .chart, .card');
-  [...panels].filter(panel => !panel.parentElement.closest('.overview-flip, .chart, .card'))
-    .slice(0, 7).forEach((panel, index) => animations.push(reveal(panel, 1040 + index * 50)));
+  panels.forEach((panel, index) => {
+    const delay = panels.length === 1 ? 1340 : 1040 + index * 300 / (panels.length - 1);
+    animations.push(reveal(panel, delay));
+  });
 
   function finish() {
     listeners.abort();
@@ -1741,6 +1788,7 @@ function playStartup() {
 
 render();
 playStartup();
+void syncOnStartup();
 
 
 
