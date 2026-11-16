@@ -1696,7 +1696,51 @@ async function syncPreview(source) {
 }
 syncButtons[0].addEventListener('click',()=>syncPreview('yfinance'));
 syncButtons[1].addEventListener('click',()=>syncPreview('csv'));
+
+function playStartup() {
+  const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  if (motion.matches || document.hidden || !Element.prototype.animate) return;
+
+  const splash = byId('startup-splash');
+  const listeners = new AbortController();
+  const options = {once:true, signal:listeners.signal};
+  const easing = 'cubic-bezier(.2,.7,.2,1)';
+  const reveal = (element, delay) => element.animate([
+    {opacity:0, translate:'0 9px'},
+    {opacity:1, translate:'0 0'},
+  ], {duration:460, delay, easing, fill:'backwards'});
+
+  splash.hidden = false;
+  const animations = [
+    splash.animate([{opacity:1}, {opacity:0}], {duration:270, delay:850, fill:'both'}),
+    splash.firstElementChild.animate([
+      {opacity:0, transform:'translateY(8px) scale(.94)', filter:'blur(7px)'},
+      {opacity:1, transform:'none', filter:'none'},
+    ], {duration:550, easing}),
+    reveal(document.querySelector('.rail'), 810),
+    reveal(document.querySelector('.top'), 910),
+    reveal(byId('content'), 1000),
+  ];
+  const content = byId('content');
+  const panels = content.querySelectorAll('.overview-flip, .chart, .card');
+  [...panels].filter(panel => !panel.parentElement.closest('.overview-flip, .chart, .card'))
+    .slice(0, 7).forEach((panel, index) => animations.push(reveal(panel, 1040 + index * 50)));
+
+  function finish() {
+    listeners.abort();
+    splash.hidden = true;
+    animations.forEach(animation => animation.cancel());
+  }
+  window.addEventListener('keydown', finish, options);
+  window.addEventListener('pointerdown', finish, options);
+  window.addEventListener('hashchange', finish, options);
+  motion.addEventListener('change', finish, options);
+  animations[0].finished.then(() => { splash.hidden = true; }, () => {});
+  Promise.allSettled(animations.map(animation => animation.finished)).then(finish);
+}
+
 render();
+playStartup();
 
 
 
