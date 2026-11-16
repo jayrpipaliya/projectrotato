@@ -8,7 +8,7 @@ const tone = n => n >= 0 ? 'up' : 'down';
 const safe = v => String(v ?? '—').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const names = {SPY:'S&P 500',QQQ:'Nasdaq 100',IWM:'Russell 2000',NVDA:'NVIDIA',DIA:'Dow Jones',RSP:'S&P 500 Equal Weight',GLD:'Gold',TLT:'Long Treasuries',SMH:'Semiconductors'};
 const titles = {overview:'Market Overview',opportunities:'Opportunities',charts:'Single Ticker',gamma:'Gamma Exposure',volatility:'Volatility Pricing',bias:'Bias Matrix',sector:'Index & Sector Flow',mag7:'Magnificent 7 Flow',ratios:'Synthetic Ratio Rotations'};
-const oppsSelection = {horizon:'All', sort:'discount', ticker:'All'};
+const oppsSelection = {horizon:'All', regime:'All', sort:'discount', ticker:'All'};
 let remoteOpportunities = null;
 const state = {symbol:'SPY', range:63, priceMode:'Candles', ema:true, vol:30, gammaMode:'Net GEX', gammaRange:'Relevant', gammaTable:'Relevant only', gammaDate:''};
 const W=800,H=301,L=10,R=730,T=19,B=272;
@@ -518,21 +518,32 @@ function opportunitiesPage() {
   const filtered = opps.filter(o => {
     if (oppsSelection.horizon !== 'All' && o.horizon_code !== oppsSelection.horizon) return false;
     if (oppsSelection.ticker !== 'All' && o.ticker !== oppsSelection.ticker) return false;
+    if (oppsSelection.regime === 'discount' && o.ratio_clean >= 1.0) return false;
+    if (oppsSelection.regime === 'inversion' && (o.term_spread == null || o.term_spread >= -1.0)) return false;
+    const cIvp = o.contract_iv_percentile != null ? o.contract_iv_percentile : o.iv_percentile;
+    if (oppsSelection.regime === 'low_vol' && cIvp > 50.0 && o.iv_percentile > 50.0) return false;
+    if (oppsSelection.regime === 'double' && (o.ratio_clean >= 1.0 || (cIvp > 50.0 && o.iv_percentile > 50.0))) return false;
     return true;
   });
 
   if (oppsSelection.sort === 'discount') {
     filtered.sort((a,b) => a.ratio_clean - b.ratio_clean || a.vrp_clean - b.vrp_clean);
+  } else if (oppsSelection.sort === 'inversion') {
+    filtered.sort((a,b) => (a.term_spread != null ? a.term_spread : 0) - (b.term_spread != null ? b.term_spread : 0) || a.ratio_clean - b.ratio_clean);
   } else if (oppsSelection.sort === 'percentile') {
-    filtered.sort((a,b) => a.iv_percentile - b.iv_percentile || a.ratio_clean - b.ratio_clean);
+    filtered.sort((a,b) => {
+      const aIvp = a.contract_iv_percentile != null ? a.contract_iv_percentile : a.iv_percentile;
+      const bIvp = b.contract_iv_percentile != null ? b.contract_iv_percentile : b.iv_percentile;
+      return aIvp - bIvp || a.ratio_clean - b.ratio_clean;
+    });
   } else if (oppsSelection.sort === 'liquidity') {
     filtered.sort((a,b) => b.total_oi - a.total_oi);
   }
 
   const topLeap = payload.top_leaps?.[0];
-  const top6m = payload.top_6m?.[0];
-  const top3m = payload.top_3m?.[0];
-  const primeCount = opps.filter(o => o.ratio_clean < 1.0).length;
+  const topInv = payload.top_inversion?.[0];
+  const discCount = payload.relative_discount_count != null ? payload.relative_discount_count : opps.filter(o => o.ratio_clean < 1.0).length;
+  const invCount = payload.inverted_count != null ? payload.inverted_count : opps.filter(o => o.term_spread < -1.0).length;
 
   const tile = (label, val, detail, tone='neutral') => 
     '<div class="gamma-kpi vol-kpi" data-regime="'+tone+'"><small>'+label+'</small><div class="vol-kpi-value">'+val+'</div><div class="vol-kpi-details">'+detail+'</div></div>';
@@ -540,19 +551,19 @@ function opportunitiesPage() {
   const kpis = [
     tile('Top LEAP Discount (1Y+)', 
       topLeap ? '<strong>'+topLeap.ticker+' '+topLeap.expiration+'</strong>' : '—', 
-      topLeap ? '<span class="vol-regime-pill" style="color:var(--green)">'+topLeap.ratio_clean+'× HV ('+signed(topLeap.vrp_clean,' pp')+')</span><small>IV '+topLeap.atm_iv+'% vs HV '+topLeap.clean_hv+'%</small>' : 'None', 
+      topLeap ? '<span class="vol-regime-pill" style="color:var(--green)">'+topLeap.ratio_clean+'× HV ('+signed(topLeap.vrp_clean,' pp')+')</span><small>IV '+topLeap.atm_iv+'% vs Clean HV '+topLeap.clean_hv+'%</small>' : 'None', 
       'low'),
-    tile('Top 6-Month Discount', 
-      top6m ? '<strong>'+top6m.ticker+' '+top6m.expiration+'</strong>' : '—', 
-      top6m ? '<span class="vol-regime-pill" style="color:var(--green)">'+top6m.ratio_clean+'× HV ('+signed(top6m.vrp_clean,' pp')+')</span><small>IV '+top6m.atm_iv+'% vs HV '+top6m.clean_hv+'%</small>' : 'None', 
+    tile('Deepest Term Inversion', 
+      topInv ? '<strong>'+topInv.ticker+' '+topInv.expiration+'</strong>' : '—', 
+      topInv ? '<span class="vol-regime-pill" style="color:var(--green)">'+signed(topInv.term_spread,' pp')+'</span><small>Back IV '+topInv.atm_iv+'% vs Front '+topInv.front_iv+'%</small>' : 'None', 
       'low'),
-    tile('Top 3-Month Discount', 
-      top3m ? '<strong>'+top3m.ticker+' '+top3m.expiration+'</strong>' : '—', 
-      top3m ? '<span class="vol-regime-pill" style="color:var(--green)">'+top3m.ratio_clean+'× HV ('+signed(top3m.vrp_clean,' pp')+')</span><small>IV '+top3m.atm_iv+'% vs HV '+top3m.clean_hv+'%</small>' : 'None', 
-      'low'),
-    tile('Total Discount Opportunities', 
-      '<strong>'+primeCount+' / '+opps.length+'</strong>', 
-      '<small>Contracts trading at IV &lt; Clean HV30 across '+payload.universe_count+' assets</small>', 
+    tile('Relative Discounts (IV < HV)', 
+      '<strong>'+discCount+' / '+opps.length+'</strong>', 
+      '<small>Underpriced vs 30D Clean Realized Movement</small>', 
+      'neutral'),
+    tile('Inverted Term Structures', 
+      '<strong>'+invCount+' / '+opps.length+'</strong>', 
+      '<small>Back month cheaper than front event week</small>', 
       'neutral'),
     tile('Scan Timestamp', 
       '<strong>'+(payload.scan_date ? payload.scan_date.split(' ')[0] : 'Today')+'</strong>', 
@@ -563,6 +574,18 @@ function opportunitiesPage() {
   const kpiSection = '<section class="vol-kpis in" aria-label="Opportunities metrics">'+kpis.join('')+'</section>';
 
   const tickers = ['All', ...new Set(opps.map(o => o.ticker))].sort();
+
+  const regimes = [
+    ['All', 'All Opportunities'],
+    ['discount', '⚡ Relative Discounts (IV < HV)'],
+    ['inversion', '★ Inverted (Back IV < Front IV)'],
+    ['low_vol', '💎 Low Vol (IVP ≤ 50%)'],
+    ['double', '👑 Double Edge Prime']
+  ];
+
+  const regimeButtons = '<div class="gamma-ranges controls" aria-label="Strategy regime filter">'
+    + regimes.map(([code, label]) => '<button type="button" class="opp-regime-btn '+(oppsSelection.regime===code?'active':'')+'" data-regime="'+code+'" style="padding:4px 10px;font-size:12px;cursor:pointer;">'+label+'</button>').join('')
+    + '</div>';
 
   const horizons = [
     ['All', 'All Horizons'],
@@ -577,7 +600,8 @@ function opportunitiesPage() {
 
   const sortSelect = '<label>Sort by <select id="opp-sort">'
     + '<option value="discount" '+(oppsSelection.sort==='discount'?'selected':'')+'>Deepest Vol Discount (Lowest IV/HV)</option>'
-    + '<option value="percentile" '+(oppsSelection.sort==='percentile'?'selected':'')+'>Lowest 1Y IV Percentile</option>'
+    + '<option value="inversion" '+(oppsSelection.sort==='inversion'?'selected':'')+'>Deepest Term Inversion (Lowest Back - Front IV)</option>'
+    + '<option value="percentile" '+(oppsSelection.sort==='percentile'?'selected':'')+'>Lowest 1Y Contract IV Percentile</option>'
     + '<option value="liquidity" '+(oppsSelection.sort==='liquidity'?'selected':'')+'>Highest Open Interest (Liquidity)</option>'
     + '</select></label>';
 
@@ -585,12 +609,19 @@ function opportunitiesPage() {
     + tickers.map(t => '<option value="'+t+'" '+(oppsSelection.ticker===t?'selected':'')+'>'+(t==='All'?'All Underlyings':t)+'</option>').join('')
     + '</select></label>';
 
-  const toolbar = '<div class="vol-toolbar controls" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">'
+  const toolbar = '<div class="vol-toolbar controls" style="margin-bottom:12px;display:flex;flex-direction:column;gap:10px;">'
+    + '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">'
+    + '<span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Strategy Regime:</span>'
+    + regimeButtons
+    + '</div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">'
+    + '<span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Horizon:</span>'
     + horizonButtons
     + tickerSelect
     + sortSelect
     + '<button id="opps-refresh">Refresh Scan</button>'
     + '<span class="muted" style="margin-left:auto;font-size:12px;">Showing '+filtered.length+' opportunities</span>'
+    + '</div>'
     + '</div>';
 
   const rows = filtered.map(o => {
@@ -604,17 +635,34 @@ function opportunitiesPage() {
     const tenorBadgeBg = o.horizon_code==='LEAP' ? 'rgba(168, 85, 247, 0.15)' : o.horizon_code==='6M' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(234, 179, 8, 0.15)';
     const tenorBadgeCol = o.horizon_code==='LEAP' ? '#a855f7' : o.horizon_code==='6M' ? '#38bdf8' : '#eab308';
 
+    const termSpreadVal = o.term_spread != null ? o.term_spread : (o.front_iv != null ? Math.round((o.atm_iv - o.front_iv)*10)/10 : null);
+    const isInverted = termSpreadVal != null && termSpreadVal <= -1.0;
+    const termBadgeText = termSpreadVal != null ? (isInverted ? signed(termSpreadVal, ' pp') + ' (Inverted)' : signed(termSpreadVal, ' pp') + ' (Contango)') : '—';
+    const termBadgeBg = isInverted ? 'rgba(0, 245, 160, 0.12)' : 'rgba(148, 163, 184, 0.12)';
+    const termBadgeCol = isInverted ? 'var(--green)' : '#94a3b8';
+
+    const typeBadge = o.type_badge || (o.ratio_clean < 1.0 ? 'Relative Discount' : 'Fair Value');
+    const typeBadgeBg = o.opportunity_type === 'double_edge' ? 'rgba(0, 245, 160, 0.2)' :
+                         o.opportunity_type === 'relative_discount' ? 'rgba(56, 189, 248, 0.15)' :
+                         o.opportunity_type === 'low_vol' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(234, 179, 8, 0.15)';
+    const typeBadgeCol = o.opportunity_type === 'double_edge' ? 'var(--green)' :
+                          o.opportunity_type === 'relative_discount' ? '#38bdf8' :
+                          o.opportunity_type === 'low_vol' ? '#a855f7' : '#eab308';
+
+    const contractIvp = o.contract_iv_percentile != null ? o.contract_iv_percentile : o.iv_percentile;
+
     return '<tr>'
       + '<td style="font-weight:700;color:var(--text);text-align:left;">'+o.ticker+'</td>'
       + '<td style="text-align:right;">'+money(o.spot_price)+'</td>'
       + '<td style="text-align:center;"><span style="background:'+tenorBadgeBg+';color:'+tenorBadgeCol+';font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;">'+o.horizon+'</span></td>'
       + '<td style="text-align:center;font-weight:600;">'+o.expiration+' <small style="color:var(--muted)">('+o.dte+'d)</small></td>'
-      + '<td style="text-align:right;font-weight:700;color:var(--text);">'+pct(o.atm_iv)+'</td>'
+      + '<td style="text-align:right;font-weight:700;color:var(--text);font-size:13px;">'+pct(o.atm_iv)+'</td>'
+      + '<td style="text-align:center;">'+(o.front_iv != null ? pct(o.front_iv) : '—')+(o.front_dte != null ? ' <small style="color:var(--muted)">('+o.front_dte+'d)</small>' : '')+'<br><span style="background:'+termBadgeBg+';color:'+termBadgeCol+';font-size:10px;padding:1px 5px;border-radius:3px;font-weight:600;">'+termBadgeText+'</span></td>'
       + '<td style="text-align:right;">'+pct(o.clean_hv)+'<br><small style="color:var(--muted)">1Y: '+pct(o.hv_1y)+'</small></td>'
       + '<td style="text-align:right;font-weight:700;color:'+vrpColor+';">'+signed(o.vrp_clean,' pp')+'</td>'
       + '<td style="text-align:center;"><strong style="color:'+ratioColor+';">'+o.ratio_clean+'×</strong><br><span style="background:'+badgeBg+';color:'+badgeCol+';font-size:10px;padding:1px 5px;border-radius:3px;font-weight:600;">'+badgeText+'</span></td>'
-      + '<td style="text-align:center;"><strong class="vol-regime-text">'+pct(o.iv_percentile)+'</strong><br><small style="color:var(--muted)">'+o.vol_regime+'</small></td>'
-      + '<td style="text-align:left;font-size:11px;max-width:280px;white-space:normal;color:#cbd5e1;"><span style="color:var(--green);font-weight:600;">'+safe(o.recommended_strategy)+'</span></td>'
+      + '<td style="text-align:center;"><strong class="vol-regime-text">'+pct(contractIvp)+'</strong><br><small style="color:var(--muted)">Front: '+pct(o.iv_percentile)+'</small></td>'
+      + '<td style="text-align:left;font-size:11px;max-width:320px;white-space:normal;color:#cbd5e1;"><span style="background:'+typeBadgeBg+';color:'+typeBadgeCol+';font-size:10px;padding:1px 5px;border-radius:3px;font-weight:600;display:inline-block;margin-bottom:3px;">'+typeBadge+'</span><br><span style="color:var(--green);font-weight:600;">'+safe(o.recommended_strategy)+'</span></td>'
       + '<td style="text-align:right;font-family:var(--mono);">'+contracts(o.total_oi)+'</td>'
       + '</tr>';
   }).join('');
@@ -624,25 +672,31 @@ function opportunitiesPage() {
     '<th scope="col" style="text-align:right;">Spot</th>',
     '<th scope="col" style="text-align:center;">Horizon</th>',
     '<th scope="col" style="text-align:center;">Expiration (DTE)</th>',
-    '<th scope="col" style="text-align:right;">ATM IV</th>',
+    '<th scope="col" style="text-align:right;">Contract IV</th>',
+    '<th scope="col" style="text-align:center;">Front IV & Term Spread</th>',
     '<th scope="col" style="text-align:right;">30D Clean HV</th>',
     '<th scope="col" style="text-align:right;">VRP Spread</th>',
     '<th scope="col" style="text-align:center;">IV / HV Ratio</th>',
     '<th scope="col" style="text-align:center;">1Y IV Pct</th>',
-    '<th scope="col" style="text-align:left;">Recommended Strategy</th>',
+    '<th scope="col" style="text-align:left;">Play Type & Strategy</th>',
     '<th scope="col" style="text-align:right;">Open Interest</th>'
   ].join('');
 
   const tableCard = card(
     'Systematic Volatility Mispricings',
-    'Cheap Implied Volatility Scanner (IV < Clean Realized Volatility)',
+    'Cheap Implied Volatility Scanner (IV < Clean Realized Volatility & Term Inversions)',
     toolbar
     + '<div class="gamma-table-wrap" tabindex="0" role="region" aria-label="Opportunities table" style="max-height:550px;">'
     + '<table class="gamma-table vol-matrix">'
     + '<thead><tr>' + tableHeaders + '</tr></thead>'
-    + '<tbody>' + (rows || '<tr><td colspan="11" class="empty" style="text-align:center;padding:24px;">No opportunities matching selected filters.</td></tr>') + '</tbody>'
+    + '<tbody>' + (rows || '<tr><td colspan="12" class="empty" style="text-align:center;padding:24px;">No opportunities matching selected filters.</td></tr>') + '</tbody>'
     + '</table></div>'
-    + '<p class="vol-chart-hint" style="margin-top:10px;"><b>Quantitative Edge:</b> When Implied Volatility (IV) trades at a discount to Clean Realized Volatility (IV/HV &lt; 1.0x) and 1-Year IV Percentile is low, long-dated options (LEAPS, 6M, and calendar long legs) are underpriced relative to actual price variance.</p>',
+    + '<div class="vol-chart-hint" style="margin-top:12px;line-height:1.5;">'
+    + '<b>Institutional Volatility Edge:</b><br>'
+    + '• <b>Relative Vol Discount (IV &lt; HV):</b> When contract IV trades below 30-Day Clean Realized Volatility (IV/HV &lt; 1.0x), the contract is mathematically underpriced relative to actual price variance.<br>'
+    + '• <b>Term Inversion (Back IV &lt; Front IV):</b> When near-term weekly IV is elevated (high 1Y IV percentile) while long-dated contracts trade at deep discounts, buying cheap back contracts and selling spiked front weeks (Calendar / Diagonal) captures aggressive front-week decay while holding low-cost vega.<br>'
+    + '• <b>Absolute Low Vol (1Y IVP ≤ 50%):</b> Assets with historically depressed volatility regimes across expiries are ideal for outright long LEAP / naked call accumulation.'
+    + '</div>',
     '',
     'wide in'
   );
@@ -656,6 +710,12 @@ function opportunitiesPage() {
 }
 
 function bindOpportunities() {
+  document.querySelectorAll('.opp-regime-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      oppsSelection.regime = btn.dataset.regime;
+      render();
+    });
+  });
   document.querySelectorAll('.opp-horizon-btn').forEach(btn => {
     btn.addEventListener('click', e => {
       oppsSelection.horizon = btn.dataset.horizon;

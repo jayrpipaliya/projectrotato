@@ -43,9 +43,10 @@ def scan_volatility_opportunities(universe=None):
                 continue
 
             front_iv = float(term_df['ATM_IV'].iloc[0])
+            front_dte = int(term_df['DTE'].iloc[0])
             iv_stats = compute_iv_rank_and_percentile(ticker, current_iv_pct=front_iv)
-            iv_pct = float(iv_stats.get('iv_percentile', 50.0))
-            iv_rank = float(iv_stats.get('iv_rank', 50.0))
+            front_iv_pct = float(iv_stats.get('iv_percentile', 50.0))
+            front_iv_rank = float(iv_stats.get('iv_rank', 50.0))
             vol_regime = iv_stats.get('vol_regime', 'Neutral Volatility')
 
             for _, row in term_df.iterrows():
@@ -74,38 +75,64 @@ def scan_volatility_opportunities(universe=None):
                 spread_1y = round(atm_iv - hv_1y, 2)
                 ratio_clean = round(atm_iv / max(clean_hv, 0.1), 2)
                 ratio_1y = round(atm_iv / max(hv_1y, 0.1), 2)
+                term_spread = round(atm_iv - front_iv, 1)
 
-                # Edge score: rewards low IV/HV ratio, low IV percentile, and high liquidity
-                # Lower ratio = bigger discount = higher edge
+                contract_iv_stats = compute_iv_rank_and_percentile(ticker, current_iv_pct=atm_iv)
+                contract_iv_pct = float(contract_iv_stats.get('iv_percentile', 50.0))
+                contract_iv_rank = float(contract_iv_stats.get('iv_rank', 50.0))
+
+                # Edge score: rewards low IV/HV ratio, negative term spread (backwardation), low contract IV percentile, and high liquidity
                 discount_pts = max(0.0, clean_hv - atm_iv)
+                inversion_pts = max(0.0, front_iv - atm_iv)
                 edge_score = (
                     (1.15 - ratio_clean) * 45.0
                     + (discount_pts * 1.5)
-                    + ((100.0 - iv_pct) * 0.20)
+                    + (inversion_pts * 1.0)
+                    + ((100.0 - contract_iv_pct) * 0.20)
                     + min(np.log10(max(oi, 10.0)) * 2.0, 10.0)
                 )
 
                 # Strategic categorization
-                if ratio_clean <= 0.88 or spread_clean <= -3.0:
-                    edge_tier = "Prime Discount (IV << HV)"
+                is_discount = (ratio_clean < 1.0 or spread_clean < 0)
+                is_low_vol = (contract_iv_pct <= 50.0 or front_iv_pct <= 50.0)
+                is_inverted = (term_spread <= -1.5)
+
+                if is_discount and is_low_vol:
+                    opp_type = "double_edge"
+                    type_badge = "Double Edge Prime"
+                    edge_tier = "Prime Double Edge (IV < HV & Low 1Y Vol)"
                     tier_tone = "mint"
-                    strategy = "Long LEAP Call / Bullish Diagonal (Buy Deep Cheap Vega)"
-                elif ratio_clean <= 0.98 or spread_clean < 0:
+                    strategy = "Prime Vol Arbitrage: Outright LEAP or Diagonal (Cheap IV + Low 1Y Regime)"
+                elif is_discount and is_inverted:
+                    opp_type = "relative_discount"
+                    type_badge = "Term & Realized Discount"
+                    edge_tier = "Prime Inversion (IV < HV & Inverted)"
+                    tier_tone = "mint"
+                    strategy = "Calendar / Bullish Diagonal (Buy Cheap Back, Sell Spiked Front Week)"
+                elif is_discount:
+                    opp_type = "relative_discount"
+                    type_badge = "Relative Discount (IV < HV)"
                     edge_tier = "Underpriced Vol (IV < HV)"
                     tier_tone = "mint"
-                    strategy = "Calendar Spread (Long Leg) / Long Gamma"
-                elif ratio_clean <= 1.05 and iv_pct <= 40:
+                    strategy = "Long Variance / Calendar Long Leg (IV < Clean Realized HV)"
+                elif is_low_vol:
+                    opp_type = "low_vol"
+                    type_badge = "Absolute Low Vol"
                     edge_tier = "Low Vol Percentile Regime"
                     tier_tone = "sky"
-                    strategy = "Low IV Long Option / Swing Accumulation"
-                elif ratio_clean <= 1.08:
+                    strategy = "Outright Long Option / LEAP Swing Accumulation (Low 1Y Regime)"
+                elif is_inverted:
+                    opp_type = "term_inversion"
+                    type_badge = "Term Inversion"
+                    edge_tier = "Inverted Curve Dislocation"
+                    tier_tone = "amber"
+                    strategy = "Volatility Calendar Spread (Harvest Spiked Front IV Decay)"
+                else:
+                    opp_type = "fair_value"
+                    type_badge = "Fair Value Vol"
                     edge_tier = "Fair Value Vol"
                     tier_tone = "slate"
-                    strategy = "Directional Spread"
-                else:
-                    edge_tier = "Elevated Premium"
-                    tier_tone = "amber"
-                    strategy = "Sell Leg Candidate"
+                    strategy = "Directional Spread / Covered Accumulation"
 
                 opportunities.append({
                     "ticker": ticker,
@@ -115,20 +142,29 @@ def scan_volatility_opportunities(universe=None):
                     "expiration": exp,
                     "dte": dte,
                     "atm_iv": round(atm_iv, 1),
+                    "front_iv": round(front_iv, 1),
+                    "front_dte": front_dte,
+                    "term_spread": term_spread,
                     "clean_hv": round(clean_hv, 1),
                     "hv_1y": round(hv_1y, 1),
                     "vrp_clean": spread_clean,
                     "vrp_1y": spread_1y,
                     "ratio_clean": ratio_clean,
                     "ratio_1y": ratio_1y,
-                    "iv_percentile": round(iv_pct, 1),
-                    "iv_rank": round(iv_rank, 1),
+                    "front_iv_percentile": round(front_iv_pct, 1),
+                    "front_iv_rank": round(front_iv_rank, 1),
+                    "contract_iv_percentile": round(contract_iv_pct, 1),
+                    "contract_iv_rank": round(contract_iv_rank, 1),
+                    "iv_percentile": round(front_iv_pct, 1),
+                    "iv_rank": round(front_iv_rank, 1),
                     "vol_regime": vol_regime,
                     "total_oi": oi,
                     "spans_earnings": spans_earnings,
                     "edge_score": round(edge_score, 1),
                     "edge_tier": edge_tier,
                     "tier_tone": tier_tone,
+                    "opportunity_type": opp_type,
+                    "type_badge": type_badge,
                     "recommended_strategy": strategy
                 })
 
@@ -138,24 +174,40 @@ def scan_volatility_opportunities(universe=None):
     # Sort primarily by lowest ratio_clean (deepest volatility discount)
     opportunities.sort(key=lambda x: (x['ratio_clean'], -x['total_oi']))
 
-    # Top Highlights across horizons
+    # Top Highlights across horizons and term structures
     top_leaps = [o for o in opportunities if o['horizon_code'] == 'LEAP'][:3]
     top_6m = [o for o in opportunities if o['horizon_code'] == '6M'][:3]
     top_3m = [o for o in opportunities if o['horizon_code'] == '3M'][:3]
-    
+    top_inversion = sorted([o for o in opportunities if o['term_spread'] < 0], key=lambda x: (x['term_spread'], x['ratio_clean']))[:3]
+
+    relative_discount_count = sum(1 for o in opportunities if o['ratio_clean'] < 1.0)
+    inverted_count = sum(1 for o in opportunities if o['term_spread'] < -1.0)
+    low_vol_count = sum(1 for o in opportunities if o['contract_iv_percentile'] <= 50.0 or o['front_iv_percentile'] <= 50.0)
+    double_edge_count = sum(1 for o in opportunities if o['ratio_clean'] < 1.0 and (o['contract_iv_percentile'] <= 50.0 or o['front_iv_percentile'] <= 50.0))
+
     payload = {
         "scan_timestamp": scan_timestamp,
         "scan_date": scan_date_str,
         "universe_count": len(tickers),
         "total_opportunities": len(opportunities),
+        "relative_discount_count": relative_discount_count,
+        "inverted_count": inverted_count,
+        "low_vol_count": low_vol_count,
+        "double_edge_count": double_edge_count,
         "top_leaps": top_leaps,
         "top_6m": top_6m,
         "top_3m": top_3m,
+        "top_inversion": top_inversion,
         "opportunities": opportunities
     }
 
-    # Save to disk
-    for fpath in [OPPORTUNITIES_FILE, BASE_PROCESSED_FILE]:
+    # Save to disk across candidate cache paths
+    candidates = [
+        Path(PROCESSED_DIR) / "opportunities.json",
+        Path(__file__).resolve().parent / "processed_data" / "opportunities.json",
+        Path(__file__).resolve().parent / ".runtime" / "opportunities.json"
+    ]
+    for fpath in candidates:
         try:
             fpath.parent.mkdir(parents=True, exist_ok=True)
             with open(fpath, "w", encoding="utf-8") as f:
@@ -171,15 +223,26 @@ def get_opportunities_data(force_refresh=False):
     Returns cached opportunities if recent (under 18 hours old) or performs scan.
     """
     if not force_refresh:
-        for fpath in [OPPORTUNITIES_FILE, BASE_PROCESSED_FILE]:
+        candidates = [
+            Path(PROCESSED_DIR) / "opportunities.json",
+            Path(__file__).resolve().parent / "processed_data" / "opportunities.json",
+            Path(__file__).resolve().parent / ".runtime" / "opportunities.json"
+        ]
+        best_data = None
+        best_ts = 0
+        for fpath in candidates:
             if fpath.exists():
                 try:
                     with open(fpath, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    if time.time() - data.get('scan_timestamp', 0) < 64800:
-                        return data
+                        d = json.load(f)
+                    ts = d.get('scan_timestamp', 0)
+                    if ts > best_ts:
+                        best_ts = ts
+                        best_data = d
                 except Exception:
                     pass
+        if best_data and (time.time() - best_ts < 64800):
+            return best_data
             
     return scan_volatility_opportunities()
 
@@ -195,7 +258,7 @@ def render_opportunities_page():
             Institutional Opportunities Desk
         </h2>
         <p style="margin: 0.35rem 0 0 0; color: #94a3b8; font-size: 0.95rem;">
-            Systematic Long-Dated Volatility Mispricing Scanner: Identifies contracts where <b>Implied Volatility (IV) trades at a deep discount to Realized Volatility (IV &lt; Clean HV30)</b> across <b>3-Month (~90D)</b>, <b>6-Month (~180D)</b>, and <b>LEAP (1Y+)</b> horizons.
+            Systematic Volatility Scanner: Identifies contracts where <b>Implied Volatility (IV) trades below Clean Realized Volatility (IV &lt; HV30)</b> or where <b>back-month IV trades far below front-month event IV (Term Inversion)</b> across <b>3-Month (~90D)</b>, <b>6-Month (~180D)</b>, and <b>LEAP (1Y+)</b> horizons.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -214,9 +277,9 @@ def render_opportunities_page():
 
     # Top KPI Metric Strip
     top_leap = data.get("top_leaps", [{}])[0] if data.get("top_leaps") else {}
-    top_6m = data.get("top_6m", [{}])[0] if data.get("top_6m") else {}
-    top_3m = data.get("top_3m", [{}])[0] if data.get("top_3m") else {}
-    prime_count = sum(1 for o in opps if o.get("ratio_clean", 1.0) < 1.0)
+    top_inv = data.get("top_inversion", [{}])[0] if data.get("top_inversion") else {}
+    disc_count = data.get("relative_discount_count", sum(1 for o in opps if o.get("ratio_clean", 1.0) < 1.0))
+    inv_count = data.get("inverted_count", sum(1 for o in opps if o.get("term_spread", 0) < -1.0))
 
     k1, k2, k3, k4 = st.columns(4)
     with k1:
@@ -228,44 +291,56 @@ def render_opportunities_page():
         )
     with k2:
         st.metric(
-            "Top 6-Month Discount",
-            f"{top_6m.get('ticker', '—')} {top_6m.get('expiration', '')}",
-            f"{top_6m.get('ratio_clean', 1.0):.2f}x HV ({top_6m.get('vrp_clean', 0):+.1f} pp)" if top_6m else "—",
+            "Deepest Term Inversion",
+            f"{top_inv.get('ticker', '—')} {top_inv.get('expiration', '')}",
+            f"{top_inv.get('term_spread', 0):+.1f} pp vs Front {top_inv.get('front_iv', 0):.1f}%" if top_inv else "—",
             delta_color="normal"
         )
     with k3:
         st.metric(
-            "Top 3-Month Discount",
-            f"{top_3m.get('ticker', '—')} {top_3m.get('expiration', '')}",
-            f"{top_3m.get('ratio_clean', 1.0):.2f}x HV ({top_3m.get('vrp_clean', 0):+.1f} pp)" if top_3m else "—",
-            delta_color="normal"
+            "Relative Discounts (IV < HV)",
+            f"{disc_count} / {len(opps)}",
+            "Underpriced vs 30D Clean Realized Movement",
+            delta_color="off"
         )
     with k4:
         st.metric(
-            "Discount Contracts (IV < HV)",
-            f"{prime_count} / {len(opps)}",
-            f"Scanned {data.get('universe_count', 15)} underlyings",
+            "Inverted Curve Opportunities",
+            f"{inv_count} / {len(opps)}",
+            "Back IV is cheaper than front-month weekly",
             delta_color="off"
         )
 
     st.markdown("---")
 
     # Filter Toolbar
-    f_col1, f_col2, f_col3 = st.columns([1.5, 1.5, 2.0])
+    f_col1, f_col2, f_col3, f_col4 = st.columns([1.5, 2.0, 1.5, 2.0])
     with f_col1:
         horizon_filter = st.selectbox(
             "Horizon Scope:",
             ["All Horizons", "3-Month (~90D)", "6-Month (~180D)", "LEAP (1Y+)"]
         )
     with f_col2:
+        regime_filter = st.selectbox(
+            "Strategy Opportunity Type:",
+            [
+                "All Opportunities",
+                "⚡ Relative Discounts (IV < HV) [Calendars & Diagonals]",
+                "★ Term Inversions (Back IV < Front IV)",
+                "💎 Absolute Low Vol (Contract IVP ≤ 50%)",
+                "👑 Double Edge Prime (Discount & Low Vol)"
+            ]
+        )
+    with f_col3:
         available_tickers = ["All Underlyings"] + sorted(list(set(o["ticker"] for o in opps)))
         ticker_filter = st.selectbox("Underlying Ticker:", available_tickers)
-    with f_col3:
+    with f_col4:
         sort_mode = st.selectbox(
             "Sort Opportunities by:",
             [
                 "Deepest Vol Discount (Lowest IV/HV Ratio)",
-                "Lowest 1-Year IV Percentile",
+                "Deepest Term Inversion (Lowest Back IV - Front IV)",
+                "Lowest 1-Year Contract IV Percentile",
                 "Highest Open Interest (Liquidity)"
             ]
         )
@@ -276,18 +351,30 @@ def render_opportunities_page():
         code_map = {"3-Month (~90D)": "3M", "6-Month (~180D)": "6M", "LEAP (1Y+)": "LEAP"}
         target_code = code_map.get(horizon_filter)
         filtered = [o for o in filtered if o.get("horizon_code") == target_code]
+
+    if "Relative Discounts" in regime_filter:
+        filtered = [o for o in filtered if o.get("ratio_clean", 1.0) < 1.0]
+    elif "Term Inversions" in regime_filter:
+        filtered = [o for o in filtered if o.get("term_spread", 0) < -1.0]
+    elif "Absolute Low Vol" in regime_filter:
+        filtered = [o for o in filtered if o.get("contract_iv_percentile", 100) <= 50.0 or o.get("front_iv_percentile", 100) <= 50.0]
+    elif "Double Edge Prime" in regime_filter:
+        filtered = [o for o in filtered if o.get("ratio_clean", 1.0) < 1.0 and (o.get("contract_iv_percentile", 100) <= 50.0 or o.get("front_iv_percentile", 100) <= 50.0)]
+
     if ticker_filter != "All Underlyings":
         filtered = [o for o in filtered if o.get("ticker") == ticker_filter]
 
     if "Deepest Vol Discount" in sort_mode:
         filtered = sorted(filtered, key=lambda x: (x.get("ratio_clean", 1.0), x.get("vrp_clean", 0)))
-    elif "Lowest 1-Year IV Percentile" in sort_mode:
-        filtered = sorted(filtered, key=lambda x: (x.get("iv_percentile", 50.0), x.get("ratio_clean", 1.0)))
+    elif "Deepest Term Inversion" in sort_mode:
+        filtered = sorted(filtered, key=lambda x: (x.get("term_spread", 0), x.get("ratio_clean", 1.0)))
+    elif "Lowest 1-Year" in sort_mode:
+        filtered = sorted(filtered, key=lambda x: (x.get("contract_iv_percentile", 50.0), x.get("ratio_clean", 1.0)))
     elif "Highest Open Interest" in sort_mode:
         filtered = sorted(filtered, key=lambda x: -x.get("total_oi", 0))
 
     st.markdown(f"### Opportunities Radar ({len(filtered)} Contracts Matching Filters)")
-    st.caption("Quantitative Edge: Contracts where Implied Volatility trades below Clean Realized Volatility ($IV/HV < 1.0x$) are mathematically underpriced, offering exceptional positive variance edge for Long LEAPS, Calendar Long Legs, and Bullish Diagonals.")
+    st.caption("Quantitative Edge: <b>Relative discounts (IV &lt; Clean HV)</b> are underpriced vs actual stock movement; <b>Inverted term structures (Back IV &lt; Front IV)</b> offer massive edge when selling expensive front weeks against cheap long-dated contracts (Calendars/Diagonals).")
 
     # Render formatted table
     df_disp = pd.DataFrame(filtered)
@@ -297,11 +384,14 @@ def render_opportunities_page():
             "Spot": df_disp["spot_price"].apply(lambda s: f"${s:.2f}"),
             "Horizon": df_disp["horizon"],
             "Expiration": df_disp["expiration"] + " (" + df_disp["dte"].astype(str) + "d)",
-            "ATM IV": df_disp["atm_iv"].apply(lambda v: f"{v:.1f}%"),
+            "Contract IV": df_disp["atm_iv"].apply(lambda v: f"{v:.1f}%"),
+            "Front IV": df_disp["front_iv"].apply(lambda v: f"{v:.1f}%"),
+            "Term Spread": df_disp["term_spread"].apply(lambda s: f"{s:+.1f} pp"),
             "30D Clean HV": df_disp["clean_hv"].apply(lambda v: f"{v:.1f}%"),
             "VRP Spread": df_disp["vrp_clean"].apply(lambda v: f"{v:+.1f} pp"),
             "IV/HV Ratio": df_disp["ratio_clean"].apply(lambda r: f"{r:.2f}x"),
-            "1Y IV Pct": df_disp["iv_percentile"].apply(lambda p: f"{p:.1f}%"),
+            "Contract IVP": df_disp["contract_iv_percentile"].apply(lambda p: f"{p:.1f}%"),
+            "Play Type": df_disp["type_badge"],
             "Recommended Strategy": df_disp["recommended_strategy"],
             "Total OI": df_disp["total_oi"].apply(lambda oi: f"{oi:,.0f}")
         })
