@@ -547,30 +547,35 @@ function opportunitiesPage() {
   const macro = cards.macro_term_state;
   const crush = cards.peak_iv_crush;
 
-  const tile = (label, val, detail, tone='neutral') => 
-    '<div class="gamma-kpi vol-kpi" data-regime="'+tone+'"><small>'+label+'</small><div class="vol-kpi-value">'+val+'</div><div class="vol-kpi-details">'+detail+'</div></div>';
+  const tile = (label, val, detail, tone='neutral', attrs='') => 
+    '<div class="gamma-kpi vol-kpi opp-kpi-clickable" data-regime="'+tone+'" '+attrs+' tabindex="0" role="button" title="Click to locate this setup in the table below"><small>'+label+'</small><div class="vol-kpi-value">'+val+'</div><div class="vol-kpi-details">'+detail+'</div><span class="opp-card-jump" style="font-size:9.5px;color:var(--muted);margin-top:5px;display:block;opacity:0.8;">Click to locate row &darr;</span></div>';
 
   const kpis = [
     tile('Prime Calendar Setup', 
       cal ? '<strong>'+cal.ticker+' '+cal.expiration+'</strong>' : '—', 
       cal ? '<span class="vol-regime-pill" style="color:var(--green)">'+signed(cal.term_spread,' pp')+' Front Skew</span><small>Buy '+cal.atm_iv+'% IV ('+cal.ratio_clean+'× HV) · Sell '+cal.front_iv+'%</small>' : 'None', 
-      'low'),
+      'low',
+      cal ? 'data-opp-target="contract" data-ticker="'+cal.ticker+'" data-exp="'+cal.expiration+'"' : ''),
     tile('Prime Long LEAP Value', 
       leap ? '<strong>'+leap.ticker+' '+leap.expiration+'</strong>' : '—', 
       leap ? '<span class="vol-regime-pill" style="color:var(--green)">'+leap.ratio_clean+'× Clean HV ('+signed(leap.vrp_clean,' pp')+')</span><small>Contract IV '+leap.atm_iv+'% vs Realized '+leap.clean_hv+'%</small>' : 'None', 
-      'low'),
+      'low',
+      leap ? 'data-opp-target="contract" data-ticker="'+leap.ticker+'" data-exp="'+leap.expiration+'"' : ''),
     tile('Double Edge Confluence', 
       conf ? '<strong>'+conf.ticker+' '+conf.expiration+'</strong>' : '—', 
       conf ? '<span class="vol-regime-pill" style="color:#38bdf8">Bias +'+conf.bias_score+' · '+conf.ratio_clean+'× HV</span><small>'+conf.bias_label+' Trend · '+signed(conf.term_spread,' pp')+' Front Skew</small>' : 'None', 
-      'low'),
+      'low',
+      conf ? 'data-opp-target="contract" data-ticker="'+conf.ticker+'" data-exp="'+conf.expiration+'"' : ''),
     tile('Macro Term Structure', 
       macro ? '<strong>'+macro.state_label+'</strong>' : '—', 
       macro ? '<span class="vol-regime-pill" style="color:'+(macro.tone==='cherry'?'var(--red)':'var(--amber)')+'">'+macro.inversion_pct+'% Universe Inverted ('+macro.inverted_count+'/'+macro.total_tickers+')</span><small>Avg Front Skew +'+macro.avg_front_skew+' pp over back tenors</small>' : 'None', 
-      macro ? macro.tone : 'neutral'),
+      macro ? macro.tone : 'neutral',
+      'data-opp-target="regime" data-regime="inversion"'),
     tile('Peak IV Crush Target', 
       crush && crush.ticker ? '<strong>'+crush.ticker+' Front Cycle ('+crush.front_dte+'d)</strong>' : '—', 
       crush && crush.ticker ? '<span class="vol-regime-pill" style="color:var(--amber)">'+crush.front_iv+'% IV ('+Math.round(crush.front_iv_percentile)+'th IVP)</span><small>Term Spread '+signed(crush.term_spread,' pp')+' vs back month</small>' : 'None', 
-      'high')
+      'high',
+      crush && crush.ticker ? 'data-opp-target="contract" data-ticker="'+crush.ticker+'" data-exp="'+(crush.back_exp||'')+'"' : '')
   ];
 
   const kpiSection = '<section class="vol-kpis in" aria-label="Opportunities metrics">'+kpis.join('')+'</section>';
@@ -653,7 +658,7 @@ function opportunitiesPage() {
 
     const contractIvp = o.contract_iv_percentile != null ? o.contract_iv_percentile : o.iv_percentile;
 
-    return '<tr>'
+    return '<tr id="opp-row-'+o.ticker+'-'+o.expiration+'" data-ticker="'+o.ticker+'" data-exp="'+o.expiration+'">'
       + '<td style="font-weight:700;color:var(--text);text-align:left;">'+o.ticker+'</td>'
       + '<td style="text-align:right;">'+money(o.spot_price)+'</td>'
       + '<td style="text-align:center;"><span style="background:'+tenorBadgeBg+';color:'+tenorBadgeCol+';font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;">'+o.horizon+'</span></td>'
@@ -712,6 +717,83 @@ function opportunitiesPage() {
 }
 
 function bindOpportunities() {
+  document.querySelectorAll('.opp-kpi-clickable').forEach(kpi => {
+    kpi.addEventListener('click', () => {
+      const targetType = kpi.dataset.oppTarget;
+      if (!targetType) return;
+
+      if (targetType === 'regime') {
+        oppsSelection.regime = kpi.dataset.regime || 'All';
+        oppsSelection.ticker = 'All';
+        oppsSelection.horizon = 'All';
+        render();
+        const wrap = document.querySelector('.gamma-table-wrap');
+        if (wrap) {
+          wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        return;
+      }
+
+      if (targetType === 'contract') {
+        const ticker = kpi.dataset.ticker;
+        const exp = kpi.dataset.exp;
+        if (!ticker) return;
+
+        // Ensure current filters don't hide the targeted row
+        const payload = remoteOpportunities || data.opportunities;
+        const target = payload?.opportunities?.find(o => o.ticker === ticker && (!exp || o.expiration === exp));
+        if (target) {
+          if (oppsSelection.ticker !== 'All' && oppsSelection.ticker !== ticker) {
+            oppsSelection.ticker = 'All';
+          }
+          if (oppsSelection.horizon !== 'All' && oppsSelection.horizon !== target.horizon_code) {
+            oppsSelection.horizon = 'All';
+          }
+          if (oppsSelection.regime === 'discount' && target.ratio_clean >= 1.0) {
+            oppsSelection.regime = 'All';
+          }
+          if (oppsSelection.regime === 'inversion' && (target.term_spread == null || target.term_spread >= -1.0)) {
+            oppsSelection.regime = 'All';
+          }
+        } else {
+          oppsSelection.ticker = 'All';
+          oppsSelection.horizon = 'All';
+          oppsSelection.regime = 'All';
+        }
+
+        render();
+
+        // Scroll directly to the target row and flash highlight
+        setTimeout(() => {
+          let row = null;
+          if (exp) {
+            row = byId('opp-row-' + ticker + '-' + exp);
+          }
+          if (!row) {
+            row = document.querySelector('tr[data-ticker="' + ticker + '"]');
+          }
+          if (row) {
+            document.querySelectorAll('.opp-row-highlight').forEach(el => el.classList.remove('opp-row-highlight'));
+            row.classList.add('opp-row-highlight');
+            const wrap = row.closest('.gamma-table-wrap');
+            if (wrap) {
+              const rowTop = row.offsetTop;
+              wrap.scrollTo({ top: Math.max(0, rowTop - 60), behavior: 'smooth' });
+            }
+            row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }, 50);
+      }
+    });
+
+    kpi.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        kpi.click();
+      }
+    });
+  });
+
   document.querySelectorAll('.opp-regime-btn').forEach(btn => {
     btn.addEventListener('click', e => {
       oppsSelection.regime = btn.dataset.regime;

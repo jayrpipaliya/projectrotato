@@ -445,3 +445,9 @@ dialog,.tooltip{background:var(--control)}
 .opp-badge-amber{background:rgba(234,179,8,0.15);color:#eab308}
 .opp-badge-cherry{background:rgba(255,46,85,0.12);color:var(--red)}
 .opp-badge-slate{background:rgba(148,163,184,0.15);color:#94a3b8}
+.opp-kpi-clickable{cursor:pointer;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease;user-select:none}
+.opp-kpi-clickable:hover{border-color:var(--amber)!important;transform:translateY(-2px);box-shadow:0 4px 14px rgba(0,0,0,0.45)}
+.opp-kpi-clickable:active{transform:translateY(0)}
+.opp-kpi-clickable:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+@keyframes oppRowFlash{0%{background:rgba(0,245,160,0.35);box-shadow:inset 0 0 0 1px var(--green)}40%{background:rgba(0,245,160,0.22);box-shadow:inset 0 0 0 1px var(--green)}100%{background:transparent;box-shadow:none}}
+.opp-row-highlight{animation:oppRowFlash 2.5s ease-out forwards!important}
