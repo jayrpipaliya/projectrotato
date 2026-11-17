@@ -689,9 +689,15 @@ def compute_gamma_exposure_profile(ticker_symbol="SPY", max_expirations=5, force
             market_trade_str = str(latest_trade_ts)[:19]
 
     session_code, session_label = get_market_session_status()
+    try:
+        from gamma_tracker import get_market_session_date
+        market_session_date = get_market_session_date()
+    except Exception:
+        market_session_date = now_dt.strftime("%Y-%m-%d")
 
     profile = {
         "ticker": ticker_up,
+        "date": market_session_date,
         "spot_price": round(spot_price, 2),
         "call_wall": round(call_wall, 2),
         "call_wall_gex_m": round(strikes_gex[call_wall]["call_gex"], 1),

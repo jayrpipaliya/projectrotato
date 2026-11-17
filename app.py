@@ -25,7 +25,7 @@ raw_writable.mkdir(parents=True, exist_ok=True)
 
 for filename in ('gamma_history.json', 'spy_rsp.csv', 'qqq_rsp.csv', 'iwm_qqq.csv'):
     source, target = ROOT / 'processed_data' / filename, runtime / filename
-    if source.is_file() and not target.exists():
+    if source.is_file() and (not target.exists() or source.stat().st_mtime > target.stat().st_mtime):
         shutil.copyfile(source, target)
 data_manager.PROCESSED_DIR = str(runtime)
 
@@ -48,6 +48,7 @@ READ_PATHS = {
     "/api/market-data", "/api/confluence", "/api/ratio/{ratio_name}",
     "/api/ticker/{ticker}", "/api/gamma/{ticker}", "/api/gamma/{ticker}/shift",
     "/api/gamma/{ticker}/heatmap", "/api/gamma/{ticker}/oi-history",
+    "/api/gamma/{ticker}/history",
     "/api/options/{ticker}", "/api/options/{ticker}/smile",
     "/api/opportunities",
 }

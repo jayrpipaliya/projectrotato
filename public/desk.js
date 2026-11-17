@@ -1309,6 +1309,7 @@ function backendOptionData(payload,symbol) {
   optionSnapshots.set(symbol,{...payload,chains,smiles});
 }
 function gammaSessionDate(payload,fallback) {
+  if (payload.date && /^\d{4}-\d{2}-\d{2}$/.test(payload.date)) return payload.date;
   const match=/^([A-Za-z]{3}) (\d{1,2}), (\d{4})/.exec(payload.market_trade_time||'');
   if(!match) return fallback;
   const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1363,8 +1364,21 @@ async function hydrateView(page,symbol,force) {
   if(page==='gamma'){
     const p=await readBackend('gamma/'+symbol+(force?'?force=true':''));
     if(!Array.isArray(p.strikes)||!p.strikes.length||!(p.spot_price>0)) throw new Error('No strike profile returned.');
-    const day=gammaSessionDate(p,data.prices[symbol].at(-1)[0]);
-    currentGamma.set(symbol,{...p,date:day,strikes:Object.fromEntries(p.strikes.map(row=>[row.strike.toFixed(2),row]))});
+    const fallbackDay = (data.prices[symbol] && data.prices[symbol].length) ? data.prices[symbol].at(-1)[0] : '';
+    const day=gammaSessionDate(p,fallbackDay);
+    const strikesMap=Object.fromEntries(p.strikes.map(row=>[row.strike.toFixed(2),row]));
+    const liveRecord={...p,date:day,strikes:strikesMap};
+    currentGamma.set(symbol,liveRecord);
+
+    // Dynamic 7-day retention history sync
+    if(Array.isArray(p.history)&&p.history.length){
+      data.gamma[symbol]=p.history.filter(row=>row&&row.date).sort((a,b)=>a.date.localeCompare(b.date)).slice(-7);
+    } else {
+      const existing=(data.gamma[symbol]||[]).filter(row=>row.date!==day);
+      existing.push(liveRecord);
+      data.gamma[symbol]=existing.sort((a,b)=>a.date.localeCompare(b.date)).slice(-7);
+    }
+
     if(route()===page&&symbol===state.symbol&&(force?state.gammaDate===requestedSession:!state.gammaDate)) state.gammaDate='live';
   }
   if(page==='volatility'){

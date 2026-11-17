@@ -460,10 +460,24 @@ def api_ticker(ticker: str, horizon: str = Query("All Historical Data")):
 def api_gamma(ticker: str, force: bool = Query(False)):
     try:
         from options_engine import compute_gamma_exposure_profile
-        data = compute_gamma_exposure_profile(ticker.upper(), max_expirations=5, force_refresh=force)
+        from gamma_tracker import load_gamma_history
+        t_up = ticker.upper()
+        data = compute_gamma_exposure_profile(t_up, max_expirations=5, force_refresh=force)
+        hist = load_gamma_history(t_up)
+        if isinstance(data, dict):
+            data["history"] = hist or []
         return clean_json(data)
     except Exception as e:
         return {"error": str(e)}
+
+@app.get("/api/gamma/{ticker}/history")
+def api_gamma_history(ticker: str):
+    try:
+        from gamma_tracker import load_gamma_history
+        hist = load_gamma_history(ticker.upper())
+        return clean_json({"ticker": ticker.upper(), "history": hist or []})
+    except Exception as e:
+        return {"error": str(e), "history": []}
 
 @app.get("/api/gamma/{ticker}/shift")
 def api_gamma_shift(ticker: str):

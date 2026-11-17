@@ -211,29 +211,52 @@ def load_gamma_history(ticker: str = None) -> dict:
             _seed_ticker_if_needed(t_key)
             raw_list = _HISTORY_CACHE.get(t_key, [])
 
-        # Deduplicate strictly by date, clamp any future-stamped dates from UTC drift, and sort
+        # Deduplicate strictly by date, clamp future dates, and enforce 7-day retention
         max_valid_date = get_market_session_date()
+        try:
+            curr_dt = datetime.strptime(max_valid_date, "%Y-%m-%d")
+            cutoff_date = (curr_dt - timedelta(days=7)).strftime("%Y-%m-%d")
+        except Exception:
+            cutoff_date = ""
+
         deduped = {}
         for item in raw_list:
             d = item.get("date")
             if d:
                 # Clamp future-stamped dates to current valid market session date
                 clean_d = min(d, max_valid_date) if d > max_valid_date else d
-                item_copy = dict(item)
-                item_copy["date"] = clean_d
-                deduped[clean_d] = item_copy
-        return [deduped[d] for d in sorted(deduped.keys())]
+                if not cutoff_date or clean_d >= cutoff_date:
+                    item_copy = dict(item)
+                    item_copy["date"] = clean_d
+                    deduped[clean_d] = item_copy
+        sorted_items = [deduped[d] for d in sorted(deduped.keys())]
+        return sorted_items[-7:]
     return _HISTORY_CACHE
 
 
 def save_gamma_history(history: dict) -> bool:
-    """Persist gamma history dictionary to disk."""
+    """Persist gamma history dictionary to disk with 7-day retention policy."""
     global _HISTORY_CACHE
     filepath = get_history_filepath()
     try:
+        max_valid_date = get_market_session_date()
+        try:
+            curr_dt = datetime.strptime(max_valid_date, "%Y-%m-%d")
+            cutoff_date = (curr_dt - timedelta(days=7)).strftime("%Y-%m-%d")
+        except Exception:
+            cutoff_date = ""
+
+        pruned = {}
+        for sym, rows in history.items():
+            if isinstance(rows, list):
+                valid_rows = [r for r in rows if isinstance(r, dict) and (not cutoff_date or r.get("date", "") >= cutoff_date)]
+                pruned[sym] = sorted(valid_rows, key=lambda x: x.get("date", ""))[-7:]
+            else:
+                pruned[sym] = rows
+
         with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(history, f, indent=2, default=str)
-        _HISTORY_CACHE = history
+            json.dump(pruned, f, indent=2, default=str)
+        _HISTORY_CACHE = pruned
         return True
     except Exception as e:
         print(f"[Gamma Tracker] Error saving history: {e}")
@@ -243,7 +266,7 @@ def save_gamma_history(history: dict) -> bool:
 def record_gamma_snapshot(ticker: str, profile: dict) -> bool:
     """
     Record a live GEX snapshot from compute_gamma_exposure_profile.
-    Maintains a rolling 30-day window per ticker.
+    Maintains a rolling 7-day window per ticker (deletes snapshots older than 7 days).
     """
     if not profile or "error" in profile or not profile.get("call_wall"):
         return False
@@ -305,8 +328,14 @@ def record_gamma_snapshot(ticker: str, profile: dict) -> bool:
     if not updated:
         t_hist.append(entry)
 
-    # Sort ascending by date and cap at 30 entries
-    t_hist = sorted(t_hist, key=lambda x: x.get("date", ""))[-30:]
+    # Prune snapshots older than 7 days and cap at 7 entries
+    try:
+        curr_dt = datetime.strptime(today_str, "%Y-%m-%d")
+        cutoff_date = (curr_dt - timedelta(days=7)).strftime("%Y-%m-%d")
+        t_hist = [ex for ex in t_hist if ex.get("date", "") >= cutoff_date]
+    except Exception:
+        pass
+    t_hist = sorted(t_hist, key=lambda x: x.get("date", ""))[-7:]
     history[t_up] = t_hist
     return save_gamma_history(history)
 
