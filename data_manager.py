@@ -281,31 +281,6 @@ def update_single_ticker(ticker: str, force: bool = False) -> dict:
     except Exception as e:
         return {"ticker": ticker, "status": "error", "error": str(e), "added_rows": 0}
 
-def is_core_data_stale() -> bool:
-    """Checks if SPY or core assets haven't been updated to the latest trading date."""
-    spy_path = ticker_to_filename("SPY")
-    if not os.path.exists(spy_path):
-        return True
-    try:
-        df = pd.read_csv(spy_path)
-        if df.empty or "Date" not in df.columns:
-            return True
-        last_date_str = str(df["Date"].iloc[-1]).split()[0]
-        last_date = pd.to_datetime(last_date_str).date()
-        today = datetime.now().date()
-        # If weekday and last date is older than today, consider stale
-        if last_date < today and today.weekday() < 5:
-            return True
-        return False
-    except Exception:
-        return True
-
-def auto_sync_core_data(force: bool = False, progress_callback=None) -> list[dict]:
-    """Automatically syncs core assets (Mag 7, Indexes, Sectors, Macro) if stale or forced."""
-    if not force and not is_core_data_stale():
-        return []
-    core_tickers = MAG_7 + INDEXES + SECTORS + MACRO_ASSETS
-    return update_all_tickers(tickers=core_tickers, progress_callback=progress_callback)
 
 def update_all_tickers(tickers: list[str] = None, progress_callback=None, force: bool = False) -> list[dict]:
     """Updates all specified tickers (or all available CSVs) incrementally."""

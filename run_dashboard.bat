@@ -1,6 +1,7 @@
 @echo off
-title Quantitative Market Intelligence & Double Edge
+title Double Edge // Stealth Quantitative Macro Desk
 cd /d "%~dp0"
-echo Launching Quantitative Market Dashboard...
-py -3.12 -m streamlit run app.py
+echo Launching Double Edge Quantitative Macro Desk...
+start http://127.0.0.1:8000/
+py -3.12 app.py
 pause

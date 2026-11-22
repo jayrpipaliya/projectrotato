@@ -6,7 +6,7 @@
   "functions": {
     "app.py": {
       "maxDuration": 60,
-      "excludeFiles": "{public/**,legacy_streamlit_app.py,.streamlit/**,scratch/**,*.bat}"
+      "excludeFiles": "{public/**,scratch/**,*.bat}"
     }
   }
 }

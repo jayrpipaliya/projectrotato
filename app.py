@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 HERE = Path(__file__).resolve().parent
 STAGED = (HERE / "legacy_dashboard" / "index.py").is_file()
@@ -142,6 +143,11 @@ def run_yfinance():
         f"from yfinance (latest: {result.get('last_date', 'today')}).{storage_note}"
     )
     return {"message": msg, **result}
+
+
+public_dir = ROOT / "public"
+if public_dir.is_dir():
+    app.mount("/", StaticFiles(directory=str(public_dir), html=True), name="static")
 
 
 if __name__ == "__main__":

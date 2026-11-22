@@ -1,5 +1,5 @@
 [project]
 name = "app"
 version = "0.1.0"
-dependencies = [ "fastapi", "uvicorn", "pandas", "numpy", "python-dotenv", "yfinance", "google-genai" ]
+dependencies = [ "fastapi", "uvicorn", "pandas", "numpy", "python-dotenv", "yfinance" ]
 requires-python = "~=3.12.0"
