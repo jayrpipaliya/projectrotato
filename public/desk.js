@@ -145,7 +145,7 @@ function priceChart() {
   if(state.ema) marks+='<path d="'+line(ema,x,y)+'" fill="none" stroke="var(--amber)" opacity=".8" stroke-width="1.35"/>';
   hoverSeries={size:r.length,x,y:i=>y(r[i][4]),text:i=>{const [date,o,h,l,c,v]=r[i];return date+' · '+money(c)+'<br>O '+money(o)+'　H '+money(h)+'　L '+money(l)+'<br>Volume '+v.toLocaleString('en-US');}};
   return card('Daily OHLC',''+state.symbol+' price action',
-    plotFrame(state.symbol+' price history. Use left and right arrow keys to inspect sessions.',grid(y,ticks,money),marks,axis(r,x,row=>short(row[0])),true,true)
+    plotFrame(state.symbol+' price history. Use left and right arrow keys to inspect sessions.',grid(y,ticks,money),marks,axis(r,x,row=>short(row[0])),true)
     +'<div class="chart-note"><span>'+money(last[4])+' close · '+r.length+' sessions</span><span>'+(state.ema?'● EMA 20 · ':'')+'Volume</span></div>',
     control('range',[21,63,126,252],['1M','3M','6M','1Y'])+control('priceMode',['Candles','Line'])+control('ema',[true],['EMA 20']),'in');
 }
