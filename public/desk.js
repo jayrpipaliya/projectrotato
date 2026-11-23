@@ -7,7 +7,7 @@ const signed = (n, unit = '%') => Number.isFinite(n) ? (n >= 0 ? '+' : '−') + 
 const tone = n => n >= 0 ? 'up' : 'down';
 const safe = v => String(v ?? '—').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const names = {SPY:'S&P 500',QQQ:'Nasdaq 100',IWM:'Russell 2000',NVDA:'NVIDIA',DIA:'Dow Jones',RSP:'S&P 500 Equal Weight',GLD:'Gold',TLT:'Long Treasuries',SMH:'Semiconductors'};
-const titles = {overview:'Market Overview',opportunities:'Opportunities',charts:'Single Ticker',gamma:'Gamma Exposure',volatility:'Volatility Pricing',bias:'Bias Matrix',sector:'Index & Sector Flow',mag7:'Magnificent 7 Flow',ratios:'Synthetic Ratio Rotations'};
+const titles = {overview:'Market Overview',opportunities:'Opportunities',charts:'Single Ticker',gamma:'Gamma Exposure',volatility:'Volatility Pricing',bias:'Bias Matrix',sector:'Index & Sector Flow',mag7:'Magnificent 7 Flow',ratios:'Synthetic Ratio Rotations',developer:'Developer Profile'};
 const oppsSelection = {horizon:'All', regime:'All', sort:'discount', ticker:'All'};
 let remoteOpportunities = null;
 const state = {symbol:'SPY', range:63, priceMode:'Candles', ema:true, vol:30, gammaMode:'Net GEX', gammaRange:'Relevant', gammaTable:'Relevant only', gammaDate:''};
@@ -1014,7 +1014,7 @@ function biasInspector(item,items) {
 }
 function biasPage() {
   const source=data.bias;
-  const header=hero('Market conviction','Bias Matrix','Compare bullish and bearish confirmations across seven factors.',data.prices.SPY.at(-1)[0],true);
+  const header=hero('Market conviction','Bias Matrix','Compare bullish and bearish confirmations across seven factors.',marketSession||data.prices.SPY.at(-1)[0],true);
   if(!source?.assets.length) return header+'<div class="card empty">No Bias Matrix data in this snapshot. Rebuild the local snapshot to load the scores.</div>';
   const group=source.groups[biasSelection.scope], items=remoteBias.get(biasSelection.scope)||(group?source.assets.filter(asset=>group.includes(asset.ticker)):source.assets);
   const current=items.find(asset=>asset.ticker===biasSelection.ticker)||items[0];
@@ -1078,7 +1078,7 @@ function normalizedFlow() {
     +'<div class="chart-note">Each ticker starts at 0% on '+short(sessions[0])+'</div>',selector,'flow-normalized');
 }
 function flowPage(mega) {
-  const date=data.prices.SPY.at(-1)[0];
+  const date=marketSession||data.prices.SPY.at(-1)[0];
   const title=mega?'Magnificent 7 Flow':'Index and Sector Flow';
   const subtitle=mega?'Compare mega-cap performance, technical signals, and historical odds.':'Track index performance and rotation across sector ETFs.';
   const header=hero(mega?'Mega-cap equities':'Market rotation',title,subtitle,date,true);
@@ -1158,8 +1158,8 @@ function explorerTrend(all) {
 }
 function tickerExplorer(date) {
   const symbol=state.symbol, all=priceStudies(symbol), last=all.at(-1), m=remoteTicker.get(symbol+'/'+explorerSelection.horizon)?.metrics||flowMetrics.get(symbol);
+  date=m?.date||marketSession||date;
   const head=hero(symbol+' / '+safe(names[symbol]||'Daily OHLC'),'Single Ticker Explorer','Inspect price trends, drawdown, and historical setup odds.',date,true);
-  date=m?.date||date;
   const options=Object.keys(data.prices).sort().map(t=>'<option value="'+t+'" '+(t===symbol?'selected':'')+'>'+t+'</option>').join('');
   const controls='<div class="vol-toolbar controls"><label>Underlying <select id="explorer-symbol">'+options+'</select></label>'
     +['Trend','OHLC detail'].map(v=>'<button data-explorer-view="'+v+'" aria-pressed="'+(explorerSelection.view===v)+'">'+v+'</button>').join('')+'</div>';
@@ -1200,7 +1200,7 @@ function ratioPage() {
     {key:'upper',label:'+2σ',color:'var(--red)',dash:'4 4'},
     {key:'lower',label:'−2σ',color:'var(--green)',dash:'4 4'}
   ];
-  const head=hero('Relative strength','Synthetic Ratio Rotations','Track breadth, mega-cap concentration, and small-cap rotation.',rows.at(-1)?.date||data.prices.SPY.at(-1)[0],true);
+  const head=hero('Relative strength','Synthetic Ratio Rotations','Track breadth, mega-cap concentration, and small-cap rotation.',rows.at(-1)?.date||marketSession||data.prices.SPY.at(-1)[0],true);
   const picker='<label>Ratio <select id="rotation-pair">'+breadthPairs.map(([key,name])=>'<option value="'+key+'" '+(key===pair?'selected':'')+'>'+key+' · '+name+'</option>').join('')+'</select></label>';
   if(!rows.length) return head+card('Relative strength',pair,'<p>No matching sessions for this ratio.</p>',picker);
   const x=i=>L+(R-L)*i/Math.max(1,rows.length-1);
@@ -1215,6 +1215,115 @@ function ratioPage() {
   return head+'<div class="grid rotation-grid in">'+card('500-session view',pair+' ratio',
     plotFrame('Price ratio, moving averages and two-sigma bands. Use the arrow keys to inspect sessions.',grid(y,ticks,fmt,false),chartPaths(rows,series,x,y),axis(rows,x,row=>short(row.date)),true)
     +'<div class="chart-note"><span>'+contracts(rows.length)+' sessions</span>'+chartKey(series)+'</div>',picker,'rotation-chart')+breadthCard(summary)+'</div>';
+}
+
+function developerPage() {
+  const session = marketSession || data.prices.SPY.at(-1)[0];
+  const head = hero('System Architect & Creator', 'Jay R. Pipaliya', 'Lead Financial Analyst & Quantitative Systems Developer', session, true);
+
+  const linkedinIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.45c-.88 0-1.6.72-1.6 1.6 0 .88.72 1.6 1.6 1.6.88 0 1.6-.72 1.6-1.6 0-.88-.72-1.6-1.6-1.6Z"/></svg>';
+
+  const connectCard = card(
+    'Verification & Network',
+    'Connect',
+    '<div class="dev-connect-box">'
+      + '<a class="dev-linkedin-btn" href="https://www.linkedin.com/in/jayrpipaliya/" target="_blank" rel="noopener noreferrer">'
+        + linkedinIcon + '<span>View LinkedIn Profile</span> ↗'
+      + '</a>'
+    + '</div>'
+    + stat('Developer', 'Jay R. Pipaliya')
+    + stat('Location', 'Sayreville, NJ')
+    + stat('Metro', 'New York City')
+    + stat('Email', '<a href="mailto:jayrpipaliya@gmail.com" class="jump" style="margin-top:0">jayrpipaliya@gmail.com</a>')
+    + stat('LinkedIn', '<a href="https://www.linkedin.com/in/jayrpipaliya/" target="_blank" rel="noopener noreferrer" class="jump" style="margin-top:0">in/jayrpipaliya ↗</a>')
+    + stat('Education', 'Rutgers University')
+    + stat('Degree', 'B.S. Information Tech')
+    + stat('Minors', 'Economics & Business')
+    + '<div class="dev-tags">'
+      + '<span class="dev-tag">Financial Analysis</span>'
+      + '<span class="dev-tag">Revenue Planning</span>'
+      + '<span class="dev-tag">Variance Modeling</span>'
+      + '<span class="dev-tag">Power BI & DAX</span>'
+      + '<span class="dev-tag">Python & FastAPI</span>'
+      + '<span class="dev-tag">Options Greeks & GEX</span>'
+      + '<span class="dev-tag">ETL Data Pipelines</span>'
+      + '<span class="dev-tag">SAP & Salesforce CRM</span>'
+    + '</div>'
+  );
+
+  const deskSpecsCard = card(
+    'Architecture',
+    'Desk Specifications',
+    '<p>Double Edge is a low-latency quantitative workstation built to synthesize multi-asset market intelligence, institutional options dealer positioning, and mathematical confluence scoring.</p>'
+    + stat('Backend Engine', 'FastAPI & Python 3.12')
+    + stat('Quantitative Models', 'Dealer GEX, Skew, Confluence')
+    + stat('Data Pipelines', 'Direct Market Feeds & CSV Cache')
+    + stat('Persistence', 'Vercel Blob Storage')
+    + stat('Interface', 'Zero-dependency Modular JS')
+  );
+
+  const summaryBody = '<p>Analytical and results-driven <strong>Financial Analyst</strong> with a strong background in revenue planning, financial and KPI reporting, variance analysis, and operational forecasting. Combines a solid foundation in Economics and Business Administration from Rutgers University with technical capabilities across enterprise data systems, financial modeling, and executive decision-support platforms.</p>'
+    + '<p>Proven track record of optimizing revenue pipeline tracking across 500+ client accounts, designing executive reporting models for senior leadership, and engineering quantitative tools to accelerate data-driven decision making.</p>'
+    + '<div class="dev-quote-callout">"Designed this to help validate the impossible becoming possible."</div>';
+
+  const summaryCard = card('Executive Profile', 'Professional Summary', summaryBody);
+
+  const experienceBody = '<div class="dev-roles">'
+    + '<article class="dev-role">'
+      + '<div class="dev-role-head"><strong>Sodali & Co</strong><span>Oct 2025 – Jan 2026</span></div>'
+      + '<div class="dev-role-title"><span>Lead Financial Analyst – U.S. Operations</span><span class="dev-contract-badge">Contract</span><span class="dev-role-location">· New York, NY</span></div>'
+      + '<ul class="dev-role-bullets">'
+        + '<li>Spearheaded financial revenue tracking and commercial pipeline operations for 500+ U.S. client accounts as sole system owner, overseeing deal lifecycle economics and contract data integrity.</li>'
+        + '<li>Partnered with senior leadership to streamline deal workflows, eliminating reporting discrepancies and improving data accuracy in annual and quarterly revenue planning models.</li>'
+        + '<li>Formulated proprietary trend and cohort analyses on historical deal pipeline data, delivering quantitative insights to executive leadership to guide customer base retention and recurring revenue projections.</li>'
+        + '<li>Leveraged automation and AI-assisted analytics to accelerate data validation and report preparation, cutting turnaround time for monthly reporting packages.</li>'
+      + '</ul>'
+    + '</article>'
+    + '<article class="dev-role">'
+      + '<div class="dev-role-head"><strong>Microsoft</strong><span>Feb 2025 – Aug 2025</span></div>'
+      + '<div class="dev-role-title"><span>Business Strategy Analyst</span><span class="dev-contract-badge">Contract</span><span class="dev-role-location">· Redmond, WA</span></div>'
+      + '<ul class="dev-role-bullets">'
+        + '<li>Directed Azure Security KPI and operational performance reporting for the Microsoft Security organization, delivering detailed monthly analyses that informed senior leadership on strategic risks and resource allocation.</li>'
+        + '<li>Led end-to-end design and deployment of interactive executive reporting models by executing ETL pipelines on large-scale datasets, building relational data models, and creating intuitive Power BI dashboards.</li>'
+        + '<li>Conducted quantitative effectiveness and ROI analyses on Value-Based Deliveries tied to enterprise customer accounts to evaluate performance against targets.</li>'
+        + '<li>Managed database connectivity and data infrastructure in coordination with engineering teams to ensure high-integrity, reliable data pipelines.</li>'
+      + '</ul>'
+    + '</article>'
+    + '<article class="dev-role">'
+      + '<div class="dev-role-head"><strong>Cleanslate</strong><span>Jun 2024 – Dec 2024</span></div>'
+      + '<div class="dev-role-title"><span>Data Analyst</span><span class="dev-contract-badge">Contract</span><span class="dev-role-location">· Linden, NJ</span></div>'
+      + '<ul class="dev-role-bullets">'
+        + '<li>Supervised two analysts in consolidating regional territory sales and performance data, aligning reporting structures with enterprise SAP records through automated ETL processes.</li>'
+        + '<li>Developed high-impact performance and revenue dashboards using Power BI and advanced Excel in collaboration with executive leadership to deliver customer behavior analytics that steered strategic business decisions.</li>'
+        + '<li>Audited sales and financial reporting models, implementing advanced DAX measures to resolve legacy data integrity issues and boost overall report calculation accuracy by 24%.</li>'
+      + '</ul>'
+    + '</article>'
+    + '<article class="dev-role">'
+      + '<div class="dev-role-head"><strong>Billtrust</strong><span>May 2023 – Aug 2023</span></div>'
+      + '<div class="dev-role-title"><span>Data Analytics Intern</span><span class="dev-role-location">· Lawrenceville, NJ</span></div>'
+      + '<ul class="dev-role-bullets">'
+        + '<li>Built an interactive revenue pipeline dashboard, collaborating with marketing teams to enhance lead-to-revenue tracking and optimize commercial reporting.</li>'
+        + '<li>Executed in-depth program trend analyses in Salesforce and Excel, delivering actionable quantitative findings that guided strategic planning and surfaced conversion inefficiencies in the marketing funnel.</li>'
+        + '<li>Authored a comprehensive 30+ page Quantitative Analytics Standard Operating Procedure (SOP), standardizing KPI calculations and analytical reporting workflows for cross-functional teams.</li>'
+      + '</ul>'
+    + '</article>'
+  + '</div>';
+
+  const experienceCard = card('Track Record', 'Professional Experience', experienceBody);
+
+  const educationBody = '<div class="dev-role">'
+    + '<div class="dev-role-head"><strong>Rutgers University, The State University of New Jersey</strong><span>Dec 2024</span></div>'
+    + '<div class="dev-role-title"><span>Bachelor’s in Information Technology and Informatics</span><span class="dev-role-location">· New Brunswick, NJ</span></div>'
+    + '<p style="margin:4px 0 6px;color:var(--text);font-size:12px;"><strong>Double Minor:</strong> Business Administration and Economics</p>'
+    + '<p style="margin:0;color:var(--muted);font-size:12px;"><strong>Core Focus:</strong> Economics, Financial Administration, Quantitative Analysis, Information Systems & Database Management.</p>'
+  + '</div>';
+
+  const educationCard = card('Academic Foundation', 'Education', educationBody);
+
+  return head + '<div class="grid in">'
+    + '<div class="stack">' + summaryCard + experienceCard + educationCard + '</div>'
+    + '<div class="stack">' + connectCard + deskSpecsCard + '</div>'
+  + '</div>';
 }
 
 function fitOverview() {
@@ -1352,6 +1461,7 @@ async function hydrateView(page,symbol,force) {
       }
     }
     const payload=await readBackend('ticker/'+symbol+'?horizon='+encodeURIComponent(apiHorizon));
+    if(expiryPattern.test(payload.metrics?.date||'')) marketSession=payload.metrics.date;
     remoteTicker.set(symbol+'/'+horizon,{metrics:payload.metrics,series:unpackTimeSeries(payload,{close:'close',e20:'ema20',e50:'ema50',e200:'ema200',dd:'drawdown_ath'})});
     if(ohlc){
       const o=await readBackend('preview/history/'+symbol);
@@ -1467,7 +1577,7 @@ function highlightChanges(elements,before) {
 function render() {
   const previousMarkers=new Map([...document.querySelectorAll('[data-gamma-marker]')].map(marker=>
     [marker.dataset.gammaMarker,Number(marker.getAttribute('x1'))]));
-  const page=route(), rows=priceRows(), date=rows.at(-1)[0];
+  const page=route(), rows=priceRows(), date=marketSession||rows.at(-1)[0];
   const nextView={page,symbol:state.symbol,session:state.gammaDate};
   const entering=lastWorkspaceView?.page!==page;
   const changed=!entering&&(lastWorkspaceView.symbol!==nextView.symbol||lastWorkspaceView.session!==nextView.session);
@@ -1486,6 +1596,7 @@ function render() {
   if(page==='gamma') html=gammaPage(date);
   if(page==='bias') html=biasPage();
   if(page==='sector'||page==='mag7') html=flowPage(page==='mag7');
+  if(page==='developer') html=developerPage();
   byId('content').innerHTML=html;
   byId('content').classList.toggle('workspace-entering',entering);
   if(changed) highlightChanges(workspaceValues(),priorValues);
