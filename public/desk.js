@@ -1029,12 +1029,14 @@ function biasInspector(item,items) {
 }
 function biasPage() {
   const source=data.bias;
-  const header=hero('Market conviction','Bias Matrix','Compare bullish and bearish confirmations across seven factors.',marketSession||data.prices.SPY.at(-1)[0],true);
-  if(!source?.assets.length) return header+'<div class="card empty">No Bias Matrix data in this snapshot. Rebuild the local snapshot to load the scores.</div>';
+  if(!source?.assets.length) return hero('Market conviction','Bias Matrix','Compare bullish and bearish confirmations across seven factors.',marketSession||data.prices.SPY.at(-1)[0],true)+'<div class="card empty">No Bias Matrix data in this snapshot. Rebuild the local snapshot to load the scores.</div>';
   const group=source.groups[biasSelection.scope], items=remoteBias.get(biasSelection.scope)||(group?source.assets.filter(asset=>group.includes(asset.ticker)):source.assets);
   const current=items.find(asset=>asset.ticker===biasSelection.ticker)||items[0];
+  const sessionDate=current?.metrics?.date||items[0]?.metrics?.date||marketSession||data.prices.SPY.at(-1)[0];
+  const header=hero('Market conviction','Bias Matrix','Compare bullish and bearish confirmations across seven factors.',sessionDate,true);
+  const isLive=remoteBias.has(biasSelection.scope);
   const scopes=Object.entries(biasScopes).map(([key,label])=>'<button data-bias-scope="'+key+'" aria-pressed="'+(biasSelection.scope===key)+'">'+label+'</button>').join('');
-  return header+'<div class="bias-toolbar controls" aria-label="Asset universe">'+scopes+'<span>'+items.length+' assets · saved daily data</span></div>'
+  return header+'<div class="bias-toolbar controls" aria-label="Asset universe">'+scopes+'<span>'+items.length+' assets · '+(isLive?'live market data':'saved daily data')+'</span></div>'
     +(current?'<div class="bias-main">'+biasChart(items,current.ticker)+biasInspector(current,items)+'</div>'+biasTable(items,current.ticker):'<div class="card empty">No saved assets for this universe.</div>');
 }
 
@@ -1439,10 +1441,19 @@ function applyMarketResponse(payload) {
     data.overview.ratios[key.replace('_','/')]={close:m.current,z:m.z_score_50d,week:m.pct_5d,state:m.actionable_state,action:m.action_text};
   }
   Object.assign(remoteSparks,payload.sparklines||{});
-  if(expiryPattern.test(payload.last_market_session||'')) marketSession=payload.last_market_session;
+  if(expiryPattern.test(payload.last_market_session||'')) setMarketSession(payload.last_market_session);
 }
 const remoteSparks={};
 let marketSession='';
+try {
+  marketSession=sessionStorage.getItem('double-edge-market-session')||'';
+} catch {}
+function setMarketSession(date) {
+  if(expiryPattern.test(date||'')) {
+    marketSession=date;
+    try { sessionStorage.setItem('double-edge-market-session',date); } catch {}
+  }
+}
 function unpackTimeSeries(payload, fields) {
   if(!Array.isArray(payload.dates)) throw new Error('No dated series returned.');
   const rows=payload.dates.map((date,index)=>Object.fromEntries([['date',date],...Object.entries(fields).map(([key,field])=>[key,payload[field]?.[index]])]))
@@ -1457,6 +1468,7 @@ function backendOptionData(payload,symbol) {
   const smiles=new Map();
   if(payload.smile?.expiration) smiles.set(payload.smile.expiration,payload.smile);
   optionSnapshots.set(symbol,{...payload,chains,smiles});
+  if(expiryPattern.test(payload.date||'')) setMarketSession(payload.date);
 }
 function gammaSessionDate(payload,fallback) {
   if (payload.date && /^\d{4}-\d{2}-\d{2}$/.test(payload.date)) return payload.date;
@@ -1481,9 +1493,12 @@ async function hydrateView(page,symbol,force) {
     const scope=biasSelection.scope;
     const items=await readBackend('confluence?scope='+encodeURIComponent(scope));
     if(!Array.isArray(items)) throw new Error('No confluence results returned.');
-    remoteBias.set(scope,items.filter(item=>item?.metrics?.edge_match&&Array.isArray(item.checklist)).map(item=>({
+    const validItems=items.filter(item=>item?.metrics?.edge_match&&Array.isArray(item.checklist)).map(item=>({
       ...item,checklist:item.checklist.map(layer=>({...layer,points:Number(layer.points)||0}))
-    })));
+    }));
+    remoteBias.set(scope,validItems);
+    const sessionDate=validItems.find(it=>expiryPattern.test(it?.metrics?.date||''))?.metrics?.date;
+    if(sessionDate) setMarketSession(sessionDate);
   }
   if(page==='ratios'){
     const pair=ratioSelection.pair;
@@ -1502,7 +1517,7 @@ async function hydrateView(page,symbol,force) {
       }
     }
     const payload=await readBackend('ticker/'+symbol+'?horizon='+encodeURIComponent(apiHorizon));
-    if(expiryPattern.test(payload.metrics?.date||'')) marketSession=payload.metrics.date;
+    if(expiryPattern.test(payload.metrics?.date||'')) setMarketSession(payload.metrics.date);
     remoteTicker.set(symbol+'/'+horizon,{metrics:payload.metrics,series:unpackTimeSeries(payload,{close:'close',e20:'ema20',e50:'ema50',e200:'ema200',dd:'drawdown_ath'})});
     if(ohlc){
       const o=await readBackend('preview/history/'+symbol);
@@ -1848,7 +1863,8 @@ async function requestPreviewSync(source) {
   const syncPath=location.hostname==='127.0.0.1'&&location.port==='4173'?'/preview/sync-':'/api/preview/sync-';
   const response=await fetch(syncPath+source,{method:'POST',headers:{'X-Preview-Sync':'1'}});
   const result=await response.json();
-  return {ok:response.ok,message:result.message||'The preview server could not complete the sync.'};
+  if(result.last_date) setMarketSession(result.last_date);
+  return {ok:response.ok,message:result.message||'The preview server could not complete the sync.',last_date:result.last_date};
 }
 
 async function syncPreview(source) {
@@ -1865,6 +1881,7 @@ async function syncPreview(source) {
       try {
         sessionStorage.setItem('double-edge-sync-result',result.message);
         sessionStorage.setItem('double-edge-sync-symbol',state.symbol);
+        if(result.last_date) sessionStorage.setItem('double-edge-market-session',result.last_date);
       } catch {}
       window.location.reload();
       return;
