@@ -55,7 +55,7 @@ def detect_rsi_divergence(df: pd.DataFrame, window: int = 20) -> str:
 
     return "None"
 
-def compute_all_metrics(df: pd.DataFrame) -> dict:
+def compute_all_metrics(df: pd.DataFrame, iv: float = None) -> dict:
     """
     Computes complete quantitative feature set for a single ticker dataframe:
     - Realized Volatility (20D, 60D, percentile, vol ratio)
@@ -170,6 +170,23 @@ def compute_all_metrics(df: pd.DataFrame) -> dict:
     # 7. Historical Edge Match Engine
     edge_match = find_historical_edge(df, curr_dd_ath, curr_rsi, curr_atr_stretch, curr_rvol, curr_close > curr_ema50)
 
+    # 8. Expected Daily and Weekly Moves (1-sigma, 68% statistical probability band)
+    # Uses Implied Volatility if available, or 20D Realized Volatility
+    vol_for_move = float(iv) if (iv is not None and isinstance(iv, (int, float)) and iv > 0) else curr_rv20
+    vol_source = "Options IV" if (iv is not None and isinstance(iv, (int, float)) and iv > 0) else "20D Realized Vol"
+
+    # Daily Expected Move: Spot * (Vol / 100) / sqrt(252)
+    daily_move_pct = float(vol_for_move / np.sqrt(252.0))
+    daily_move = float(curr_close * (daily_move_pct / 100.0))
+    range_1d_low = max(0.0, curr_close - daily_move)
+    range_1d_high = curr_close + daily_move
+
+    # Weekly Expected Move (5 trading sessions): Spot * (Vol / 100) * sqrt(5 / 252)
+    weekly_move_pct = float(vol_for_move * np.sqrt(5.0 / 252.0))
+    weekly_move = float(curr_close * (weekly_move_pct / 100.0))
+    range_1w_low = max(0.0, curr_close - weekly_move)
+    range_1w_high = curr_close + weekly_move
+
     return {
         "date": curr_date,
         "close": round(curr_close, 2),
@@ -198,6 +215,17 @@ def compute_all_metrics(df: pd.DataFrame) -> dict:
         "vol_ratio": round(curr_vol_ratio, 2),
         "rv20_pct_1y": round(rv20_pct_1y, 1),
         "vol_status": vol_status,
+        # Expected Moves (1-sigma institutional ranges)
+        "expected_move_1d": round(daily_move, 2),
+        "expected_move_1d_pct": round(daily_move_pct, 2),
+        "expected_range_1d": [round(range_1d_low, 2), round(range_1d_high, 2)],
+        "expected_range_1d_str": f"${range_1d_low:.2f} – ${range_1d_high:.2f}",
+        "expected_move_1w": round(weekly_move, 2),
+        "expected_move_1w_pct": round(weekly_move_pct, 2),
+        "expected_range_1w": [round(range_1w_low, 2), round(range_1w_high, 2)],
+        "expected_range_1w_str": f"${range_1w_low:.2f} – ${range_1w_high:.2f}",
+        "expected_vol": round(vol_for_move, 1),
+        "expected_vol_source": vol_source,
         # Drawdowns
         "drawdown_ath": round(curr_dd_ath, 2),
         "drawdown_52w": round(curr_dd_52w, 2),

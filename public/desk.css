@@ -311,11 +311,12 @@ dialog,.tooltip{background:var(--control)}
 
 .flow-normalized .chart svg text{font-size:8px}
 
-.explorer-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px;font-family:var(--mono)}
+.explorer-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-bottom:12px;font-family:var(--mono)}
 .explorer-kpis small .up{color:var(--green)}.explorer-kpis small .down{color:var(--red)}
 .rotation-chart .controls label{display:flex;align-items:center;gap:6px;font:12px var(--mono);color:var(--muted)}
 .explorer-chart .chart{max-width:1070px;margin-inline:auto}
 .explorer-chart #cross-dot,.rotation-chart #cross-dot{fill:var(--text)}
+@media(max-width:1100px){.explorer-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:620px){.explorer-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 @media(min-width:851px){

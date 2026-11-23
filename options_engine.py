@@ -894,7 +894,7 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
         spot_price = float(fast_info.last_price or fast_info.previous_close)
         today = pd.Timestamp.now().normalize()
         
-        target_exps = [e for e in expirations if 1 <= (pd.Timestamp(e) - today).days <= 365]
+        target_exps = [e for e in expirations if 1 <= (pd.Timestamp(e) - today).days <= 730]
         
         # Calendar to Trading-Day IV conversion factor: sqrt(252 / 365.25) = 0.8307
         CAL_TO_TRADING_FACTOR = np.sqrt(252.0 / 365.25)
@@ -910,6 +910,10 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
                 total_call_oi = int(pd.to_numeric(calls['openInterest'], errors='coerce').fillna(0).sum())
                 total_put_oi = int(pd.to_numeric(puts['openInterest'], errors='coerce').fillna(0).sum())
                 total_oi = total_call_oi + total_put_oi
+
+                total_call_vol = int(pd.to_numeric(calls['volume'], errors='coerce').fillna(0).sum())
+                total_put_vol = int(pd.to_numeric(puts['volume'], errors='coerce').fillna(0).sum())
+                total_vol = total_call_vol + total_put_vol
                 
                 exp_date = pd.Timestamp(exp)
                 dte = (exp_date - today).days
@@ -1025,7 +1029,10 @@ def fetch_term_structure(ticker_symbol, hvs_dict=None, hv_benchmark=None):
                     'Put_Ask': atm_put.ask,
                     'Total_OI': total_oi,
                     'Call_OI': total_call_oi,
-                    'Put_OI': total_put_oi
+                    'Put_OI': total_put_oi,
+                    'Total_Volume': total_vol,
+                    'Call_Volume': total_call_vol,
+                    'Put_Volume': total_put_vol
                 }
             except Exception:
                 return None
@@ -1398,6 +1405,99 @@ def analyze_smile_and_skew(ticker_symbol, expiration, spot_price, direction="Bul
             'otm_puts_market': otm_puts_market,
             'otm_calls_market': otm_calls_market
         }
+    except Exception:
+        return None
+
+
+_STRADDLE_EXPECTED_MOVES_CACHE = {}
+
+def get_straddle_expected_moves(ticker: str, spot_price: float = None) -> dict:
+    """
+    Computes institutional 1-Day and 1-Week expected moves using live market ATM Straddles.
+    Applies the industry standard 85% rule (Expected Move = ATM Straddle Cost * 0.85).
+    """
+    now = time.time()
+    t_clean = ticker.upper()
+    cached = _STRADDLE_EXPECTED_MOVES_CACHE.get(t_clean)
+    if cached and (now - cached['ts'] < 300):
+        return cached['data']
+
+    try:
+        t = yf.Ticker(t_clean)
+        exps = t.options
+        if not exps:
+            return None
+        
+        today = pd.Timestamp.now().normalize()
+        if spot_price is None or spot_price <= 0:
+            fast = t.fast_info
+            spot_price = float(fast.last_price or fast.previous_close or 0)
+        if spot_price <= 0:
+            return None
+
+        # 1-Day (Front Expiration, typically next session or 1 DTE)
+        front_exp = exps[0]
+        front_chain = t.option_chain(front_exp)
+        front_dte = max((pd.Timestamp(front_exp) - today).days, 1)
+
+        # Weekly Expiration (4 to 8 DTE candidate, or second expiration)
+        weekly_candidates = [e for e in exps if 4 <= (pd.Timestamp(e) - today).days <= 8]
+        weekly_exp = weekly_candidates[0] if weekly_candidates else (exps[1] if len(exps) > 1 else exps[0])
+        weekly_chain = t.option_chain(weekly_exp) if weekly_exp != front_exp else front_chain
+        weekly_dte = max((pd.Timestamp(weekly_exp) - today).days, 5)
+
+        def calc_atm_straddle(chain):
+            calls, puts = chain.calls, chain.puts
+            if calls.empty or puts.empty:
+                return None
+            idx = (calls['strike'] - spot_price).abs().argsort().iloc[0]
+            c = calls.iloc[idx]
+            strike = float(c['strike'])
+            p_match = puts.loc[puts['strike'] == strike]
+            if p_match.empty:
+                return None
+            p = p_match.iloc[0]
+
+            c_b, c_a = float(c.get('bid', 0) or 0), float(c.get('ask', 0) or 0)
+            p_b, p_a = float(p.get('bid', 0) or 0), float(p.get('ask', 0) or 0)
+            if c_a > 0 and c_b > c_a:
+                c_b, c_a = c_a, c_b
+            if p_a > 0 and p_b > p_a:
+                p_b, p_a = p_a, p_b
+
+            c_mid = (c_b + c_a) / 2.0 if (c_b + c_a) > 0 else float(c.get('lastPrice', 0) or 0)
+            p_mid = (p_b + p_a) / 2.0 if (p_b + p_a) > 0 else float(p.get('lastPrice', 0) or 0)
+            cost = round(c_mid + p_mid, 2)
+            move_85 = round(cost * 0.85, 2)
+            pct_move = round((move_85 / spot_price) * 100.0, 2)
+
+            return {
+                'strike': strike,
+                'straddle_cost': cost,
+                'move_85': move_85,
+                'pct_move': pct_move,
+                'call_mid': round(c_mid, 2),
+                'put_mid': round(p_mid, 2)
+            }
+
+        s1 = calc_atm_straddle(front_chain)
+        s2 = calc_atm_straddle(weekly_chain)
+
+        if not s1 and not s2:
+            return None
+
+        result = {
+            'ticker': t_clean,
+            'spot_price': round(spot_price, 2),
+            'front_straddle': s1,
+            'front_exp': front_exp,
+            'front_dte': front_dte,
+            'weekly_straddle': s2,
+            'weekly_exp': weekly_exp,
+            'weekly_dte': weekly_dte
+        }
+        _STRADDLE_EXPECTED_MOVES_CACHE[t_clean] = {'ts': now, 'data': result}
+        return result
     except Exception:
         return None
 

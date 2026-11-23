@@ -9,9 +9,17 @@ from options_engine import fetch_term_structure, compute_realized_volatilities, 
 from data_manager import load_ticker_data, PROCESSED_DIR
 
 DEFAULT_UNIVERSE = [
-    'SPY', 'QQQ', 'IWM', 'SMH', 'GLD', 'TLT', 'IBIT',
+    # Benchmark Indexes & Macro ETFs (Apex Options Volume)
+    'SPY', 'QQQ', 'IWM', 'DIA', 'GLD', 'SLV', 'GDX', 'TLT', 'HYG', 'USO', 'IBIT', 'FXI', 'XBI', 'SMH',
+    # Major Sector ETFs
+    'XLF', 'XLE', 'XLK', 'XLI', 'XLY', 'XLP', 'XLU', 'XLV', 'XLB', 'XLC',
+    # Mega-Cap Tech (Mag 7) & High-Beta Semis
     'AAPL', 'MSFT', 'AMZN', 'NVDA', 'GOOGL', 'META', 'TSLA',
-    'AMD', 'PLTR', 'AVGO', 'MU', 'NFLX', 'COIN', 'HOOD'
+    'AMD', 'AVGO', 'MU', 'INTC', 'QCOM', 'TSM', 'ARM',
+    # High-Beta Crypto & Software Momentum
+    'MSTR', 'COIN', 'MARA', 'PLTR', 'HOOD', 'NFLX', 'CRM', 'ORCL', 'SNOW',
+    # High-Volume Blue Chips, Financials, Industrials & Energy
+    'JPM', 'BAC', 'GS', 'BA', 'CAT', 'DIS', 'XOM', 'CVX', 'LLY'
 ]
 
 OPPORTUNITIES_FILE = Path(PROCESSED_DIR) / "opportunities.json"
@@ -56,6 +64,7 @@ def scan_volatility_opportunities(universe=None):
                 exp = str(row['Expiration'])
                 atm_iv = float(row['ATM_IV'])
                 oi = int(row.get('Total_OI', 0) or 0)
+                vol = int(row.get('Total_Volume', 0) or 0)
                 spans_earnings = bool(row.get('Spans_Earnings', False))
 
                 tenor = None
@@ -165,6 +174,7 @@ def scan_volatility_opportunities(universe=None):
                     "iv_rank": round(front_iv_rank, 1),
                     "vol_regime": vol_regime,
                     "total_oi": oi,
+                    "total_vol": vol,
                     "spans_earnings": spans_earnings,
                     "edge_score": round(edge_score, 1),
                     "edge_tier": edge_tier,

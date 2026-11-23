@@ -264,10 +264,50 @@ def api_ratio(ratio_name: str):
 
 @app.get("/api/ticker/{ticker}")
 def api_ticker(ticker: str, horizon: str = Query("All Historical Data")):
-    df = load_ticker_data(ticker.upper())
+    t_up = ticker.upper()
+    df = load_ticker_data(t_up)
     if df.empty:
         return {"error": "Ticker not found"}
-    metrics = compute_all_metrics(df)
+    
+    # Retrieve latest implied volatility if available from gamma tracking
+    iv = None
+    try:
+        from gamma_tracker import load_gamma_history
+        hist = load_gamma_history(t_up)
+        if hist and len(hist) > 0 and hist[-1].get("current_iv"):
+            iv = float(hist[-1]["current_iv"])
+    except Exception:
+        pass
+
+    metrics = compute_all_metrics(df, iv=iv)
+    
+    # Enrich with live ATM Straddle Expected Moves (85% Market Maker rule)
+    try:
+        from options_engine import get_straddle_expected_moves
+        spot_price = float(df["Close"].iloc[-1])
+        straddle_data = get_straddle_expected_moves(t_up, spot_price)
+        if straddle_data and straddle_data.get('front_straddle'):
+            f_strad = straddle_data['front_straddle']
+            w_strad = straddle_data.get('weekly_straddle') or f_strad
+            
+            metrics["expected_move_1d"] = f_strad['move_85']
+            metrics["expected_move_1d_pct"] = f_strad['pct_move']
+            metrics["expected_range_1d"] = [round(spot_price - f_strad['move_85'], 2), round(spot_price + f_strad['move_85'], 2)]
+            metrics["expected_range_1d_str"] = f"${spot_price - f_strad['move_85']:.2f} – ${spot_price + f_strad['move_85']:.2f}"
+            metrics["straddle_1d_cost"] = f_strad['straddle_cost']
+            metrics["straddle_1d_exp"] = straddle_data.get('front_exp')
+            metrics["straddle_1d_dte"] = straddle_data.get('front_dte')
+            
+            metrics["expected_move_1w"] = w_strad['move_85']
+            metrics["expected_move_1w_pct"] = w_strad['pct_move']
+            metrics["expected_range_1w"] = [round(spot_price - w_strad['move_85'], 2), round(spot_price + w_strad['move_85'], 2)]
+            metrics["expected_range_1w_str"] = f"${spot_price - w_strad['move_85']:.2f} – ${spot_price + w_strad['move_85']:.2f}"
+            metrics["straddle_1w_cost"] = w_strad['straddle_cost']
+            metrics["straddle_1w_exp"] = straddle_data.get('weekly_exp')
+            metrics["straddle_1w_dte"] = straddle_data.get('weekly_dte')
+            metrics["expected_vol_source"] = "ATM Straddle (85% Rule)"
+    except Exception:
+        pass
     
     df["EMA20"] = df["Close"].ewm(span=20, adjust=False).mean()
     df["EMA50"] = df["Close"].ewm(span=50, adjust=False).mean()

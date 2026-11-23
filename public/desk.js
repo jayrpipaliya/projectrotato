@@ -580,7 +580,7 @@ function opportunitiesPage() {
 
   const kpiSection = '<section class="vol-kpis in" aria-label="Opportunities metrics">'+kpis.join('')+'</section>';
 
-  const tickers = ['All', ...new Set(opps.map(o => o.ticker))].sort();
+  const tickers = ['All', ...Array.from(new Set(opps.map(o => o.ticker))).sort()];
 
   const regimes = [
     ['All', 'All Opportunities'],
@@ -932,8 +932,19 @@ function volStats(expanded) {
   return card('Volatility','Implied vs. realized','<div class="big amber">'+pct(iv)+'</div><p>Saved implied volatility'+(g?' · '+safe(g.date):' unavailable')+'</p>'+stat('30D realized',pct(h30))+stat('IV − 30D HV',same?signed(iv-h30,' pp'):'—','amber')+(expanded?stat('IV rank',Number.isFinite(g?.iv_rank)?g.iv_rank.toFixed(0)+' / 100':'—')+stat('IV percentile',pct(g?.iv_percentile))+stat('30D clean HV',pct(cleanHv(r.slice(-30))))+stat('30D Parkinson HV',pct(park))+'<details><summary>Volatility methodology</summary><p>Realized volatility uses the sample standard deviation of daily close-to-close returns, annualized over 252 sessions. Clean HV clips returns at three robust standard deviations around the median. Parkinson HV uses daily high–low ranges.</p></details>':'<a class="jump" href="#volatility">Open volatility lab →</a>'));
 }
 function priceStats() {
-  const rows=priceRows(), a=rows.at(-1), ch=daily(rows);
-  return card('Session',''+state.symbol+' daily range','<div class="big">'+money(a[4])+'</div><p class="'+tone(ch)+'">'+signed(ch)+' close to close</p>'+stat('Open',money(a[1]))+stat('High',money(a[2]))+stat('Low',money(a[3]))+stat('Volume',a[5].toLocaleString('en-US')));
+  const rows=priceRows(), a=rows.at(-1), ch=daily(rows), spot=a[4];
+  const m=remoteTicker.get(state.symbol+'/'+explorerSelection.horizon)?.metrics;
+  const gRec=latest(), vol=gRec?.current_iv||cleanHv(returns(rows).slice(-30));
+  const dMove=m?.expected_move_1d != null ? m.expected_move_1d : spot*(vol/100)/Math.sqrt(252);
+  const dPct=m?.expected_move_1d_pct != null ? m.expected_move_1d_pct : vol/Math.sqrt(252);
+  const wMove=m?.expected_move_1w != null ? m.expected_move_1w : spot*(vol/100)*Math.sqrt(5/252);
+  const wPct=m?.expected_move_1w_pct != null ? m.expected_move_1w_pct : vol*Math.sqrt(5/252);
+  const dStradd=m?.straddle_1d_cost ? ' · $'+m.straddle_1d_cost.toFixed(2)+' straddle' : '';
+  const wStradd=m?.straddle_1w_cost ? ' · $'+m.straddle_1w_cost.toFixed(2)+' straddle' : '';
+  return card('Session',''+state.symbol+' daily range','<div class="big">'+money(a[4])+'</div><p class="'+tone(ch)+'">'+signed(ch)+' close to close</p>'
+    +stat('Open',money(a[1]))+stat('High',money(a[2]))+stat('Low',money(a[3]))+stat('Volume',a[5].toLocaleString('en-US'))
+    +stat('Expected 1D move (straddle)','±'+money(dMove)+' (±'+dPct.toFixed(1)+'%)'+dStradd)
+    +stat('Expected weekly move (straddle)','±'+money(wMove)+' (±'+wPct.toFixed(1)+'%)'+wStradd));
 }
 function bindChart() {
   if(!hoverSeries) return;
@@ -1164,10 +1175,31 @@ function tickerExplorer(date) {
   const controls='<div class="vol-toolbar controls"><label>Underlying <select id="explorer-symbol">'+options+'</select></label>'
     +['Trend','OHLC detail'].map(v=>'<button data-explorer-view="'+v+'" aria-pressed="'+(explorerSelection.view===v)+'">'+v+'</button>').join('')+'</div>';
   const day=m?.pct_1d??daily(priceRows()), emaDistance=m?.dist_ema50??(last.close/last.e50-1)*100;
-  const metrics=[['Current price',money(m?.close??last.close),'<span class="'+tone(day)+'">'+signed(day)+' · 1D</span>'],
+  const spotPrice=m?.close??last?.close;
+  const gRec=latest();
+  const rows=priceRows();
+  const vol=gRec?.current_iv || m?.expected_vol || m?.rv20 || cleanHv(returns(rows).slice(-30));
+  const volSource=gRec?.current_iv ? 'Options IV ('+pct(gRec.current_iv)+')' : (m?.expected_vol_source ? m.expected_vol_source+' ('+pct(vol)+')' : 'HV30 ('+pct(vol)+')');
+
+  const dMove=m?.expected_move_1d != null ? m.expected_move_1d : (spotPrice * (vol / 100) / Math.sqrt(252));
+  const dPct=m?.expected_move_1d_pct != null ? m.expected_move_1d_pct : (vol / Math.sqrt(252));
+  const dRange=m?.expected_range_1d_str || (money(Math.max(0, spotPrice - dMove)) + ' – ' + money(spotPrice + dMove));
+
+  const wMove=m?.expected_move_1w != null ? m.expected_move_1w : (spotPrice * (vol / 100) * Math.sqrt(5 / 252));
+  const wPct=m?.expected_move_1w_pct != null ? m.expected_move_1w_pct : (vol * Math.sqrt(5 / 252));
+  const wRange=m?.expected_range_1w_str || (money(Math.max(0, spotPrice - wMove)) + ' – ' + money(spotPrice + wMove));
+
+  const dSub=m?.straddle_1d_cost ? dRange+' · $'+m.straddle_1d_cost.toFixed(2)+' straddle' : dRange;
+  const wSub=m?.straddle_1w_cost ? wRange+' · $'+m.straddle_1w_cost.toFixed(2)+' straddle' : wRange;
+
+  const metrics=[
+    ['Current price',money(spotPrice),'<span class="'+tone(day)+'">'+signed(day)+' · 1D</span>'],
+    ['Expected 1D move (straddle)','±'+money(dMove)+' <small style="font-size:11px;font-weight:600;color:var(--muted);">(±'+dPct.toFixed(1)+'%)</small>','<span style="color:var(--text);font-weight:600;">'+dSub+'</span>'],
+    ['Expected weekly move (straddle)','±'+money(wMove)+' <small style="font-size:11px;font-weight:600;color:var(--muted);">(±'+wPct.toFixed(1)+'%)</small>','<span style="color:var(--text);font-weight:600;">'+wSub+'</span>'],
     ['50-day EMA',money(m?.ema50??last.e50),'<span class="'+tone(emaDistance)+'">'+signed(emaDistance)+' vs. EMA</span>'],
     ['ATH drawdown',signed(m?.drawdown_ath??last.dd),contracts(m?.days_in_drawdown??last.days)+' sessions since peak'],
-    ['14D RSI &amp; volume',m?m.rsi.toFixed(1):'—','RVOL '+formatFactor(m?.rvol)]];
+    ['14D RSI &amp; volume',m?m.rsi.toFixed(1):'—','RVOL '+formatFactor(m?.rvol)]
+  ];
   const summary='<section class="explorer-kpis" aria-label="Ticker metrics">'+metrics.map(([label,value,sub])=>'<div class="gamma-kpi"><small>'+label+'</small><strong>'+value+'</strong><small>'+sub+'</small></div>').join('')+'</section>';
   return head+controls+summary+'<div class="flow-panels in">'+(explorerSelection.view==='Trend'?explorerTrend(all):
     '<div class="grid ohlc-grid">'+priceChart()+'<div class="stack">'+priceStats()+gammaStats(latest())+'</div></div>')+explorerEdge(m)+'</div>';
