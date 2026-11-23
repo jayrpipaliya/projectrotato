@@ -287,6 +287,7 @@ def api_ticker(ticker: str, horizon: str = Query("All Historical Data")):
         spot_price = float(df["Close"].iloc[-1])
         straddle_data = get_straddle_expected_moves(t_up, spot_price)
         if straddle_data and straddle_data.get('front_straddle'):
+            spot_price = float(straddle_data.get('spot_price') or spot_price)
             f_strad = straddle_data['front_straddle']
             w_strad = straddle_data.get('weekly_straddle') or f_strad
             
@@ -297,6 +298,8 @@ def api_ticker(ticker: str, horizon: str = Query("All Historical Data")):
             metrics["straddle_1d_cost"] = f_strad['straddle_cost']
             metrics["straddle_1d_exp"] = straddle_data.get('front_exp')
             metrics["straddle_1d_dte"] = straddle_data.get('front_dte')
+            metrics["straddle_1d_scaled"] = f_strad.get('is_scaled', False)
+            metrics["straddle_1d_raw_dte"] = f_strad.get('raw_dte')
             
             metrics["expected_move_1w"] = w_strad['move_85']
             metrics["expected_move_1w_pct"] = w_strad['pct_move']
@@ -305,6 +308,7 @@ def api_ticker(ticker: str, horizon: str = Query("All Historical Data")):
             metrics["straddle_1w_cost"] = w_strad['straddle_cost']
             metrics["straddle_1w_exp"] = straddle_data.get('weekly_exp')
             metrics["straddle_1w_dte"] = straddle_data.get('weekly_dte')
+            metrics["straddle_1w_mode"] = straddle_data.get('mode', 'EOW')
             metrics["expected_vol_source"] = "ATM Straddle (85% Rule)"
     except Exception:
         pass

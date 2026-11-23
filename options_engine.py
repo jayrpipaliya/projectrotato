@@ -1413,8 +1413,11 @@ _STRADDLE_EXPECTED_MOVES_CACHE = {}
 
 def get_straddle_expected_moves(ticker: str, spot_price: float = None) -> dict:
     """
-    Computes institutional 1-Day and 1-Week expected moves using live market ATM Straddles.
+    Computes institutional 1-Day and End-of-Week (EOW) expected moves using live market ATM Straddles.
     Applies the industry standard 85% rule (Expected Move = ATM Straddle Cost * 0.85).
+    - EOW: Targets the current week's Friday expiration (Mon-Thu: 1-4 DTE; Fri-Sun: rolls to next Friday).
+    - 1-Day: If the ticker has daily options (1 DTE / 0 DTE), uses the front straddle directly.
+             If the ticker only has weekly options (front DTE > 1), scales the front straddle by 1/sqrt(DTE).
     """
     now = time.time()
     t_clean = ticker.upper()
@@ -1429,22 +1432,38 @@ def get_straddle_expected_moves(ticker: str, spot_price: float = None) -> dict:
             return None
         
         today = pd.Timestamp.now().normalize()
-        if spot_price is None or spot_price <= 0:
+        try:
             fast = t.fast_info
-            spot_price = float(fast.last_price or fast.previous_close or 0)
-        if spot_price <= 0:
+            live_price = float(fast.last_price or fast.previous_close or 0)
+        except Exception:
+            live_price = 0.0
+
+        if live_price > 0:
+            spot_price = live_price
+        elif spot_price is None or spot_price <= 0:
             return None
 
-        # 1-Day (Front Expiration, typically next session or 1 DTE)
-        front_exp = exps[0]
-        front_chain = t.option_chain(front_exp)
-        front_dte = max((pd.Timestamp(front_exp) - today).days, 1)
+        # 1. End-of-Week (EOW) Expiration Selection:
+        # Mon(0)..Thu(3): target this week's Friday (4 - weekday)
+        # Fri(4)..Sun(6): target the upcoming week's Friday (11 - weekday)
+        days_to_fri = (4 - today.weekday()) if today.weekday() < 4 else (11 - today.weekday())
+        target_friday = today + pd.Timedelta(days=days_to_fri)
 
-        # Weekly Expiration (4 to 8 DTE candidate, or second expiration)
-        weekly_candidates = [e for e in exps if 4 <= (pd.Timestamp(e) - today).days <= 8]
-        weekly_exp = weekly_candidates[0] if weekly_candidates else (exps[1] if len(exps) > 1 else exps[0])
-        weekly_chain = t.option_chain(weekly_exp) if weekly_exp != front_exp else front_chain
-        weekly_dte = max((pd.Timestamp(weekly_exp) - today).days, 5)
+        # Find closest active expiration on or before target Friday (handles market holidays e.g. Good Friday Thursday close)
+        this_week_exps = [e for e in exps if today <= pd.Timestamp(e) <= target_friday]
+        if this_week_exps:
+            weekly_exp = this_week_exps[-1]
+        else:
+            future_exps = [e for e in exps if pd.Timestamp(e) >= today]
+            weekly_exp = future_exps[0] if future_exps else exps[0]
+            
+        weekly_chain = t.option_chain(weekly_exp)
+        weekly_dte = max((pd.Timestamp(weekly_exp) - today).days, 1)
+
+        # 2. Front Expiration (Next Session or 1 DTE)
+        front_exp = exps[0]
+        front_chain = t.option_chain(front_exp) if front_exp != weekly_exp else weekly_chain
+        front_dte = max((pd.Timestamp(front_exp) - today).days, 0)
 
         def calc_atm_straddle(chain):
             calls, puts = chain.calls, chain.puts
@@ -1480,8 +1499,34 @@ def get_straddle_expected_moves(ticker: str, spot_price: float = None) -> dict:
                 'put_mid': round(p_mid, 2)
             }
 
-        s1 = calc_atm_straddle(front_chain)
         s2 = calc_atm_straddle(weekly_chain)
+
+        # For 1-Day move:
+        # If front_dte <= 1 (e.g. SPY, QQQ with daily expirations), use the raw front straddle.
+        # If front_dte > 1 (e.g. single stocks with only weekly Friday expirations), scale by sqrt(DTE)
+        # to convert the multi-day straddle into a true 1-day expected move.
+        raw_s1 = calc_atm_straddle(front_chain)
+        if raw_s1:
+            if front_dte <= 1:
+                s1 = dict(raw_s1)
+                s1['is_scaled'] = False
+            else:
+                scale = float(np.sqrt(front_dte))
+                scaled_move = round(float(raw_s1['move_85'] / scale), 2)
+                scaled_cost = round(float(raw_s1['straddle_cost'] / scale), 2)
+                scaled_pct = round(float((scaled_move / spot_price) * 100.0), 2)
+                s1 = {
+                    'strike': float(raw_s1['strike']),
+                    'straddle_cost': scaled_cost,
+                    'move_85': scaled_move,
+                    'pct_move': scaled_pct,
+                    'call_mid': round(float(raw_s1['call_mid'] / scale), 2),
+                    'put_mid': round(float(raw_s1['put_mid'] / scale), 2),
+                    'is_scaled': True,
+                    'raw_dte': int(front_dte)
+                }
+        else:
+            s1 = None
 
         if not s1 and not s2:
             return None
@@ -1494,7 +1539,8 @@ def get_straddle_expected_moves(ticker: str, spot_price: float = None) -> dict:
             'front_dte': front_dte,
             'weekly_straddle': s2,
             'weekly_exp': weekly_exp,
-            'weekly_dte': weekly_dte
+            'weekly_dte': weekly_dte,
+            'mode': 'EOW'
         }
         _STRADDLE_EXPECTED_MOVES_CACHE[t_clean] = {'ts': now, 'data': result}
         return result

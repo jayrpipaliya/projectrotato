@@ -939,12 +939,16 @@ function priceStats() {
   const dPct=m?.expected_move_1d_pct != null ? m.expected_move_1d_pct : vol/Math.sqrt(252);
   const wMove=m?.expected_move_1w != null ? m.expected_move_1w : spot*(vol/100)*Math.sqrt(5/252);
   const wPct=m?.expected_move_1w_pct != null ? m.expected_move_1w_pct : vol*Math.sqrt(5/252);
+  const dExp = m?.straddle_1d_scaled
+    ? ' · Scaled (' + (m.straddle_1d_raw_dte || m.straddle_1d_dte) + 'D)'
+    : (m?.straddle_1d_exp ? ' · ' + short(m.straddle_1d_exp) + ' (' + m.straddle_1d_dte + 'D)' : '');
   const dStradd=m?.straddle_1d_cost ? ' · $'+m.straddle_1d_cost.toFixed(2)+' straddle' : '';
+  const wExp = m?.straddle_1w_exp ? ' · ' + short(m.straddle_1w_exp) + ' (' + m.straddle_1w_dte + 'D)' : '';
   const wStradd=m?.straddle_1w_cost ? ' · $'+m.straddle_1w_cost.toFixed(2)+' straddle' : '';
   return card('Session',''+state.symbol+' daily range','<div class="big">'+money(a[4])+'</div><p class="'+tone(ch)+'">'+signed(ch)+' close to close</p>'
     +stat('Open',money(a[1]))+stat('High',money(a[2]))+stat('Low',money(a[3]))+stat('Volume',a[5].toLocaleString('en-US'))
-    +stat('Expected 1D move (straddle)','±'+money(dMove)+' (±'+dPct.toFixed(1)+'%)'+dStradd)
-    +stat('Expected weekly move (straddle)','±'+money(wMove)+' (±'+wPct.toFixed(1)+'%)'+wStradd));
+    +stat('Expected 1D move (straddle)','±'+money(dMove)+' (±'+dPct.toFixed(1)+'%)'+dExp+dStradd)
+    +stat('Expected EOW move (straddle)','±'+money(wMove)+' (±'+wPct.toFixed(1)+'%)'+wExp+wStradd));
 }
 function bindChart() {
   if(!hoverSeries) return;
@@ -1189,13 +1193,18 @@ function tickerExplorer(date) {
   const wPct=m?.expected_move_1w_pct != null ? m.expected_move_1w_pct : (vol * Math.sqrt(5 / 252));
   const wRange=m?.expected_range_1w_str || (money(Math.max(0, spotPrice - wMove)) + ' – ' + money(spotPrice + wMove));
 
-  const dSub=m?.straddle_1d_cost ? dRange+' · $'+m.straddle_1d_cost.toFixed(2)+' straddle' : dRange;
-  const wSub=m?.straddle_1w_cost ? wRange+' · $'+m.straddle_1w_cost.toFixed(2)+' straddle' : wRange;
+  const dExp = m?.straddle_1d_scaled
+    ? ' · Scaled (' + (m.straddle_1d_raw_dte || m.straddle_1d_dte) + 'D)'
+    : (m?.straddle_1d_exp ? ' · ' + short(m.straddle_1d_exp) + ' (' + m.straddle_1d_dte + 'D)' : '');
+  const dSub = dRange + dExp + (m?.straddle_1d_cost ? ' · $' + m.straddle_1d_cost.toFixed(2) + ' straddle' : '');
+
+  const wExp = m?.straddle_1w_exp ? ' · ' + short(m.straddle_1w_exp) + ' (' + m.straddle_1w_dte + 'D)' : '';
+  const wSub = wRange + wExp + (m?.straddle_1w_cost ? ' · $' + m.straddle_1w_cost.toFixed(2) + ' straddle' : '');
 
   const metrics=[
     ['Current price',money(spotPrice),'<span class="'+tone(day)+'">'+signed(day)+' · 1D</span>'],
     ['Expected 1D move (straddle)','±'+money(dMove)+' <small style="font-size:11px;font-weight:600;color:var(--muted);">(±'+dPct.toFixed(1)+'%)</small>','<span style="color:var(--text);font-weight:600;">'+dSub+'</span>'],
-    ['Expected weekly move (straddle)','±'+money(wMove)+' <small style="font-size:11px;font-weight:600;color:var(--muted);">(±'+wPct.toFixed(1)+'%)</small>','<span style="color:var(--text);font-weight:600;">'+wSub+'</span>'],
+    ['Expected EOW move (straddle)','±'+money(wMove)+' <small style="font-size:11px;font-weight:600;color:var(--muted);">(±'+wPct.toFixed(1)+'%)</small>','<span style="color:var(--text);font-weight:600;">'+wSub+'</span>'],
     ['50-day EMA',money(m?.ema50??last.e50),'<span class="'+tone(emaDistance)+'">'+signed(emaDistance)+' vs. EMA</span>'],
     ['ATH drawdown',signed(m?.drawdown_ath??last.dd),contracts(m?.days_in_drawdown??last.days)+' sessions since peak'],
     ['14D RSI &amp; volume',m?m.rsi.toFixed(1):'—','RVOL '+formatFactor(m?.rvol)]
