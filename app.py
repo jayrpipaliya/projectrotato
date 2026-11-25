@@ -24,7 +24,7 @@ runtime.mkdir(parents=True, exist_ok=True)
 raw_writable = Path('/tmp/raw_csv') if os.environ.get('VERCEL') else ROOT / 'raw_csv'
 raw_writable.mkdir(parents=True, exist_ok=True)
 
-for filename in ('gamma_history.json', 'spy_rsp.csv', 'qqq_rsp.csv', 'iwm_qqq.csv'):
+for filename in ('gamma_history.json', 'opportunities.json', 'spy_rsp.csv', 'qqq_rsp.csv', 'iwm_qqq.csv'):
     source, target = ROOT / 'processed_data' / filename, runtime / filename
     if source.is_file() and (not target.exists() or source.stat().st_mtime > target.stat().st_mtime):
         shutil.copyfile(source, target)
@@ -121,7 +121,7 @@ def run_yfinance():
     persisted_count = 0
     if durable_storage.get_blob_token():
         try:
-            for ratio in ('spy_rsp.csv', 'qqq_rsp.csv', 'iwm_qqq.csv'):
+            for ratio in ('opportunities.json', 'spy_rsp.csv', 'qqq_rsp.csv', 'iwm_qqq.csv'):
                 f = runtime / ratio
                 if f.is_file() and durable_storage.persist_file_to_cloud(f, ratio):
                     persisted_count += 1

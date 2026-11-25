@@ -1,9 +1,11 @@
 import json
 import os
+import threading
 import time
 import pandas as pd
 import numpy as np
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from options_engine import fetch_term_structure, compute_realized_volatilities, compute_iv_rank_and_percentile
 from data_manager import load_ticker_data, PROCESSED_DIR
@@ -25,6 +27,158 @@ DEFAULT_UNIVERSE = [
 OPPORTUNITIES_FILE = Path(PROCESSED_DIR) / "opportunities.json"
 BASE_PROCESSED_FILE = Path(__file__).resolve().parent / "processed_data" / "opportunities.json"
 
+def _scan_single_ticker(ticker):
+    """Scans a single ticker across expirations for volatility discounts and mispricings."""
+    try:
+        df_hist = load_ticker_data(ticker)
+        if df_hist.empty:
+            return ticker, []
+            
+        hvs = compute_realized_volatilities(df_hist, ticker_symbol=ticker)
+        clean_hv = float(hvs.get('HV_30_clean', hvs.get('HV_30', 20.0)))
+        hv_1y = float(hvs.get('HV_252', hvs.get('HV_1Y', 20.0)))
+        
+        term_df, spot_price, next_earnings = fetch_term_structure(ticker, hvs_dict=hvs, hv_benchmark=clean_hv)
+        if term_df is None or term_df.empty or spot_price is None:
+            return ticker, []
+
+        front_iv = float(term_df['ATM_IV'].iloc[0])
+        front_dte = int(term_df['DTE'].iloc[0])
+        iv_stats = compute_iv_rank_and_percentile(ticker, current_iv_pct=front_iv)
+        front_iv_pct = float(iv_stats.get('iv_percentile', 50.0))
+        front_iv_rank = float(iv_stats.get('iv_rank', 50.0))
+        vol_regime = iv_stats.get('vol_regime', 'Neutral Volatility')
+
+        ticker_opps = []
+        for _, row in term_df.iterrows():
+            dte = int(row['DTE'])
+            exp = str(row['Expiration'])
+            atm_iv = float(row['ATM_IV'])
+            oi = int(row.get('Total_OI', 0) or 0)
+            vol = int(row.get('Total_Volume', 0) or 0)
+            spans_earnings = bool(row.get('Spans_Earnings', False))
+
+            tenor = None
+            horizon_code = None
+            if 60 <= dte <= 125:
+                tenor = "3-Month (~90D)"
+                horizon_code = "3M"
+            elif 140 <= dte <= 235:
+                tenor = "6-Month (~180D)"
+                horizon_code = "6M"
+            elif dte >= 240:
+                tenor = "LEAP (1Y+)"
+                horizon_code = "LEAP"
+
+            if not tenor:
+                continue
+
+            # Liquidity Guardrail: eliminate illiquid strikes with zero or negligible open interest
+            if oi < 50:
+                continue
+
+            spread_clean = round(atm_iv - clean_hv, 2)
+            spread_1y = round(atm_iv - hv_1y, 2)
+            ratio_clean = round(atm_iv / max(clean_hv, 0.1), 2)
+            ratio_1y = round(atm_iv / max(hv_1y, 0.1), 2)
+            term_spread = round(atm_iv - front_iv, 1)
+
+            contract_iv_stats = compute_iv_rank_and_percentile(ticker, current_iv_pct=atm_iv)
+            contract_iv_pct = float(contract_iv_stats.get('iv_percentile', 50.0))
+            contract_iv_rank = float(contract_iv_stats.get('iv_rank', 50.0))
+
+            # Edge score: rewards low IV/HV ratio, negative term spread (backwardation), low contract IV percentile, and high liquidity
+            discount_pts = max(0.0, clean_hv - atm_iv)
+            inversion_pts = max(0.0, front_iv - atm_iv)
+            edge_score = (
+                (1.15 - ratio_clean) * 45.0
+                + (discount_pts * 1.5)
+                + (inversion_pts * 1.0)
+                + ((100.0 - contract_iv_pct) * 0.20)
+                + min(np.log10(max(oi, 10.0)) * 2.0, 10.0)
+            )
+
+            # Strategic categorization
+            is_discount = (ratio_clean < 1.0 or spread_clean < 0)
+            is_low_vol = (contract_iv_pct <= 50.0 or front_iv_pct <= 50.0)
+            is_inverted = (term_spread <= -1.5)
+
+            if is_discount and is_low_vol:
+                opp_type = "double_edge"
+                type_badge = "Double Edge Prime"
+                edge_tier = "Prime Double Edge (IV < HV & Low 1Y Vol)"
+                tier_tone = "mint"
+                strategy = "Prime Vol Arbitrage: Outright LEAP or Diagonal (Cheap IV + Low 1Y Regime)"
+            elif is_discount and is_inverted:
+                opp_type = "relative_discount"
+                type_badge = "Term & Realized Discount"
+                edge_tier = "Prime Inversion (IV < HV & Inverted)"
+                tier_tone = "mint"
+                strategy = "Calendar / Bullish Diagonal (Buy Cheap Back, Sell Spiked Front Week)"
+            elif is_discount:
+                opp_type = "relative_discount"
+                type_badge = "Relative Discount (IV < HV)"
+                edge_tier = "Underpriced Vol (IV < HV)"
+                tier_tone = "mint"
+                strategy = "Long Variance / Calendar Long Leg (IV < Clean Realized HV)"
+            elif is_low_vol:
+                opp_type = "low_vol"
+                type_badge = "Absolute Low Vol"
+                edge_tier = "Low Vol Percentile Regime"
+                tier_tone = "sky"
+                strategy = "Outright Long Option / LEAP Swing Accumulation (Low 1Y Regime)"
+            elif is_inverted:
+                opp_type = "term_inversion"
+                type_badge = "Term Inversion"
+                edge_tier = "Inverted Curve Dislocation"
+                tier_tone = "amber"
+                strategy = "Volatility Calendar Spread (Harvest Spiked Front IV Decay)"
+            else:
+                opp_type = "fair_value"
+                type_badge = "Fair Value Vol"
+                edge_tier = "Fair Value Vol"
+                tier_tone = "slate"
+                strategy = "Directional Spread / Covered Accumulation"
+
+            ticker_opps.append({
+                "ticker": ticker,
+                "spot_price": round(spot_price, 2),
+                "horizon": tenor,
+                "horizon_code": horizon_code,
+                "expiration": exp,
+                "dte": dte,
+                "atm_iv": round(atm_iv, 1),
+                "front_iv": round(front_iv, 1),
+                "front_dte": front_dte,
+                "term_spread": term_spread,
+                "clean_hv": round(clean_hv, 1),
+                "hv_1y": round(hv_1y, 1),
+                "vrp_clean": spread_clean,
+                "vrp_1y": spread_1y,
+                "ratio_clean": ratio_clean,
+                "ratio_1y": ratio_1y,
+                "front_iv_percentile": round(front_iv_pct, 1),
+                "front_iv_rank": round(front_iv_rank, 1),
+                "contract_iv_percentile": round(contract_iv_pct, 1),
+                "contract_iv_rank": round(contract_iv_rank, 1),
+                "iv_percentile": round(front_iv_pct, 1),
+                "iv_rank": round(front_iv_rank, 1),
+                "vol_regime": vol_regime,
+                "total_oi": oi,
+                "total_vol": vol,
+                "spans_earnings": spans_earnings,
+                "edge_score": round(edge_score, 1),
+                "edge_tier": edge_tier,
+                "tier_tone": tier_tone,
+                "opportunity_type": opp_type,
+                "type_badge": type_badge,
+                "recommended_strategy": strategy
+            })
+        return ticker, ticker_opps
+    except Exception as e:
+        print(f"[Opportunities Engine] Error scanning {ticker}: {e}")
+        return ticker, []
+
 def scan_volatility_opportunities(universe=None):
     """
     Scans the options universe across 3-Month (~90D), 6-Month (~180D), and LEAP (1Y+) horizons.
@@ -38,154 +192,25 @@ def scan_volatility_opportunities(universe=None):
     scan_timestamp = int(time.time())
     scan_date_str = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    for ticker in tickers:
-        try:
-            df_hist = load_ticker_data(ticker)
-            if df_hist.empty:
-                continue
-                
-            hvs = compute_realized_volatilities(df_hist, ticker_symbol=ticker)
-            clean_hv = float(hvs.get('HV_30_clean', hvs.get('HV_30', 20.0)))
-            hv_1y = float(hvs.get('HV_252', hvs.get('HV_1Y', 20.0)))
-            
-            term_df, spot_price, next_earnings = fetch_term_structure(ticker, hvs_dict=hvs, hv_benchmark=clean_hv)
-            if term_df is None or term_df.empty or spot_price is None:
-                continue
+    # Scan tickers concurrently with ThreadPoolExecutor
+    max_workers = min(6, len(tickers))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_scan_single_ticker, t): t for t in tickers}
+        for future in as_completed(futures):
+            try:
+                _, ticker_opps = future.result()
+                if ticker_opps:
+                    opportunities.extend(ticker_opps)
+            except Exception as e:
+                t = futures[future]
+                print(f"[Opportunities Engine] Error resolving future for {t}: {e}")
 
-            front_iv = float(term_df['ATM_IV'].iloc[0])
-            front_dte = int(term_df['DTE'].iloc[0])
-            iv_stats = compute_iv_rank_and_percentile(ticker, current_iv_pct=front_iv)
-            front_iv_pct = float(iv_stats.get('iv_percentile', 50.0))
-            front_iv_rank = float(iv_stats.get('iv_rank', 50.0))
-            vol_regime = iv_stats.get('vol_regime', 'Neutral Volatility')
-
-            for _, row in term_df.iterrows():
-                dte = int(row['DTE'])
-                exp = str(row['Expiration'])
-                atm_iv = float(row['ATM_IV'])
-                oi = int(row.get('Total_OI', 0) or 0)
-                vol = int(row.get('Total_Volume', 0) or 0)
-                spans_earnings = bool(row.get('Spans_Earnings', False))
-
-                tenor = None
-                horizon_code = None
-                if 60 <= dte <= 125:
-                    tenor = "3-Month (~90D)"
-                    horizon_code = "3M"
-                elif 140 <= dte <= 235:
-                    tenor = "6-Month (~180D)"
-                    horizon_code = "6M"
-                elif dte >= 240:
-                    tenor = "LEAP (1Y+)"
-                    horizon_code = "LEAP"
-
-                if not tenor:
-                    continue
-
-                # Liquidity Guardrail: eliminate illiquid strikes with zero or negligible open interest
-                if oi < 50:
-                    continue
-
-                spread_clean = round(atm_iv - clean_hv, 2)
-                spread_1y = round(atm_iv - hv_1y, 2)
-                ratio_clean = round(atm_iv / max(clean_hv, 0.1), 2)
-                ratio_1y = round(atm_iv / max(hv_1y, 0.1), 2)
-                term_spread = round(atm_iv - front_iv, 1)
-
-                contract_iv_stats = compute_iv_rank_and_percentile(ticker, current_iv_pct=atm_iv)
-                contract_iv_pct = float(contract_iv_stats.get('iv_percentile', 50.0))
-                contract_iv_rank = float(contract_iv_stats.get('iv_rank', 50.0))
-
-                # Edge score: rewards low IV/HV ratio, negative term spread (backwardation), low contract IV percentile, and high liquidity
-                discount_pts = max(0.0, clean_hv - atm_iv)
-                inversion_pts = max(0.0, front_iv - atm_iv)
-                edge_score = (
-                    (1.15 - ratio_clean) * 45.0
-                    + (discount_pts * 1.5)
-                    + (inversion_pts * 1.0)
-                    + ((100.0 - contract_iv_pct) * 0.20)
-                    + min(np.log10(max(oi, 10.0)) * 2.0, 10.0)
-                )
-
-                # Strategic categorization
-                is_discount = (ratio_clean < 1.0 or spread_clean < 0)
-                is_low_vol = (contract_iv_pct <= 50.0 or front_iv_pct <= 50.0)
-                is_inverted = (term_spread <= -1.5)
-
-                if is_discount and is_low_vol:
-                    opp_type = "double_edge"
-                    type_badge = "Double Edge Prime"
-                    edge_tier = "Prime Double Edge (IV < HV & Low 1Y Vol)"
-                    tier_tone = "mint"
-                    strategy = "Prime Vol Arbitrage: Outright LEAP or Diagonal (Cheap IV + Low 1Y Regime)"
-                elif is_discount and is_inverted:
-                    opp_type = "relative_discount"
-                    type_badge = "Term & Realized Discount"
-                    edge_tier = "Prime Inversion (IV < HV & Inverted)"
-                    tier_tone = "mint"
-                    strategy = "Calendar / Bullish Diagonal (Buy Cheap Back, Sell Spiked Front Week)"
-                elif is_discount:
-                    opp_type = "relative_discount"
-                    type_badge = "Relative Discount (IV < HV)"
-                    edge_tier = "Underpriced Vol (IV < HV)"
-                    tier_tone = "mint"
-                    strategy = "Long Variance / Calendar Long Leg (IV < Clean Realized HV)"
-                elif is_low_vol:
-                    opp_type = "low_vol"
-                    type_badge = "Absolute Low Vol"
-                    edge_tier = "Low Vol Percentile Regime"
-                    tier_tone = "sky"
-                    strategy = "Outright Long Option / LEAP Swing Accumulation (Low 1Y Regime)"
-                elif is_inverted:
-                    opp_type = "term_inversion"
-                    type_badge = "Term Inversion"
-                    edge_tier = "Inverted Curve Dislocation"
-                    tier_tone = "amber"
-                    strategy = "Volatility Calendar Spread (Harvest Spiked Front IV Decay)"
-                else:
-                    opp_type = "fair_value"
-                    type_badge = "Fair Value Vol"
-                    edge_tier = "Fair Value Vol"
-                    tier_tone = "slate"
-                    strategy = "Directional Spread / Covered Accumulation"
-
-                opportunities.append({
-                    "ticker": ticker,
-                    "spot_price": round(spot_price, 2),
-                    "horizon": tenor,
-                    "horizon_code": horizon_code,
-                    "expiration": exp,
-                    "dte": dte,
-                    "atm_iv": round(atm_iv, 1),
-                    "front_iv": round(front_iv, 1),
-                    "front_dte": front_dte,
-                    "term_spread": term_spread,
-                    "clean_hv": round(clean_hv, 1),
-                    "hv_1y": round(hv_1y, 1),
-                    "vrp_clean": spread_clean,
-                    "vrp_1y": spread_1y,
-                    "ratio_clean": ratio_clean,
-                    "ratio_1y": ratio_1y,
-                    "front_iv_percentile": round(front_iv_pct, 1),
-                    "front_iv_rank": round(front_iv_rank, 1),
-                    "contract_iv_percentile": round(contract_iv_pct, 1),
-                    "contract_iv_rank": round(contract_iv_rank, 1),
-                    "iv_percentile": round(front_iv_pct, 1),
-                    "iv_rank": round(front_iv_rank, 1),
-                    "vol_regime": vol_regime,
-                    "total_oi": oi,
-                    "total_vol": vol,
-                    "spans_earnings": spans_earnings,
-                    "edge_score": round(edge_score, 1),
-                    "edge_tier": edge_tier,
-                    "tier_tone": tier_tone,
-                    "opportunity_type": opp_type,
-                    "type_badge": type_badge,
-                    "recommended_strategy": strategy
-                })
-
-        except Exception as e:
-            print(f"[Opportunities Engine] Error scanning {ticker}: {e}")
+    # Safety Guardrail: If live scan yielded 0 opportunities (network/rate limit), fallback to existing cache
+    if not opportunities:
+        print("[Opportunities Engine] Scan yielded 0 opportunities; falling back to existing cache if available.")
+        cached = _read_cached_opportunities()
+        if cached and cached.get('opportunities'):
+            return cached
 
     # Sort primarily by lowest ratio_clean (deepest volatility discount)
     opportunities.sort(key=lambda x: (x['ratio_clean'], -x['total_oi']))
@@ -223,12 +248,18 @@ def scan_volatility_opportunities(universe=None):
     ticker_biases = {}
     try:
         from confluence_engine import compute_confluence_score
-        for t in tickers:
-            try:
-                conf = compute_confluence_score(t)
-                ticker_biases[t] = conf
-            except Exception:
-                pass
+        unique_opp_tickers = list({o['ticker'] for o in opportunities})
+        if unique_opp_tickers:
+            with ThreadPoolExecutor(max_workers=min(6, len(unique_opp_tickers))) as conf_exec:
+                conf_futures = {conf_exec.submit(compute_confluence_score, t): t for t in unique_opp_tickers}
+                for cf in as_completed(conf_futures):
+                    t = conf_futures[cf]
+                    try:
+                        res = cf.result()
+                        if res and isinstance(res, dict):
+                            ticker_biases[t] = res
+                    except Exception:
+                        pass
     except Exception:
         pass
 
@@ -352,31 +383,53 @@ def scan_volatility_opportunities(universe=None):
 
     return payload
 
+def _read_cached_opportunities():
+    """Reads the most recent valid opportunities cache from disk."""
+    candidates = [
+        Path(PROCESSED_DIR) / "opportunities.json",
+        Path(__file__).resolve().parent / "processed_data" / "opportunities.json",
+        Path(__file__).resolve().parent / ".runtime" / "opportunities.json"
+    ]
+    best_data = None
+    best_ts = 0
+    for fpath in candidates:
+        if fpath.exists():
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                ts = d.get('scan_timestamp', 0)
+                if ts > best_ts and d.get('opportunities'):
+                    best_ts = ts
+                    best_data = d
+            except Exception:
+                pass
+    return best_data
+
+_BG_SCAN_LOCK = threading.Lock()
+
+def _trigger_background_scan():
+    """Runs scan_volatility_opportunities in a background thread if one is not already running."""
+    if not _BG_SCAN_LOCK.acquire(blocking=False):
+        return
+    def _runner():
+        try:
+            scan_volatility_opportunities()
+        finally:
+            _BG_SCAN_LOCK.release()
+    threading.Thread(target=_runner, daemon=True).start()
+
 def get_opportunities_data(force_refresh=False):
     """
-    Returns cached opportunities if recent (under 18 hours old) or performs scan.
+    Returns cached opportunities immediately if available (triggering a non-blocking
+    background refresh if older than 18 hours), or performs a synchronous scan if
+    no cache exists or force_refresh is requested.
     """
     if not force_refresh:
-        candidates = [
-            Path(PROCESSED_DIR) / "opportunities.json",
-            Path(__file__).resolve().parent / "processed_data" / "opportunities.json",
-            Path(__file__).resolve().parent / ".runtime" / "opportunities.json"
-        ]
-        best_data = None
-        best_ts = 0
-        for fpath in candidates:
-            if fpath.exists():
-                try:
-                    with open(fpath, "r", encoding="utf-8") as f:
-                        d = json.load(f)
-                    ts = d.get('scan_timestamp', 0)
-                    if ts > best_ts:
-                        best_ts = ts
-                        best_data = d
-                except Exception:
-                    pass
-        if best_data and (time.time() - best_ts < 64800):
-            return best_data
+        cached = _read_cached_opportunities()
+        if cached:
+            if time.time() - cached.get('scan_timestamp', 0) >= 64800:
+                _trigger_background_scan()
+            return cached
             
     return scan_volatility_opportunities()
 

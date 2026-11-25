@@ -510,6 +510,13 @@ function bindVolatility() {
 function opportunitiesPage() {
   const payload = remoteOpportunities || data.opportunities;
   if (!payload || !Array.isArray(payload.opportunities)) {
+    const isFailed = backendRequests.get('opportunities') === 'failed';
+    if (isFailed) {
+      return hero('Volatility Mispricings', 'Opportunities Desk.', 'Identify institutional contracts where implied volatility (IV) is deeply discounted vs historical realized volatility ($IV < HV$ and low IV percentile) across 3-Month, 6-Month, and LEAP horizons.', 'Error', true)
+        + '<div class="flow-panels in">'
+        + card('System Notice', 'Opportunities Unavailable', '<div class="empty" style="text-align:center;padding:24px;">Failed to load opportunities from the quantitative engine.<br><br><button id="opps-retry" type="button" class="action-btn" style="padding:6px 16px;font-size:13px;cursor:pointer;">Retry Connection</button></div>')
+        + '</div>';
+    }
     return hero('Volatility Mispricings', 'Opportunities Desk.', 'Scanning universe for long-dated implied volatility discounts (IV < HV and low IV percentile)...', 'Live Scan', true)
       + '<div class="flow-panels in">' + card('Scanning', 'Opportunities Loading', '<div class="empty">Loading opportunities from quantitative engine…</div>') + '</div>';
   }
@@ -815,6 +822,10 @@ function bindOpportunities() {
     render();
   });
   byId('opps-refresh')?.addEventListener('click', () => {
+    loadPageData(true);
+  });
+  byId('opps-retry')?.addEventListener('click', () => {
+    backendRequests.delete('opportunities');
     loadPageData(true);
   });
 }
@@ -1602,6 +1613,7 @@ async function fetchPageData(key,force) {
     if(dataKey()===key){
       updateBackendNotice('Saved data shown · '+error.message);
       if(page==='charts'&&loadedHistories.has(symbol)) render();
+      else if(page==='opportunities') render();
     }
   }
 }

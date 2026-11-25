@@ -85,7 +85,7 @@ def sync_cloud_to_local(runtime_dir: Path, raw_dir: Path = None):
             continue
         try:
             target = None
-            if pathname == "gamma_history.json" or pathname in ("spy_rsp.csv", "qqq_rsp.csv", "iwm_qqq.csv"):
+            if pathname in ("gamma_history.json", "opportunities.json", "spy_rsp.csv", "qqq_rsp.csv", "iwm_qqq.csv"):
                 target = runtime_dir / pathname
             elif raw_dir and pathname.endswith("_us_d.csv"):
                 target = raw_dir / pathname
